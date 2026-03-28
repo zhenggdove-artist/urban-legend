@@ -183,7 +183,7 @@ class BloodEffect {
     spawn(pos) {
         // Create 40 blood particles - big enough to see
         for (let i = 0; i < 40; i++) {
-            const size = 0.015 + Math.random()*0.025; // bigger particles
+            const size = 0.005 + Math.random()*0.012; // proportional to character
             const geo = new THREE.SphereGeometry(size, 6, 6);
             const mat = new THREE.MeshBasicMaterial({
                 color: new THREE.Color(0.6 + Math.random()*0.4, 0, 0),
@@ -194,10 +194,10 @@ class BloodEffect {
             m.renderOrder = 999; // render on top
             // Random velocity - spread outward
             const angle = Math.random() * Math.PI * 2;
-            const speed = 0.3 + Math.random() * 0.6;
+            const speed = 0.15 + Math.random() * 0.3;
             const vx = Math.cos(angle) * speed;
-            const vy = Math.random() * 0.8 + 0.1;
-            const vz = Math.sin(angle) * speed * 0.5 + 0.2; // bias toward camera
+            const vy = Math.random() * 0.4 + 0.05;
+            const vz = Math.sin(angle) * speed * 0.3 + 0.1; // bias toward camera
             this.particles.push({ mesh: m, vx, vy, vz, life: 2.0 + Math.random() * 1.5 });
             this.group.add(m);
         }
@@ -233,7 +233,7 @@ class GameCharacter {
         this.curAction = null;
         this.curState = 'IDLE';
         this.root.rotation.y = Math.PI;
-        this.charHeight = 0.1; // target height in scene units
+        this.charHeight = 0.033; // target height in scene units (~1/30 screen)
     }
     async load() {
         const gl = new GLTFLoader();
@@ -530,22 +530,14 @@ async function main() {
         // Force wall-facing during climb
         if (state === 'CLIMB') character.root.rotation.y = Math.PI;
 
-        // === Camera vertical pan ===
-        let targetCamY;
-        if (state === 'DEAD' || state === 'JUMPING') {
-            // During jump/death: camera follows the character down to see impact
-            targetCamY = Math.max(0.3, pos.y + 0.2);
-            if (gyro.enabled) targetCamY += gyro.tiltY * 0.5;
-        } else if (gyro.enabled) {
-            // Climbing with gyro: base at character height + gyro offset
-            targetCamY = pos.y + gyro.tiltY;
-        } else {
-            // No gyro: auto-follow character Y
-            targetCamY = pos.y + 0.3;
-        }
-        targetCamY = Math.max(0.25, targetCamY);
-        // Smooth camera
-        camera.position.y += (targetCamY - camera.position.y) * 0.08;
+        // === Camera: FIXED base position, only gyro shifts it ===
+        // Base: camera at y=0.5 sees scene y=0..1
+        // Gyro tilt moves camera up/down to reveal beyond screen
+        // NO auto-follow — character must visibly climb up the screen
+        let gyroOffset = gyro.enabled ? gyro.tiltY : 0;
+        gyroOffset = Math.max(-1.0, Math.min(5.0, gyroOffset));
+        const targetCamY = 0.5 + gyroOffset;
+        camera.position.y += (targetCamY - camera.position.y) * 0.12;
         camera.lookAt(0, camera.position.y, 0);
 
         // Update
@@ -554,12 +546,12 @@ async function main() {
 
         // Debug
         dbg.innerHTML = [
-            `XY: ${pos.x.toFixed(2)},${pos.y.toFixed(2)} | ${state}`,
-            `Deaths: ${deaths}`,
-            `CamY: ${camera.position.y.toFixed(2)} Gyro: ${gyro.enabled ? gyro.tiltY.toFixed(1) : 'OFF'}`,
-            `Blood: ${blood.particles.length}`,
-            `Sky: ${(analyzer.skyLine*100).toFixed(0)}%`,
-            hasCamera ? 'AR' : 'SIM',
+            `Pos: ${pos.x.toFixed(2)},${pos.y.toFixed(2)} | ${state}`,
+            `Input: ${input.x.toFixed(1)},${input.y.toFixed(1)}`,
+            `CamY: ${camera.position.y.toFixed(2)}`,
+            `Gyro: ${gyro.enabled ? gyro.tiltY.toFixed(2) : 'OFF'} base:${gyro.baseBeta !== null ? gyro.baseBeta.toFixed(0) : '-'}`,
+            `Blood: ${blood.particles.length} | Deaths: ${deaths}`,
+            hasCamera ? 'CAM:ON' : 'CAM:OFF',
         ].join('<br>');
 
         renderer.render(scene, camera);
