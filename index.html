@@ -2,94 +2,113 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>都市傳說 - WebAR Game</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { overflow: hidden; background-color: #000; touch-action: none; }
-
-        /* Camera background */
-        #camera-video {
-            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
-            object-fit: cover; z-index: 0;
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body {
+            width: 100%; height: 100%;
+            overflow: hidden; background: #000;
+            touch-action: none;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+            position: fixed; top: 0; left: 0;
         }
 
-        /* Three.js canvas on top of camera */
+        /* Camera background - cover full screen */
+        #camera-video {
+            position: fixed; top: 0; left: 0;
+            min-width: 100%; min-height: 100%;
+            width: 100%; height: 100%;
+            object-fit: cover; z-index: 0;
+            /* Mirror fix for front camera */
+        }
+
+        /* Three.js canvas */
         #canvas-container {
-            width: 100vw; height: 100vh;
-            position: absolute; top: 0; left: 0; z-index: 1;
+            position: fixed; top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 1;
+        }
+        #canvas-container canvas {
+            display: block; width: 100% !important; height: 100% !important;
         }
 
         /* Paper Texture Overlay */
         #paper-overlay {
-            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
-            pointer-events: none; z-index: 10; opacity: 0.15; mix-blend-mode: multiply;
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 10; opacity: 0.12; mix-blend-mode: multiply;
             background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" stitchTiles="stitch"/></filter><rect width="100%" height="100%" filter="url(%23n)" opacity="0.5"/></svg>');
         }
 
-        /* UI Elements */
+        /* UI Layer */
         #ui-layer {
-            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             pointer-events: none; z-index: 20;
+            /* Safe area for notched phones */
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
         }
         #joystick-zone {
-            position: absolute; bottom: 40px; left: 40px;
-            width: 120px; height: 120px;
-            background: rgba(255,255,255,0.15);
-            border: 2px solid rgba(255,255,255,0.3);
+            position: absolute; bottom: max(30px, env(safe-area-inset-bottom, 0px) + 20px); left: 30px;
+            width: 110px; height: 110px;
+            background: rgba(255,255,255,0.12);
+            border: 2px solid rgba(255,255,255,0.25);
             border-radius: 50%;
             pointer-events: auto; touch-action: none;
         }
         #joystick-knob {
-            position: absolute; top: 35px; left: 35px;
+            position: absolute; top: 30px; left: 30px;
             width: 50px; height: 50px;
-            background: rgba(255,255,255,0.5);
+            background: rgba(255,255,255,0.45);
             border-radius: 50%;
-            transition: background 0.1s;
         }
         #jump-btn {
-            position: absolute; bottom: 40px; right: 40px;
+            position: absolute;
+            bottom: max(30px, env(safe-area-inset-bottom, 0px) + 20px);
+            right: 30px;
             width: 90px; height: 90px;
-            background: rgba(220, 40, 40, 0.6);
-            border: 2px solid rgba(255,100,100,0.5);
+            background: rgba(220, 40, 40, 0.55);
+            border: 2px solid rgba(255,100,100,0.4);
             border-radius: 50%;
-            pointer-events: auto;
+            pointer-events: auto; touch-action: none;
             display: flex; justify-content: center; align-items: center;
-            color: white; font-family: sans-serif; font-size: 16px; font-weight: bold;
-            user-select: none;
-            transition: transform 0.1s, background 0.1s;
+            color: white; font-family: sans-serif; font-size: 15px; font-weight: bold;
         }
-        #jump-btn:active, #jump-btn.pressed {
+        #jump-btn.pressed {
             transform: scale(0.9);
-            background: rgba(255, 60, 60, 0.9);
+            background: rgba(255, 60, 60, 0.85);
         }
         #debug-info {
-            position: absolute; top: 10px; left: 10px;
-            color: white; font-family: monospace; font-size: 12px;
-            background: rgba(0,0,0,0.5); padding: 8px; border-radius: 4px;
-            line-height: 1.5;
+            position: absolute; top: max(8px, env(safe-area-inset-top, 0px)); left: 8px;
+            color: #fff; font-family: monospace; font-size: 11px;
+            background: rgba(0,0,0,0.45); padding: 6px 8px; border-radius: 4px;
+            line-height: 1.4; pointer-events: none;
         }
+
+        /* Loading screen */
         #loading-screen {
-            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
-            background: rgba(0,0,0,0.85); z-index: 100;
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); z-index: 100;
             display: flex; flex-direction: column;
             justify-content: center; align-items: center;
             color: white; font-family: sans-serif;
         }
-        #loading-screen h2 { margin-bottom: 20px; }
+        #loading-screen h2 { margin-bottom: 20px; font-size: 22px; }
         #loading-bar-bg {
-            width: 200px; height: 8px; background: rgba(255,255,255,0.2);
-            border-radius: 4px; overflow: hidden;
+            width: 180px; height: 6px; background: rgba(255,255,255,0.15);
+            border-radius: 3px; overflow: hidden;
         }
         #loading-bar {
-            width: 0%; height: 100%; background: #ff4444;
-            border-radius: 4px; transition: width 0.3s;
+            width: 0%; height: 100%; background: #e63946;
+            border-radius: 3px; transition: width 0.3s;
         }
-        #loading-status { margin-top: 10px; font-size: 14px; opacity: 0.7; }
+        #loading-status { margin-top: 12px; font-size: 13px; opacity: 0.7; }
         #start-btn {
-            display: none; margin-top: 20px; padding: 12px 40px;
-            background: #ff4444; color: white; border: none; border-radius: 8px;
+            display: none; margin-top: 24px; padding: 14px 48px;
+            background: #e63946; color: white; border: none; border-radius: 10px;
             font-size: 18px; font-weight: bold; cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
         }
     </style>
     <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
@@ -120,7 +139,8 @@
 
     <script type="module">
         import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
-        import { FBXLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/FBXLoader.js';
+        import { GLTFLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
+        import { DRACOLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/DRACOLoader.js';
 
         // ========== Loading UI ==========
         const loadingBar = document.getElementById('loading-bar');
@@ -131,16 +151,16 @@
 
         function updateLoadingBar() {
             const total = (loadProgress.camera + loadProgress.idle + loadProgress.climb + loadProgress.jump) / 4;
-            loadingBar.style.width = total + '%';
+            loadingBar.style.width = Math.round(total) + '%';
         }
 
-        // ========== 1. Camera AR Background ==========
+        // ========== 1. Camera ==========
         async function startCamera() {
             const video = document.getElementById('camera-video');
             loadingStatus.textContent = '正在啟動相機...';
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+                    video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
                     audio: false
                 });
                 video.srcObject = stream;
@@ -150,8 +170,7 @@
                 loadingStatus.textContent = '相機已啟動';
                 return true;
             } catch (err) {
-                console.warn('Camera not available:', err);
-                // Fallback: show a dark gradient background
+                console.warn('Camera error:', err);
                 video.style.display = 'none';
                 document.body.style.background = 'linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)';
                 loadProgress.camera = 100;
@@ -161,51 +180,51 @@
             }
         }
 
-        // ========== 2. NPR Hand-drawn Shader ==========
+        // ========== 2. Toon Material (supports skinning) ==========
+        function createToonMaterial(color) {
+            const gradientMap = new THREE.DataTexture(
+                new Uint8Array([40, 40, 40, 255, 120, 120, 120, 255, 220, 220, 220, 255]),
+                3, 1, THREE.RGBAFormat
+            );
+            gradientMap.needsUpdate = true;
+            gradientMap.minFilter = THREE.NearestFilter;
+            gradientMap.magFilter = THREE.NearestFilter;
+            return new THREE.MeshToonMaterial({ color, gradientMap });
+        }
+
+        // NPR shader for non-skinned objects (meatballs etc.)
         const nprVertexShader = `
             uniform float time;
-            varying vec3 vNormal;
-            varying vec3 vViewPosition;
-
-            float hash(float n) { return fract(sin(n) * 1e4); }
-            float noise(vec3 x) {
-                const vec3 step = vec3(110, 241, 171);
-                vec3 i = floor(x); vec3 f = fract(x);
-                float n = dot(i, step);
-                vec3 u = f * f * (3.0 - 2.0 * f);
+            varying vec3 vNormal; varying vec3 vViewPosition;
+            float hash(float n){return fract(sin(n)*1e4);}
+            float noise(vec3 x){
+                const vec3 step=vec3(110,241,171);
+                vec3 i=floor(x);vec3 f=fract(x);float n=dot(i,step);
+                vec3 u=f*f*(3.0-2.0*f);
                 return mix(mix(mix(hash(n+dot(step,vec3(0,0,0))),hash(n+dot(step,vec3(1,0,0))),u.x),
-                               mix(hash(n+dot(step,vec3(0,1,0))),hash(n+dot(step,vec3(1,1,0))),u.x),u.y),
-                           mix(mix(hash(n+dot(step,vec3(0,0,1))),hash(n+dot(step,vec3(1,0,1))),u.x),
-                               mix(hash(n+dot(step,vec3(0,1,1))),hash(n+dot(step,vec3(1,1,1))),u.x),u.y),u.z);
+                    mix(hash(n+dot(step,vec3(0,1,0))),hash(n+dot(step,vec3(1,1,0))),u.x),u.y),
+                    mix(mix(hash(n+dot(step,vec3(0,0,1))),hash(n+dot(step,vec3(1,0,1))),u.x),
+                    mix(hash(n+dot(step,vec3(0,1,1))),hash(n+dot(step,vec3(1,1,1))),u.x),u.y),u.z);
             }
-            void main() {
-                vNormal = normalize(normalMatrix * normal);
-                float jitterAmount = 0.02;
-                vec3 jitteredPos = position + normal * (noise(position * 10.0 + time * 5.0) - 0.5) * jitterAmount;
-                vec4 mvPosition = modelViewMatrix * vec4(jitteredPos, 1.0);
-                vViewPosition = -mvPosition.xyz;
-                gl_Position = projectionMatrix * mvPosition;
-            }
-        `;
-
+            void main(){
+                vNormal=normalize(normalMatrix*normal);
+                vec3 jp=position+normal*(noise(position*10.0+time*5.0)-0.5)*0.02;
+                vec4 mv=modelViewMatrix*vec4(jp,1.0);
+                vViewPosition=-mv.xyz;
+                gl_Position=projectionMatrix*mv;
+            }`;
         const nprFragmentShader = `
-            uniform vec3 color;
-            uniform vec3 lightDir;
-            varying vec3 vNormal;
-            varying vec3 vViewPosition;
-            void main() {
-                vec3 normal = normalize(vNormal);
-                vec3 viewDir = normalize(vViewPosition);
-                float ndotl = dot(normal, normalize(lightDir));
-                float toonLight = ndotl > 0.5 ? 1.0 : (ndotl > 0.0 ? 0.5 : 0.2);
-                float rim = 1.0 - max(dot(viewDir, normal), 0.0);
-                float outline = smoothstep(0.6, 0.8, rim);
-                vec3 finalColor = color * toonLight;
-                if (outline > 0.5) finalColor = vec3(0.0);
-                gl_FragColor = vec4(finalColor, 1.0);
-            }
-        `;
-
+            uniform vec3 color; uniform vec3 lightDir;
+            varying vec3 vNormal; varying vec3 vViewPosition;
+            void main(){
+                vec3 n=normalize(vNormal);vec3 v=normalize(vViewPosition);
+                float nl=dot(n,normalize(lightDir));
+                float t=nl>0.5?1.0:(nl>0.0?0.5:0.2);
+                float rim=1.0-max(dot(v,n),0.0);
+                float ol=smoothstep(0.6,0.8,rim);
+                vec3 c=color*t; if(ol>0.5) c=vec3(0.0);
+                gl_FragColor=vec4(c,1.0);
+            }`;
         function createNPRMaterial(colorHex) {
             return new THREE.ShaderMaterial({
                 uniforms: {
@@ -213,8 +232,7 @@
                     color: { value: new THREE.Color(colorHex) },
                     lightDir: { value: new THREE.Vector3(1, 1, 1).normalize() }
                 },
-                vertexShader: nprVertexShader,
-                fragmentShader: nprFragmentShader,
+                vertexShader: nprVertexShader, fragmentShader: nprFragmentShader,
                 side: THREE.DoubleSide
             });
         }
@@ -226,156 +244,140 @@
                 this.cluster = new THREE.Group();
                 this.spheres = [];
                 this.baseScale = 1.0;
-                const mat = createNPRMaterial(0x8B4513);
                 for (let i = 0; i < 5; i++) {
-                    const geo = new THREE.SphereGeometry(0.15, 12, 12);
-                    const mesh = new THREE.Mesh(geo, mat.clone());
-                    mesh.position.set((Math.random()-0.5)*0.3, (Math.random()-0.5)*0.3, (Math.random()-0.5)*0.3);
+                    const geo = new THREE.SphereGeometry(0.12, 10, 10);
+                    const mesh = new THREE.Mesh(geo, createNPRMaterial(0x8B4513));
+                    mesh.position.set((Math.random()-0.5)*0.25, (Math.random()-0.5)*0.25, (Math.random()-0.5)*0.25);
                     this.cluster.add(mesh);
                     this.spheres.push(mesh);
                 }
             }
-            attachTo(parent) {
-                if (parent) parent.add(this.cluster);
-                else this.scene.add(this.cluster);
-            }
+            attachTo(parent) { (parent || this.scene).add(this.cluster); }
+            detach() { this.cluster.parent?.remove(this.cluster); }
             update(time) {
-                const scale = this.baseScale + Math.sin(time * 3) * 0.1;
-                this.cluster.scale.set(scale, scale, scale);
-                this.spheres.forEach(s => {
-                    if (s.material.uniforms) s.material.uniforms.time.value = time;
-                });
+                const s = this.baseScale + Math.sin(time * 3) * 0.08;
+                this.cluster.scale.set(s, s, s);
+                this.spheres.forEach(sp => { if (sp.material.uniforms) sp.material.uniforms.time.value = time; });
             }
             scaleBasedOnGlobalCount(count) {
                 this.baseScale = 1.0 + Math.min(count / 100, 3.0);
-                const targetSpheres = 5 + Math.floor(count / 10);
-                while (this.spheres.length < targetSpheres && this.spheres.length < 20) {
-                    const geo = new THREE.SphereGeometry(0.15, 12, 12);
-                    const mesh = new THREE.Mesh(geo, createNPRMaterial(0x8B4513));
-                    mesh.position.set((Math.random()-0.5)*0.5, (Math.random()-0.5)*0.5, (Math.random()-0.5)*0.5);
-                    this.cluster.add(mesh);
-                    this.spheres.push(mesh);
-                }
             }
         }
 
-        // ========== 4. Game Character with FBX ==========
+        // ========== 4. Game Character (GLB) ==========
         class GameCharacter {
             constructor(scene, meatballManager) {
                 this.scene = scene;
-                this.model = new THREE.Group();
-                this.scene.add(this.model);
+                this.root = new THREE.Group();
+                this.scene.add(this.root);
                 this.mixer = null;
                 this.animations = {};
                 this.currentAction = null;
                 this.currentState = 'IDLE';
-                this.modelHeight = 2.0;
                 this.meatballManager = meatballManager;
                 this.loaded = false;
 
-                // Placeholder while FBX loads
-                const geo = new THREE.CapsuleGeometry(0.4, 1.2, 8, 16);
-                const mat = createNPRMaterial(0xcccccc);
-                this.placeholder = new THREE.Mesh(geo, mat);
-                this.placeholder.position.y = 1.0;
-                this.model.add(this.placeholder);
-                this.meatballManager.attachTo(this.model);
+                // Placeholder capsule
+                const geo = new THREE.CapsuleGeometry(0.35, 1.0, 8, 16);
+                this.placeholder = new THREE.Mesh(geo, createToonMaterial(0xaaaaaa));
+                this.placeholder.position.y = 0.85;
+                this.root.add(this.placeholder);
+                this.meatballManager.attachTo(this.root);
             }
 
             async loadModels() {
-                const loader = new FBXLoader();
-                const animUrls = {
-                    IDLE: './playermodel/Breathing Idle.fbx',
-                    CLIMB: './playermodel/Climbing Ladder.fbx',
-                    JUMP: './playermodel/Jumping.fbx'
+                const gltfLoader = new GLTFLoader();
+                const dracoLoader = new DRACOLoader();
+                dracoLoader.setDecoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/draco/');
+                gltfLoader.setDRACOLoader(dracoLoader);
+
+                const modelUrls = {
+                    idle:  './playermodel/idle.glb',
+                    climb: './playermodel/climb.glb',
+                    jump:  './playermodel/jump.glb'
                 };
 
-                const loadFBX = (url, progressKey) => {
-                    return new Promise((resolve, reject) => {
-                        loader.load(url,
-                            (obj) => {
-                                loadProgress[progressKey] = 100;
-                                updateLoadingBar();
-                                resolve(obj);
-                            },
-                            (xhr) => {
-                                if (xhr.total > 0) {
-                                    loadProgress[progressKey] = (xhr.loaded / xhr.total) * 100;
-                                    updateLoadingBar();
-                                }
-                            },
-                            (err) => {
-                                loadProgress[progressKey] = 100; // Don't block loading
-                                updateLoadingBar();
-                                reject(err);
-                            }
-                        );
-                    });
-                };
+                const loadGLB = (url, key) => new Promise((resolve, reject) => {
+                    gltfLoader.load(url,
+                        (gltf) => { loadProgress[key] = 100; updateLoadingBar(); resolve(gltf); },
+                        (xhr) => { if (xhr.total) { loadProgress[key] = (xhr.loaded/xhr.total)*100; updateLoadingBar(); } },
+                        (err) => { loadProgress[key] = 100; updateLoadingBar(); reject(err); }
+                    );
+                });
 
                 try {
-                    // Load base model (idle)
                     loadingStatus.textContent = '載入角色模型...';
-                    const idleObj = await loadFBX(animUrls.IDLE, 'idle');
+                    const idleGltf = await loadGLB(modelUrls.idle, 'idle');
 
                     // Remove placeholder
-                    this.model.remove(this.placeholder);
+                    this.root.remove(this.placeholder);
 
-                    // Setup the FBX model
-                    idleObj.scale.set(0.02, 0.02, 0.02);
-                    idleObj.traverse(child => {
+                    const model = idleGltf.scene;
+                    // Auto-scale: find bounding box and normalize to ~2 units tall
+                    const box = new THREE.Box3().setFromObject(model);
+                    const size = box.getSize(new THREE.Vector3());
+                    const targetHeight = 2.0;
+                    const scale = targetHeight / size.y;
+                    model.scale.set(scale, scale, scale);
+
+                    // Re-center so feet are at y=0
+                    const box2 = new THREE.Box3().setFromObject(model);
+                    model.position.y = -box2.min.y;
+
+                    // Apply toon material to all meshes (supports skinning)
+                    model.traverse(child => {
                         if (child.isMesh) {
-                            child.material = createNPRMaterial(0xbbbbbb);
+                            child.material = createToonMaterial(0xbbbbbb);
                             child.castShadow = true;
+                            child.frustumCulled = false;
                         }
                     });
 
-                    this.fbxRoot = idleObj;
-                    this.model.add(idleObj);
-                    this.mixer = new THREE.AnimationMixer(idleObj);
+                    this.model3D = model;
+                    this.root.add(model);
+                    this.mixer = new THREE.AnimationMixer(model);
 
                     // Idle animation
-                    if (idleObj.animations.length > 0) {
-                        this.animations['IDLE'] = this.mixer.clipAction(idleObj.animations[0]);
+                    if (idleGltf.animations.length > 0) {
+                        this.animations['IDLE'] = this.mixer.clipAction(idleGltf.animations[0]);
                         this.animations['IDLE'].play();
                         this.currentAction = this.animations['IDLE'];
                     }
 
-                    // Attach meatball to head
-                    const headBone = idleObj.getObjectByName('Head')
-                        || idleObj.getObjectByName('mixamorigHead')
-                        || idleObj.getObjectByName('mixamorig:Head');
+                    // Attach meatball to head bone
+                    let headBone = null;
+                    model.traverse(child => {
+                        if (child.isBone && /head/i.test(child.name)) headBone = child;
+                    });
                     if (headBone) {
-                        this.meatballManager.cluster.parent?.remove(this.meatballManager.cluster);
+                        this.meatballManager.detach();
                         this.meatballManager.attachTo(headBone);
+                        this.meatballManager.cluster.scale.set(0.3 / scale, 0.3 / scale, 0.3 / scale);
                     }
 
-                    // Load climb and jump animations in parallel
+                    // Load climb + jump in parallel
                     loadingStatus.textContent = '載入動畫...';
-                    const [climbObj, jumpObj] = await Promise.allSettled([
-                        loadFBX(animUrls.CLIMB, 'climb'),
-                        loadFBX(animUrls.JUMP, 'jump')
+                    const [climbRes, jumpRes] = await Promise.allSettled([
+                        loadGLB(modelUrls.climb, 'climb'),
+                        loadGLB(modelUrls.jump, 'jump')
                     ]);
 
-                    if (climbObj.status === 'fulfilled' && climbObj.value.animations.length > 0) {
-                        this.animations['CLIMB'] = this.mixer.clipAction(climbObj.value.animations[0]);
+                    if (climbRes.status === 'fulfilled' && climbRes.value.animations.length > 0) {
+                        this.animations['CLIMB'] = this.mixer.clipAction(climbRes.value.animations[0]);
                     }
-                    if (jumpObj.status === 'fulfilled' && jumpObj.value.animations.length > 0) {
-                        this.animations['JUMP'] = this.mixer.clipAction(jumpObj.value.animations[0]);
+                    if (jumpRes.status === 'fulfilled' && jumpRes.value.animations.length > 0) {
+                        this.animations['JUMP'] = this.mixer.clipAction(jumpRes.value.animations[0]);
                         this.animations['JUMP'].setLoop(THREE.LoopOnce);
                         this.animations['JUMP'].clampWhenFinished = true;
                     }
 
                     this.loaded = true;
-                    console.log('All models loaded. Animations:', Object.keys(this.animations));
+                    console.log('Models loaded. Anims:', Object.keys(this.animations));
 
                 } catch (err) {
-                    console.error('FBX loading failed:', err);
+                    console.error('Model load failed:', err);
                     loadingStatus.textContent = '模型載入失敗，使用替代模型';
-                    // Keep placeholder
-                    loadProgress.idle = 100;
-                    loadProgress.climb = 100;
-                    loadProgress.jump = 100;
+                    loadProgress.idle = loadProgress.climb = loadProgress.jump = 100;
                     updateLoadingBar();
                 }
             }
@@ -383,18 +385,18 @@
             setState(newState) {
                 if (this.currentState === newState) return;
                 this.currentState = newState;
+                if (!this.mixer) return;
 
-                if (this.mixer && this.animations[newState]) {
-                    const nextAction = this.animations[newState];
-                    if (this.currentAction && this.currentAction !== nextAction) {
-                        nextAction.reset();
-                        nextAction.play();
-                        nextAction.crossFadeFrom(this.currentAction, 0.25, true);
-                    } else {
-                        nextAction.reset().play();
-                    }
-                    this.currentAction = nextAction;
+                const nextAction = this.animations[newState];
+                if (!nextAction) return;
+
+                if (this.currentAction && this.currentAction !== nextAction) {
+                    nextAction.reset().play();
+                    nextAction.crossFadeFrom(this.currentAction, 0.2, true);
+                } else {
+                    nextAction.reset().play();
                 }
+                this.currentAction = nextAction;
             }
 
             update(dt, time, moveSpeed) {
@@ -404,251 +406,196 @@
                     }
                     this.mixer.update(dt);
                 }
-                // Update shader time on all NPR materials
-                this.model.traverse(child => {
-                    if (child.isMesh && child.material?.uniforms?.time) {
-                        child.material.uniforms.time.value = time;
-                    }
-                });
             }
         }
 
         // ========== 5. Firebase Stub ==========
         class FirebaseStub {
             constructor() { this.db = {}; }
-            getCurrentMonthKey() {
-                const now = new Date();
-                return `stats/${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}/global_death_count`;
+            getKey() {
+                const d = new Date();
+                return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
             }
-            async getGlobalDeathCount() {
-                return this.db[this.getCurrentMonthKey()] || 0;
-            }
-            async incrementDeathCount() {
-                const key = this.getCurrentMonthKey();
-                this.db[key] = (this.db[key] || 0) + 1;
-                return this.db[key];
-            }
+            async getDeathCount() { return this.db[this.getKey()] || 0; }
+            async addDeath() { this.db[this.getKey()] = (this.db[this.getKey()] || 0) + 1; return this.db[this.getKey()]; }
         }
 
-        // ========== 6. Main Game ==========
-        const initGame = async () => {
-            // Start camera first
+        // ========== 6. Main ==========
+        async function initGame() {
             const hasCamera = await startCamera();
 
             const container = document.getElementById('canvas-container');
-            const scene = new THREE.Scene();
-            // Transparent background so camera video shows through
+            const W = window.innerWidth, H = window.innerHeight;
 
-            const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 2.5, 6);
-            camera.lookAt(0, 2, 0);
+            const scene = new THREE.Scene();
+            const camera = new THREE.PerspectiveCamera(55, W / H, 0.1, 500);
+            camera.position.set(0, 2.5, 5.5);
+            camera.lookAt(0, 1.5, 0);
 
             const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setClearColor(0x000000, 0); // Fully transparent
+            renderer.setSize(W, H);
+            renderer.setClearColor(0x000000, 0);
             container.appendChild(renderer.domElement);
 
-            // Lighting
-            const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
-            dirLight.position.set(5, 10, 7);
-            scene.add(dirLight);
-            scene.add(new THREE.AmbientLight(0x606060));
+            // Lights
+            const dl = new THREE.DirectionalLight(0xffffff, 1.5);
+            dl.position.set(3, 8, 5);
+            scene.add(dl);
+            scene.add(new THREE.AmbientLight(0x808080));
+            scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 0.6));
 
-            // A subtle ground grid for spatial reference
-            const gridHelper = new THREE.GridHelper(20, 20, 0x444444, 0x222222);
-            gridHelper.material.opacity = 0.3;
-            gridHelper.material.transparent = true;
-            scene.add(gridHelper);
+            // Ground grid
+            const grid = new THREE.GridHelper(20, 20, 0x555555, 0x333333);
+            grid.material.opacity = 0.25;
+            grid.material.transparent = true;
+            scene.add(grid);
 
             // Systems
             const firebase = new FirebaseStub();
-            const meatballManager = new MeatballManager(scene);
-            const character = new GameCharacter(scene, meatballManager);
+            const meatball = new MeatballManager(scene);
+            const character = new GameCharacter(scene, meatball);
 
-            // Load FBX models
             await character.loadModels();
+            meatball.scaleBasedOnGlobalCount(await firebase.getDeathCount());
 
-            const initialDeaths = await firebase.getGlobalDeathCount();
-            meatballManager.scaleBasedOnGlobalCount(initialDeaths);
-
-            // Show start button
+            // Ready
             loadingStatus.textContent = '準備完成！';
             startBtn.style.display = 'block';
-
-            // Wait for user to tap start
-            await new Promise(resolve => {
-                startBtn.addEventListener('click', () => {
-                    loadingScreen.style.display = 'none';
-                    resolve();
-                }, { once: true });
-            });
+            await new Promise(r => startBtn.addEventListener('click', () => { loadingScreen.style.display = 'none'; r(); }, { once: true }));
 
             // ===== Input =====
-            const input = { y: 0, jumpPressed: false, jumpTriggered: false };
+            const input = { y: 0, jump: false };
 
             // Joystick
-            const joystickZone = document.getElementById('joystick-zone');
-            const joystickKnob = document.getElementById('joystick-knob');
-            let isDragging = false;
-            let dragStartY = 0;
+            const jZone = document.getElementById('joystick-zone');
+            const jKnob = document.getElementById('joystick-knob');
+            let dragging = false, dragStartY = 0;
 
-            joystickZone.addEventListener('pointerdown', (e) => {
-                isDragging = true;
-                dragStartY = e.clientY;
-                joystickKnob.style.background = 'rgba(255,255,255,0.8)';
-                e.preventDefault();
+            jZone.addEventListener('pointerdown', e => { dragging = true; dragStartY = e.clientY; jKnob.style.background = 'rgba(255,255,255,0.75)'; e.preventDefault(); });
+            window.addEventListener('pointermove', e => {
+                if (!dragging) return;
+                const dy = Math.max(-40, Math.min(40, e.clientY - dragStartY));
+                jKnob.style.transform = `translateY(${dy}px)`;
+                input.y = -dy / 40;
             });
-            window.addEventListener('pointermove', (e) => {
-                if (!isDragging) return;
-                const deltaY = e.clientY - dragStartY;
-                const clampedY = Math.max(-40, Math.min(40, deltaY));
-                joystickKnob.style.transform = `translateY(${clampedY}px)`;
-                input.y = -clampedY / 40; // -1 (down) to 1 (up)
-            });
-            window.addEventListener('pointerup', (e) => {
-                if (!isDragging) return;
-                isDragging = false;
-                joystickKnob.style.transform = 'translateY(0px)';
-                joystickKnob.style.background = 'rgba(255,255,255,0.5)';
+            window.addEventListener('pointerup', () => {
+                if (!dragging) return;
+                dragging = false;
+                jKnob.style.transform = 'translateY(0)';
+                jKnob.style.background = 'rgba(255,255,255,0.45)';
                 input.y = 0;
             });
 
-            // Jump button - trigger on press, not hold
-            const jumpBtn = document.getElementById('jump-btn');
-            jumpBtn.addEventListener('pointerdown', (e) => {
-                input.jumpTriggered = true;
-                jumpBtn.classList.add('pressed');
-                e.preventDefault();
-            });
-            jumpBtn.addEventListener('pointerup', () => {
-                jumpBtn.classList.remove('pressed');
-            });
-            jumpBtn.addEventListener('pointerleave', () => {
-                jumpBtn.classList.remove('pressed');
-            });
+            // Jump
+            const jBtn = document.getElementById('jump-btn');
+            jBtn.addEventListener('pointerdown', e => { input.jump = true; jBtn.classList.add('pressed'); e.preventDefault(); });
+            jBtn.addEventListener('pointerup', () => jBtn.classList.remove('pressed'));
+            jBtn.addEventListener('pointercancel', () => jBtn.classList.remove('pressed'));
 
-            // Keyboard support (for desktop testing)
-            window.addEventListener('keydown', (e) => {
+            // Keyboard (desktop)
+            window.addEventListener('keydown', e => {
                 if (e.key === 'ArrowUp' || e.key === 'w') input.y = 1;
                 if (e.key === 'ArrowDown' || e.key === 's') input.y = -1;
-                if (e.key === ' ') input.jumpTriggered = true;
+                if (e.key === ' ') input.jump = true;
             });
-            window.addEventListener('keyup', (e) => {
-                if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'ArrowDown' || e.key === 's') input.y = 0;
+            window.addEventListener('keyup', e => {
+                if (['ArrowUp','w','ArrowDown','s'].includes(e.key)) input.y = 0;
             });
 
-            // ===== Game State =====
+            // ===== Game Loop =====
             const clock = new THREE.Clock();
-            let gameState = 'CLIMBING'; // CLIMBING | JUMPING | FALLING | LANDED
-            let velocityY = 0;
-            let deathCount = 0;
+            let state = 'CLIMB'; // CLIMB | JUMP_UP | FALL | LAND
+            let vy = 0, deaths = 0;
+            const debugEl = document.getElementById('debug-info');
 
-            const debugInfo = document.getElementById('debug-info');
-
-            const animate = () => {
-                requestAnimationFrame(animate);
-                const dt = Math.min(clock.getDelta(), 0.05); // Cap delta time
+            function tick() {
+                requestAnimationFrame(tick);
+                const dt = Math.min(clock.getDelta(), 0.05);
                 const time = clock.getElapsedTime();
-                const charY = character.model.position.y;
+                const pos = character.root.position;
 
-                switch (gameState) {
-                    case 'CLIMBING':
+                switch (state) {
+                    case 'CLIMB':
                         if (Math.abs(input.y) > 0.1) {
                             character.setState('CLIMB');
-                            character.model.position.y += input.y * 3.0 * dt;
-                            if (character.model.position.y < 0) character.model.position.y = 0;
+                            pos.y += input.y * 3.0 * dt;
+                            if (pos.y < 0) pos.y = 0;
                         } else {
                             character.setState('IDLE');
                         }
-
-                        // Jump triggered at any height
-                        if (input.jumpTriggered) {
-                            input.jumpTriggered = false;
-                            gameState = 'JUMPING';
+                        if (input.jump) {
+                            input.jump = false;
+                            state = 'JUMP_UP';
                             character.setState('JUMP');
-                            velocityY = 4.0; // Jump upward impulse
-
-                            // Count death
-                            deathCount++;
-                            firebase.incrementDeathCount().then(count => {
-                                meatballManager.scaleBasedOnGlobalCount(count);
-                            });
+                            vy = 5.0;
+                            deaths++;
+                            firebase.addDeath().then(c => meatball.scaleBasedOnGlobalCount(c));
                         }
                         break;
 
-                    case 'JUMPING':
-                        // Brief upward arc, then fall
-                        velocityY -= 15.0 * dt; // Strong gravity
-                        character.model.position.y += velocityY * dt;
-                        // Also push character slightly forward (toward camera) for dramatic effect
-                        character.model.position.z += 2.0 * dt;
-
-                        if (velocityY < 0) {
-                            gameState = 'FALLING';
-                        }
+                    case 'JUMP_UP':
+                        vy -= 14.0 * dt;
+                        pos.y += vy * dt;
+                        pos.z += 2.5 * dt;
+                        if (vy <= 0) state = 'FALL';
                         break;
 
-                    case 'FALLING':
-                        velocityY -= 15.0 * dt;
-                        character.model.position.y += velocityY * dt;
-                        character.model.position.z += 1.0 * dt;
-
-                        // Hit ground
-                        if (character.model.position.y <= 0) {
-                            character.model.position.y = 0;
-                            gameState = 'LANDED';
+                    case 'FALL':
+                        vy -= 14.0 * dt;
+                        pos.y += vy * dt;
+                        pos.z += 1.5 * dt;
+                        if (pos.y <= 0) {
+                            pos.y = 0;
+                            vy = 0;
+                            state = 'LAND';
                             character.setState('IDLE');
-                            velocityY = 0;
-                            // Reset z position and return to climbing after a moment
-                            setTimeout(() => {
-                                character.model.position.z = 0;
-                                gameState = 'CLIMBING';
-                            }, 1500);
+                            setTimeout(() => { pos.z = 0; state = 'CLIMB'; }, 1200);
                         }
                         break;
 
-                    case 'LANDED':
-                        // Waiting to reset
+                    case 'LAND':
                         break;
                 }
+                input.jump = false;
 
-                // Consume jump trigger if not used
-                input.jumpTriggered = false;
+                // Camera smooth follow
+                const ty = pos.y + 2.0;
+                camera.position.y += (ty - camera.position.y) * 3.5 * dt;
+                camera.position.z = 5.5 + pos.z * 0.3;
+                camera.lookAt(pos.x, pos.y + 1.0, pos.z);
 
-                // Camera follows character height smoothly
-                const targetCamY = charY + 2.0;
-                camera.position.y += (targetCamY - camera.position.y) * 3.0 * dt;
-                camera.lookAt(character.model.position.x, charY + 1.0, character.model.position.z);
+                // Grid follows camera
+                grid.position.y = Math.floor(pos.y / 5) * 5;
 
-                // Update systems
                 character.update(dt, time, input.y);
-                meatballManager.update(time);
+                meatball.update(time);
 
-                // Debug info
-                debugInfo.innerHTML =
-                    `Height: ${charY.toFixed(1)}m<br>` +
-                    `State: ${gameState}<br>` +
-                    `Anim: ${character.currentState}<br>` +
-                    `Deaths: ${deathCount}<br>` +
-                    `Camera: ${hasCamera ? 'AR' : 'Sim'}`;
+                debugEl.innerHTML = `H:${pos.y.toFixed(1)}m | ${state} | D:${deaths} | ${hasCamera?'AR':'SIM'}`;
 
                 renderer.render(scene, camera);
-            };
+            }
 
-            // Resize
-            window.addEventListener('resize', () => {
-                camera.aspect = window.innerWidth / window.innerHeight;
+            // Resize handler
+            function onResize() {
+                const w = window.innerWidth, h = window.innerHeight;
+                camera.aspect = w / h;
                 camera.updateProjectionMatrix();
-                renderer.setSize(window.innerWidth, window.innerHeight);
-            });
+                renderer.setSize(w, h);
+            }
+            window.addEventListener('resize', onResize);
+            window.addEventListener('orientationchange', () => setTimeout(onResize, 200));
+            // Also handle iOS visual viewport
+            if (window.visualViewport) {
+                window.visualViewport.addEventListener('resize', onResize);
+            }
 
-            animate();
-        };
+            tick();
+        }
 
         initGame().catch(err => {
-            console.error('Game init failed:', err);
-            document.getElementById('loading-status').textContent = '遊戲初始化失敗: ' + err.message;
+            console.error('Init error:', err);
+            document.getElementById('loading-status').textContent = '初始化失敗: ' + err.message;
         });
     </script>
 </body>
