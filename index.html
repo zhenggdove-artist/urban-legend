@@ -6,60 +6,53 @@
     <title>都市傳說 - WebAR Game</title>
     <style>
         *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-        html { width: 100%; height: 100%; overflow: hidden; }
-        body {
-            width: 100%; height: 100%;
-            overflow: hidden; background: #000;
-            touch-action: none;
-            -webkit-touch-callout: none; -webkit-user-select: none; user-select: none;
-        }
+        html, body { width: 100%; height: 100%; overflow: hidden; background: #000;
+            touch-action: none; -webkit-user-select: none; user-select: none; }
 
-        /* Video camera layer - bottom-most */
         #camera-video {
-            position: absolute; top: 0; left: 0;
-            width: 100%; height: 100%;
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             object-fit: cover; z-index: 0;
-            background: linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            background: linear-gradient(180deg, #87CEEB 0%, #4a90d9 40%, #2c3e50 40.5%, #1a1a2e 100%);
         }
-
-        /* Debug info */
+        /* Scene analysis overlay - shows sky/building detection */
+        #analysis-canvas {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 1; opacity: 0.25; pointer-events: none;
+        }
         #debug-info {
-            position: absolute; top: 40px; left: 10px; z-index: 10;
+            position: absolute; top: 40px; left: 10px; z-index: 20;
             color: #fff; font: 11px/1.4 monospace;
             background: rgba(0,0,0,0.5); padding: 5px 8px; border-radius: 4px;
-            pointer-events: none;
+            pointer-events: none; max-width: 200px;
         }
-
-        /* Joystick */
         #joystick-zone {
-            position: absolute; z-index: 10;
+            position: absolute; z-index: 20;
             width: 100px; height: 100px;
             background: rgba(255,255,255,0.15);
             border: 2px solid rgba(255,255,255,0.3);
-            border-radius: 50%;
-            touch-action: none;
+            border-radius: 50%; touch-action: none;
         }
         #joystick-knob {
             position: absolute; top: 25px; left: 25px;
             width: 50px; height: 50px;
-            background: rgba(255,255,255,0.5);
-            border-radius: 50%;
+            background: rgba(255,255,255,0.5); border-radius: 50%;
         }
-
-        /* Jump button */
         #jump-btn {
-            position: absolute; z-index: 10;
+            position: absolute; z-index: 20;
             width: 80px; height: 80px;
-            background: rgba(220, 40, 40, 0.6);
+            background: rgba(220,40,40,0.6);
             border: 2px solid rgba(255,80,80,0.5);
             border-radius: 50%;
             display: flex; justify-content: center; align-items: center;
-            color: white; font: bold 14px sans-serif;
-            touch-action: none;
+            color: white; font: bold 14px sans-serif; touch-action: none;
         }
-        #jump-btn.pressed { transform: scale(0.9); background: rgba(255, 50, 50, 0.85); }
+        #jump-btn.pressed { transform: scale(0.9); background: rgba(255,50,50,0.85); }
+        #sky-line-indicator {
+            position: absolute; left: 0; width: 100%; height: 2px;
+            background: rgba(0,200,255,0.6); z-index: 15; pointer-events: none;
+            transition: top 0.3s;
+        }
 
-        /* Loading screen */
         #loading-screen {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.92); z-index: 100;
@@ -75,7 +68,6 @@
             display: none; margin-top: 20px; padding: 12px 44px;
             background: #e63946; color: white; border: none; border-radius: 10px;
             font-size: 17px; font-weight: bold; cursor: pointer;
-            -webkit-tap-highlight-color: transparent;
         }
     </style>
     <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
@@ -87,9 +79,9 @@
     </script>
 </head>
 <body>
-    <!-- Camera video as background (no canvas element here - created by Three.js) -->
     <video id="camera-video" autoplay playsinline muted></video>
-    <!-- UI directly on body, no wrapper divs -->
+    <canvas id="analysis-canvas"></canvas>
+    <div id="sky-line-indicator"></div>
     <div id="debug-info">Loading...</div>
     <div id="joystick-zone"><div id="joystick-knob"></div></div>
     <div id="jump-btn">JUMP</div>
@@ -105,23 +97,20 @@
         import { GLTFLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
         import { DRACOLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/DRACOLoader.js';
 
-        // ===== Screen size =====
         function sw() { return window.innerWidth; }
         function sh() { return window.innerHeight; }
 
         function layoutUI() {
             const w = sw(), h = sh();
-            const jz = document.getElementById('joystick-zone');
-            jz.style.left = '24px';
-            jz.style.top = (h - 140) + 'px';
-            const jb = document.getElementById('jump-btn');
-            jb.style.left = (w - 104) + 'px';
-            jb.style.top = (h - 120) + 'px';
+            document.getElementById('joystick-zone').style.cssText +=
+                `;left:24px;top:${h - 140}px`;
+            document.getElementById('jump-btn').style.cssText +=
+                `;left:${w - 104}px;top:${h - 120}px`;
         }
         layoutUI();
         window.addEventListener('resize', layoutUI);
 
-        // ===== Loading UI =====
+        // ===== Loading =====
         const loadingBar = document.getElementById('loading-bar');
         const loadingStatus = document.getElementById('loading-status');
         const loadingScreen = document.getElementById('loading-screen');
@@ -131,7 +120,7 @@
             loadingBar.style.width = Math.round((prog.camera + prog.idle + prog.climb + prog.jump) / 4) + '%';
         }
 
-        // ===== Camera - MUST be called from user gesture on iOS =====
+        // ===== Camera =====
         async function startCamera() {
             const video = document.getElementById('camera-video');
             try {
@@ -140,41 +129,159 @@
                     audio: false
                 });
                 video.srcObject = stream;
-                // On iOS, play() must happen in user gesture context
                 await video.play();
                 prog.camera = 100; updateBar();
                 return true;
             } catch (err) {
                 console.warn('Camera failed:', err);
-                // Fallback gradient is already set as CSS background on video
                 prog.camera = 100; updateBar();
                 return false;
             }
         }
 
-        // ===== Meatball =====
-        class MeatballManager {
-            constructor(scene) {
-                this.scene = scene;
-                this.cluster = new THREE.Group();
-                this.spheres = [];
-                this.baseScale = 1.0;
-                const mat = new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.9 });
-                for (let i = 0; i < 5; i++) {
-                    const m = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), mat.clone());
-                    m.position.set((Math.random()-0.5)*0.2, (Math.random()-0.5)*0.2, (Math.random()-0.5)*0.2);
-                    this.cluster.add(m); this.spheres.push(m);
-                }
+        // ===== Scene Analyzer - detect sky vs building from camera =====
+        class SceneAnalyzer {
+            constructor(video) {
+                this.video = video;
+                // Small offscreen canvas for sampling (performance)
+                this.sampleCanvas = document.createElement('canvas');
+                this.sampleCanvas.width = 32;  // 32 columns
+                this.sampleCanvas.height = 48;  // 48 rows
+                this.sampleCtx = this.sampleCanvas.getContext('2d', { willReadFrequently: true });
+
+                // Display canvas for debug visualization
+                this.displayCanvas = document.getElementById('analysis-canvas');
+                this.displayCtx = this.displayCanvas.getContext('2d');
+
+                // Sky line position (0-1, from top)
+                this.skyLineRatio = 0.4; // default: sky is top 40%
+                this.buildingMap = []; // array of rows, each row = array of booleans (true=building)
+
+                this.lastAnalysis = 0;
+                this.analyzeInterval = 500; // ms between analyses
             }
-            attachTo(p) { (p || this.scene).add(this.cluster); }
-            detach() { this.cluster.parent?.remove(this.cluster); }
-            update(t) { this.cluster.scale.setScalar(this.baseScale + Math.sin(t * 3) * 0.08); }
-            grow(c) { this.baseScale = 1.0 + Math.min(c / 50, 2.0); }
+
+            analyze(now) {
+                if (now - this.lastAnalysis < this.analyzeInterval) return;
+                this.lastAnalysis = now;
+
+                const v = this.video;
+                if (!v.srcObject || v.readyState < 2) return;
+
+                const sw = this.sampleCanvas.width;
+                const sh = this.sampleCanvas.height;
+
+                // Draw video frame to small sample canvas
+                this.sampleCtx.drawImage(v, 0, 0, sw, sh);
+                const data = this.sampleCtx.getImageData(0, 0, sw, sh).data;
+
+                // For each row, calculate color variance (complexity)
+                // Low variance = sky, high variance = building/texture
+                const rowVariance = [];
+                for (let y = 0; y < sh; y++) {
+                    let sumR = 0, sumG = 0, sumB = 0;
+                    const colors = [];
+                    for (let x = 0; x < sw; x++) {
+                        const i = (y * sw + x) * 4;
+                        const r = data[i], g = data[i+1], b = data[i+2];
+                        sumR += r; sumG += g; sumB += b;
+                        colors.push([r, g, b]);
+                    }
+                    const avgR = sumR / sw, avgG = sumG / sw, avgB = sumB / sw;
+                    let variance = 0;
+                    for (const [r, g, b] of colors) {
+                        variance += (r-avgR)**2 + (g-avgG)**2 + (b-avgB)**2;
+                    }
+                    variance /= sw;
+                    rowVariance.push(variance);
+                }
+
+                // Find sky line: scan from top, find where variance jumps significantly
+                const threshold = 800; // variance threshold for "complex" (building)
+                let skyLine = 0;
+                // Find first row where variance is consistently above threshold
+                for (let y = 0; y < sh; y++) {
+                    // Check if this row and next 2 rows are all high variance
+                    if (y + 2 < sh &&
+                        rowVariance[y] > threshold &&
+                        rowVariance[y+1] > threshold &&
+                        rowVariance[y+2] > threshold) {
+                        skyLine = y;
+                        break;
+                    }
+                }
+                // Smooth the sky line position
+                const newRatio = skyLine / sh;
+                this.skyLineRatio = this.skyLineRatio * 0.7 + newRatio * 0.3;
+
+                // Build the building map (which cells are "building")
+                this.buildingMap = [];
+                for (let y = 0; y < sh; y++) {
+                    const row = [];
+                    for (let x = 0; x < sw; x++) {
+                        const i = (y * sw + x) * 4;
+                        // Simple: below sky line = building
+                        row.push(y / sh > this.skyLineRatio);
+                    }
+                    this.buildingMap.push(row);
+                }
+
+                // Draw debug visualization
+                this.drawDebug(data, sw, sh, rowVariance);
+
+                // Update sky line indicator
+                document.getElementById('sky-line-indicator').style.top =
+                    Math.round(this.skyLineRatio * window.innerHeight) + 'px';
+            }
+
+            drawDebug(data, sw, sh, rowVariance) {
+                const dc = this.displayCanvas;
+                dc.width = window.innerWidth;
+                dc.height = window.innerHeight;
+                const ctx = this.displayCtx;
+                ctx.clearRect(0, 0, dc.width, dc.height);
+
+                const cellW = dc.width / sw;
+                const cellH = dc.height / sh;
+
+                for (let y = 0; y < sh; y++) {
+                    const isSky = (y / sh) <= this.skyLineRatio;
+                    for (let x = 0; x < sw; x++) {
+                        if (isSky) {
+                            // Sky = blue tint
+                            ctx.fillStyle = 'rgba(100, 180, 255, 0.15)';
+                        } else {
+                            // Building = green tint (climbable)
+                            ctx.fillStyle = 'rgba(0, 255, 100, 0.1)';
+                        }
+                        ctx.fillRect(x * cellW, y * cellH, cellW, cellH);
+                    }
+                }
+
+                // Draw sky line
+                ctx.strokeStyle = 'rgba(0, 200, 255, 0.5)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(0, this.skyLineRatio * dc.height);
+                ctx.lineTo(dc.width, this.skyLineRatio * dc.height);
+                ctx.stroke();
+            }
+
+            // Get how high the character can climb (in screen ratio)
+            // Returns 0-1 where 1 = full screen height available
+            getClimbableHeight() {
+                return 1.0 - this.skyLineRatio;
+            }
+
+            // Check if a screen position (0-1 from top) is on a building
+            isBuilding(screenY) {
+                return screenY > this.skyLineRatio;
+            }
         }
 
         // ===== Character =====
         class GameCharacter {
-            constructor(scene, meatball) {
+            constructor(scene) {
                 this.scene = scene;
                 this.root = new THREE.Group();
                 scene.add(this.root);
@@ -182,19 +289,15 @@
                 this.anims = {};
                 this.curAction = null;
                 this.curState = 'IDLE';
-                this.meatball = meatball;
-                // Character faces AWAY from camera (toward wall) by default
                 this.root.rotation.y = Math.PI;
 
                 // Placeholder
-                const ph = new THREE.Mesh(
-                    new THREE.CapsuleGeometry(0.3, 1.0, 6, 12),
+                this.placeholder = new THREE.Mesh(
+                    new THREE.CapsuleGeometry(0.06, 0.2, 6, 12),
                     new THREE.MeshStandardMaterial({ color: 0x999999 })
                 );
-                ph.position.y = 0.8;
-                this.placeholder = ph;
-                this.root.add(ph);
-                meatball.attachTo(this.root);
+                this.placeholder.position.y = 0.15;
+                this.root.add(this.placeholder);
             }
 
             async load() {
@@ -212,7 +315,7 @@
                     );
                     skinTex.flipY = false;
                     skinTex.colorSpace = THREE.SRGBColorSpace;
-                } catch (e) { console.warn('Texture load failed:', e); }
+                } catch (e) { console.warn('Texture failed:', e); }
 
                 const loadGLB = (url, key) => new Promise((res, rej) => {
                     gl.load(url,
@@ -229,10 +332,10 @@
                     this.root.remove(this.placeholder);
                     const model = idleG.scene;
 
-                    // Auto-scale to ~2 units
+                    // Scale to 0.4 units tall (1/5 of original 2.0)
                     const box = new THREE.Box3().setFromObject(model);
                     const h = box.getSize(new THREE.Vector3()).y;
-                    const sc = 2.0 / h;
+                    const sc = 0.4 / h;
                     model.scale.setScalar(sc);
                     // Feet at y=0
                     const box2 = new THREE.Box3().setFromObject(model);
@@ -252,36 +355,21 @@
                     this.root.add(model);
                     this.mixer = new THREE.AnimationMixer(model);
 
-                    // Strip position/quaternion tracks from animations
-                    // to prevent Mixamo root motion from rotating the character
-                    const stripRootTracks = (clip) => {
-                        clip.tracks = clip.tracks.filter(track => {
-                            // Remove root bone position and quaternion tracks
-                            const isRoot = /mixamorig.*Hips\.(position|quaternion)/i.test(track.name)
-                                        || /RootNode\.(position|quaternion)/i.test(track.name);
-                            return !isRoot;
-                        });
-                        return clip;
+                    // Strip root motion tracks
+                    const strip = (clip) => {
+                        clip.tracks = clip.tracks.filter(t =>
+                            !/(Hips|RootNode)\.(position|quaternion)/i.test(t.name)
+                        );
                     };
 
                     if (idleG.animations.length > 0) {
-                        stripRootTracks(idleG.animations[0]);
+                        strip(idleG.animations[0]);
                         this.anims['IDLE'] = this.mixer.clipAction(idleG.animations[0]);
                         this.anims['IDLE'].play();
                         this.curAction = this.anims['IDLE'];
                     }
 
-                    // Meatball to head
-                    let head = null;
-                    model.traverse(c => { if (c.isBone && /head/i.test(c.name)) head = c; });
-                    if (head) {
-                        this.meatball.detach();
-                        this.meatball.attachTo(head);
-                        const ms = 0.25 / sc;
-                        this.meatball.cluster.scale.set(ms, ms, ms);
-                    }
-
-                    // Load extra animations
+                    // Load animations
                     loadingStatus.textContent = '載入動畫...';
                     const [cR, jR] = await Promise.allSettled([
                         loadGLB('./playermodel/climb.glb', 'climb'),
@@ -289,19 +377,17 @@
                     ]);
 
                     if (cR.status === 'fulfilled' && cR.value.animations.length > 0) {
-                        stripRootTracks(cR.value.animations[0]);
+                        strip(cR.value.animations[0]);
                         this.anims['CLIMB'] = this.mixer.clipAction(cR.value.animations[0]);
                     }
                     if (jR.status === 'fulfilled' && jR.value.animations.length > 0) {
-                        stripRootTracks(jR.value.animations[0]);
+                        strip(jR.value.animations[0]);
                         this.anims['JUMP'] = this.mixer.clipAction(jR.value.animations[0]);
                         this.anims['JUMP'].setLoop(THREE.LoopOnce);
                         this.anims['JUMP'].clampWhenFinished = true;
                     }
 
                     this.loaded = true;
-                    console.log('Loaded:', Object.keys(this.anims));
-
                 } catch (err) {
                     console.error('Load failed:', err);
                     loadingStatus.textContent = '模型載入失敗';
@@ -335,53 +421,47 @@
 
         // ===== Main =====
         async function main() {
-            // Pre-load models BEFORE user click (while loading screen is showing)
             loadingStatus.textContent = '載入模型中...';
-            prog.camera = 100; updateBar(); // Camera will start later
+            prog.camera = 100; updateBar();
 
             const scene = new THREE.Scene();
-            const camera = new THREE.PerspectiveCamera(50, sw() / sh(), 0.1, 500);
-            camera.position.set(0, 1.5, 5);
-            camera.lookAt(0, 1, 0);
+
+            // Camera setup - closer for smaller character
+            const camera = new THREE.PerspectiveCamera(50, sw() / sh(), 0.01, 100);
+            camera.position.set(0, 0.3, 1.2);
+            camera.lookAt(0, 0.2, 0);
 
             const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             renderer.setSize(sw(), sh());
             renderer.setClearColor(0x000000, 0);
-            // Insert canvas AFTER video element so it layers on top
-            const videoEl = document.getElementById('camera-video');
             const canvasEl = renderer.domElement;
-            canvasEl.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;z-index:1;';
-            videoEl.after(canvasEl);
+            canvasEl.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;z-index:2;pointer-events:none;';
+            document.getElementById('camera-video').after(canvasEl);
 
             // Lighting
-            const dl = new THREE.DirectionalLight(0xffffff, 1.5);
-            dl.position.set(3, 8, 5);
+            const dl = new THREE.DirectionalLight(0xffffff, 2.0);
+            dl.position.set(2, 5, 3);
             scene.add(dl);
-            scene.add(new THREE.AmbientLight(0x888888));
+            scene.add(new THREE.AmbientLight(0xaaaaaa));
             scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 0.5));
 
-            // Grid
-            const grid = new THREE.GridHelper(20, 20, 0x666666, 0x333333);
-            grid.material.opacity = 0.2; grid.material.transparent = true;
-            scene.add(grid);
-
-            // Character
-            const meatball = new MeatballManager(scene);
-            const character = new GameCharacter(scene, meatball);
+            // Character (no meatball system - removed to fix brown blob)
+            const character = new GameCharacter(scene);
             await character.load();
-            meatball.grow(0);
 
-            // Show start button
+            // Scene analyzer
+            const videoEl = document.getElementById('camera-video');
+            const analyzer = new SceneAnalyzer(videoEl);
+
+            // Ready
             loadingStatus.textContent = '準備完成！';
             startBtn.style.display = 'block';
 
-            // Start camera + game on button click (user gesture for iOS)
             await new Promise(resolve => {
                 startBtn.addEventListener('click', async () => {
                     loadingStatus.textContent = '啟動相機...';
                     startBtn.style.display = 'none';
-                    // Start camera inside user gesture
                     const hasCam = await startCamera();
                     window._hasCam = hasCam;
                     loadingScreen.style.display = 'none';
@@ -418,7 +498,9 @@
             });
 
             const jBtn = document.getElementById('jump-btn');
-            jBtn.addEventListener('pointerdown', e => { input.jump = true; jBtn.classList.add('pressed'); e.preventDefault(); }, { passive: false });
+            jBtn.addEventListener('pointerdown', e => {
+                input.jump = true; jBtn.classList.add('pressed'); e.preventDefault();
+            }, { passive: false });
             jBtn.addEventListener('pointerup', () => jBtn.classList.remove('pressed'));
             jBtn.addEventListener('pointercancel', () => jBtn.classList.remove('pressed'));
 
@@ -437,18 +519,33 @@
             let state = 'CLIMB', vy = 0, deaths = 0;
             const dbg = document.getElementById('debug-info');
 
+            // The character climbs in 3D space.
+            // Building height in 3D = mapped from screen analysis.
+            // Sky line ratio (0-1 from top) determines max climb height.
+            const MAX_3D_HEIGHT = 3.0; // max height in 3D units
+
             function tick() {
                 requestAnimationFrame(tick);
                 const dt = Math.min(clock.getDelta(), 0.05);
                 const t = clock.getElapsedTime();
                 const pos = character.root.position;
 
+                // Analyze camera every ~500ms
+                analyzer.analyze(t * 1000);
+
+                // Building covers from skyLine to bottom of screen.
+                // Map 3D height: 0 = bottom of building, maxH = sky line
+                const climbableRatio = analyzer.getClimbableHeight(); // e.g. 0.6
+                const maxClimbHeight = MAX_3D_HEIGHT * climbableRatio;
+
                 switch (state) {
                     case 'CLIMB':
                         if (Math.abs(input.y) > 0.1) {
                             character.setState('CLIMB');
-                            pos.y += input.y * 3.0 * dt;
+                            pos.y += input.y * 1.0 * dt;
+                            // Clamp: can't go below ground or above sky line
                             if (pos.y < 0) pos.y = 0;
+                            if (pos.y > maxClimbHeight) pos.y = maxClimbHeight;
                         } else {
                             character.setState('IDLE');
                         }
@@ -456,21 +553,21 @@
                             input.jump = false;
                             state = 'JUMP_UP';
                             character.setState('JUMP');
-                            vy = 5.0;
+                            vy = 1.5;
                             deaths++;
-                            meatball.grow(fb.add());
+                            fb.add();
                         }
                         break;
                     case 'JUMP_UP':
-                        vy -= 14.0 * dt;
+                        vy -= 5.0 * dt;
                         pos.y += vy * dt;
-                        pos.z += 2.5 * dt;
+                        pos.z += 0.8 * dt;
                         if (vy <= 0) state = 'FALL';
                         break;
                     case 'FALL':
-                        vy -= 14.0 * dt;
+                        vy -= 5.0 * dt;
                         pos.y += vy * dt;
-                        pos.z += 1.5 * dt;
+                        pos.z += 0.5 * dt;
                         if (pos.y <= 0) {
                             pos.y = 0; vy = 0; state = 'LAND';
                             character.setState('IDLE');
@@ -481,20 +578,30 @@
                 }
                 input.jump = false;
 
-                // Force character to always face away from camera (climbing wall)
+                // Force facing wall
                 character.root.rotation.y = Math.PI;
 
-                // Camera follow
-                camera.position.y += ((pos.y + 1.5) - camera.position.y) * 3.0 * dt;
-                camera.position.z = 5 + pos.z * 0.3;
-                camera.lookAt(pos.x, pos.y + 1.0, pos.z);
-
-                grid.position.y = Math.floor(pos.y / 5) * 5;
+                // Camera follows character
+                const camY = pos.y + 0.3;
+                camera.position.y += (camY - camera.position.y) * 3.0 * dt;
+                camera.position.z = 1.2 + pos.z * 0.2;
+                camera.lookAt(pos.x, pos.y + 0.2, pos.z);
 
                 character.update(dt, input.y);
-                meatball.update(t);
 
-                dbg.textContent = `H:${pos.y.toFixed(1)}m | ${state} | Deaths:${deaths} | ${hasCamera ? 'AR' : 'SIM'}`;
+                // Screen position of character (for debug)
+                const charScreenY = 1.0 - (pos.y / MAX_3D_HEIGHT);
+                const onBuilding = analyzer.isBuilding(charScreenY);
+
+                dbg.innerHTML = [
+                    `H: ${pos.y.toFixed(2)}m`,
+                    `State: ${state}`,
+                    `Deaths: ${deaths}`,
+                    `Sky line: ${(analyzer.skyLineRatio * 100).toFixed(0)}%`,
+                    `On building: ${onBuilding}`,
+                    `Camera: ${hasCamera ? 'AR' : 'SIM'}`,
+                ].join('<br>');
+
                 renderer.render(scene, camera);
             }
 
