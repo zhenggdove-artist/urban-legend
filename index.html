@@ -12,20 +12,27 @@
             object-fit:cover;z-index:0;
             background:linear-gradient(180deg,#87CEEB 0%,#4a90d9 40%,#2c3e50 40.5%,#1a1a2e 100%)}
         #analysis-canvas{position:absolute;top:0;left:0;width:100%;height:100%;
-            z-index:1;opacity:0.2;pointer-events:none}
-        #debug-info{position:absolute;top:40px;left:10px;z-index:20;
+            z-index:1;opacity:0.15;pointer-events:none}
+        /* Touch pan zone covers entire screen, sits behind UI controls */
+        #pan-zone{position:absolute;top:0;left:0;width:100%;height:100%;z-index:3;touch-action:none}
+        #debug-info{position:absolute;top:40px;left:10px;z-index:30;
             color:#fff;font:11px/1.4 monospace;background:rgba(0,0,0,.5);
-            padding:5px 8px;border-radius:4px;pointer-events:none;max-width:220px}
-        #joystick-zone{position:absolute;z-index:20;width:100px;height:100px;
+            padding:5px 8px;border-radius:4px;pointer-events:none;max-width:250px}
+        #joystick-zone{position:absolute;z-index:31;width:120px;height:120px;
             background:rgba(255,255,255,.15);border:2px solid rgba(255,255,255,.3);
             border-radius:50%;touch-action:none}
-        #joystick-knob{position:absolute;top:25px;left:25px;width:50px;height:50px;
+        #joystick-knob{position:absolute;top:30px;left:30px;width:60px;height:60px;
             background:rgba(255,255,255,.5);border-radius:50%}
-        #jump-btn{position:absolute;z-index:20;width:80px;height:80px;
+        #jump-btn{position:absolute;z-index:31;width:80px;height:80px;
             background:rgba(220,40,40,.6);border:2px solid rgba(255,80,80,.5);
             border-radius:50%;display:flex;justify-content:center;align-items:center;
             color:#fff;font:bold 14px sans-serif;touch-action:none}
         #jump-btn.pressed{transform:scale(.9);background:rgba(255,50,50,.85)}
+        /* Camera pan indicator */
+        #pan-indicator{position:absolute;right:10px;top:50%;z-index:30;
+            transform:translateY(-50%);pointer-events:none;
+            color:rgba(255,255,255,.4);font:12px sans-serif;text-align:center;
+            writing-mode:vertical-rl}
         #loading-screen{position:absolute;top:0;left:0;width:100%;height:100%;
             background:rgba(0,0,0,.92);z-index:100;display:flex;flex-direction:column;
             justify-content:center;align-items:center;color:#fff;font-family:sans-serif}
@@ -45,9 +52,11 @@
 <body>
     <video id="camera-video" autoplay playsinline muted></video>
     <canvas id="analysis-canvas"></canvas>
+    <div id="pan-zone"></div>
     <div id="debug-info">Loading...</div>
     <div id="joystick-zone"><div id="joystick-knob"></div></div>
     <div id="jump-btn">JUMP</div>
+    <div id="pan-indicator">▲ 拖曳畫面移動鏡頭 ▼</div>
     <div id="loading-screen">
         <h2>都市傳說</h2>
         <div id="loading-bar-bg"><div id="loading-bar"></div></div>
@@ -64,7 +73,7 @@ const W = () => window.innerWidth, H = () => window.innerHeight;
 function layoutUI() {
     const w = W(), h = H();
     const jz = document.getElementById('joystick-zone');
-    jz.style.left = '24px'; jz.style.top = (h - 140) + 'px';
+    jz.style.left = '20px'; jz.style.top = (h - 160) + 'px';
     const jb = document.getElementById('jump-btn');
     jb.style.left = (w - 104) + 'px'; jb.style.top = (h - 120) + 'px';
 }
@@ -101,12 +110,11 @@ async function startCamera() {
 // ===== Gyroscope =====
 class GyroTracker {
     constructor() {
-        this.tiltY = 0; // vertical tilt offset in "scene units"
+        this.tiltY = 0;
         this.baseBeta = null;
         this.enabled = false;
     }
     async init() {
-        // iOS requires permission
         if (typeof DeviceOrientationEvent !== 'undefined' &&
             typeof DeviceOrientationEvent.requestPermission === 'function') {
             try {
@@ -117,15 +125,13 @@ class GyroTracker {
         window.addEventListener('deviceorientation', e => {
             if (e.beta === null) return;
             if (this.baseBeta === null) this.baseBeta = e.beta;
-            // beta: 0=flat, 90=vertical. tilt up = beta decreases
             const deltaBeta = e.beta - this.baseBeta;
-            // Map: every 8 degrees of tilt = 1 scene unit of vertical pan
-            // Negative because tilting up (decreasing beta) should move camera up
+            // Every 8 degrees = 1 scene unit of camera pan
             this.tiltY = -deltaBeta / 8;
             this.enabled = true;
         });
     }
-    resetBase() { this.baseBeta = null; }
+    resetBase() { this.baseBeta = null; this.tiltY = 0; }
 }
 
 // ===== Scene Analyzer =====
@@ -158,17 +164,13 @@ class SceneAnalyzer {
             if(y+2<sh && v2>800){skyY=y;break;}
         }
         this.skyLine = this.skyLine * 0.7 + (skyY/sh) * 0.3;
-        // Draw overlay
         this.dc.width = W(); this.dc.height = H();
         const ctx = this.dctx, cw = this.dc.width/sw, ch = this.dc.height/sh;
         ctx.clearRect(0,0,this.dc.width,this.dc.height);
         for(let y=0;y<sh;y++){
-            ctx.fillStyle = (y/sh)<=this.skyLine ? 'rgba(100,180,255,.12)' : 'rgba(0,255,100,.08)';
+            ctx.fillStyle = (y/sh)<=this.skyLine ? 'rgba(100,180,255,.08)' : 'rgba(0,255,100,.05)';
             ctx.fillRect(0, y*ch, this.dc.width, ch);
         }
-        ctx.strokeStyle='rgba(0,200,255,.5)'; ctx.lineWidth=2;
-        ctx.beginPath(); ctx.moveTo(0,this.skyLine*this.dc.height);
-        ctx.lineTo(this.dc.width,this.skyLine*this.dc.height); ctx.stroke();
     }
 }
 
@@ -181,35 +183,32 @@ class BloodEffect {
         scene.add(this.group);
     }
     spawn(pos) {
-        // Create 40 blood particles - big enough to see
         for (let i = 0; i < 40; i++) {
-            const size = 0.005 + Math.random()*0.012; // proportional to character
-            const geo = new THREE.SphereGeometry(size, 6, 6);
+            const size = 0.004 + Math.random()*0.008;
+            const geo = new THREE.SphereGeometry(size, 5, 5);
             const mat = new THREE.MeshBasicMaterial({
                 color: new THREE.Color(0.6 + Math.random()*0.4, 0, 0),
                 transparent: true, opacity: 1.0, depthTest: false
             });
             const m = new THREE.Mesh(geo, mat);
             m.position.copy(pos);
-            m.renderOrder = 999; // render on top
-            // Random velocity - spread outward
+            m.renderOrder = 999;
             const angle = Math.random() * Math.PI * 2;
-            const speed = 0.15 + Math.random() * 0.3;
+            const speed = 0.1 + Math.random() * 0.25;
             const vx = Math.cos(angle) * speed;
-            const vy = Math.random() * 0.4 + 0.05;
-            const vz = Math.sin(angle) * speed * 0.3 + 0.1; // bias toward camera
-            this.particles.push({ mesh: m, vx, vy, vz, life: 2.0 + Math.random() * 1.5 });
+            const vy = Math.random() * 0.3 + 0.05;
+            const vz = Math.sin(angle) * speed * 0.3 + 0.08;
+            this.particles.push({ mesh: m, vx, vy, vz, life: 2.5 + Math.random() * 1.5 });
             this.group.add(m);
         }
     }
     update(dt) {
         for (let i = this.particles.length - 1; i >= 0; i--) {
             const p = this.particles[i];
-            p.vy -= 1.5 * dt; // gravity
+            p.vy -= 1.2 * dt;
             p.mesh.position.x += p.vx * dt;
             p.mesh.position.y += p.vy * dt;
             p.mesh.position.z += p.vz * dt;
-            // Stop at ground
             if (p.mesh.position.y < 0) { p.mesh.position.y = 0; p.vx *= 0.9; p.vz *= 0.9; p.vy = 0; }
             p.life -= dt;
             p.mesh.material.opacity = Math.max(0, Math.min(1, p.life / 1.0));
@@ -233,7 +232,7 @@ class GameCharacter {
         this.curAction = null;
         this.curState = 'IDLE';
         this.root.rotation.y = Math.PI;
-        this.charHeight = 0.033; // target height in scene units (~1/30 screen)
+        this.charHeight = 0.033; // ~1/30 of screen height
     }
     async load() {
         const gl = new GLTFLoader();
@@ -259,19 +258,15 @@ class GameCharacter {
             prog.model = 100; updateBar();
 
             const model = idleG.scene;
-            // SCALE: make character 0.1 scene units tall
-            // (scene is set up so 1 unit ≈ screen height)
             const box = new THREE.Box3().setFromObject(model);
             const origH = box.getSize(new THREE.Vector3()).y;
             const sc = this.charHeight / origH;
             model.scale.setScalar(sc);
             this.scaleFactor = sc;
 
-            // Feet at y=0
             const box2 = new THREE.Box3().setFromObject(model);
             model.position.y = -box2.min.y;
 
-            // Skin
             model.traverse(c => {
                 if (c.isMesh) {
                     c.material = new THREE.MeshStandardMaterial({
@@ -355,14 +350,15 @@ async function main() {
     prog.camera = 100; updateBar();
 
     // ---- Scene setup ----
-    // 1 scene unit ≈ screen height. Camera sees roughly -0.5 to +0.5 vertically
+    // Coordinate system: 1 scene unit = 1 screen height at default view
+    // The "world" extends from y=0 (ground) upward infinitely
+    // Camera is a window into this world — panning up/down reveals more
     const scene = new THREE.Scene();
     const VFOV = 60;
     const camera = new THREE.PerspectiveCamera(VFOV, W()/H(), 0.001, 100);
-    // Position camera so visible height at z=0 ≈ 1 unit
-    // visH = 2 * z * tan(fov/2) => z = visH / (2*tan(fov/2))
+    // camZ: distance so that visible height at z=0 = 1 scene unit
     const camZ = 1.0 / (2 * Math.tan(THREE.MathUtils.degToRad(VFOV/2)));
-    camera.position.set(0, 0.5, camZ); // center of screen at y=0.5
+    camera.position.set(0, 0.5, camZ);
     camera.lookAt(0, 0.5, 0);
 
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
@@ -408,55 +404,125 @@ async function main() {
 
     const hasCamera = window._hasCam;
 
-    // ===== Input =====
+    // ===== Camera Pan State =====
+    // This is the key: viewY is which part of the 3D world the screen shows.
+    // viewY=0.5 means screen shows y=0..1. viewY=2.5 means screen shows y=2..3.
+    // Touch drag and gyro both modify viewY.
+    let viewY = 0.5; // center of viewport in scene units
+
+    // ===== Touch Camera Pan (on pan-zone, the screen background) =====
+    const panZone = document.getElementById('pan-zone');
+    let panTouchId = null, panLastY = 0;
+
+    panZone.addEventListener('pointerdown', e => {
+        // Only start pan if not on joystick or jump button area
+        const ex = e.clientX, ey = e.clientY;
+        const jz = document.getElementById('joystick-zone').getBoundingClientRect();
+        const jb = document.getElementById('jump-btn').getBoundingClientRect();
+        // Check if touch is inside joystick or jump button (with some padding)
+        const pad = 20;
+        if (ex >= jz.left-pad && ex <= jz.right+pad && ey >= jz.top-pad && ey <= jz.bottom+pad) return;
+        if (ex >= jb.left-pad && ex <= jb.right+pad && ey >= jb.top-pad && ey <= jb.bottom+pad) return;
+
+        panTouchId = e.pointerId;
+        panLastY = e.clientY;
+        panZone.setPointerCapture(e.pointerId);
+        e.preventDefault();
+    }, {passive: false});
+
+    panZone.addEventListener('pointermove', e => {
+        if (e.pointerId !== panTouchId) return;
+        const dy = e.clientY - panLastY;
+        panLastY = e.clientY;
+        // Drag up (dy<0) = look higher = increase viewY
+        // Scale: dragging full screen height = pan 2 scene units
+        viewY -= dy / H() * 2.0;
+        e.preventDefault();
+    }, {passive: false});
+
+    panZone.addEventListener('pointerup', e => {
+        if (e.pointerId !== panTouchId) return;
+        panTouchId = null;
+    });
+    panZone.addEventListener('pointercancel', e => {
+        if (e.pointerId !== panTouchId) return;
+        panTouchId = null;
+    });
+
+    // ===== Joystick (character movement) =====
     const input = { x: 0, y: 0, jump: false };
     const jZone = document.getElementById('joystick-zone');
     const jKnob = document.getElementById('joystick-knob');
-    let dragging = false, dragX0 = 0, dragY0 = 0;
+    let joyTouchId = null, joyX0 = 0, joyY0 = 0;
 
     jZone.addEventListener('pointerdown', e => {
-        dragging=true; dragX0=e.clientX; dragY0=e.clientY;
-        jKnob.style.background='rgba(255,255,255,.8)'; e.preventDefault();
+        joyTouchId = e.pointerId;
+        joyX0 = e.clientX; joyY0 = e.clientY;
+        jKnob.style.background='rgba(255,255,255,.8)';
+        jZone.setPointerCapture(e.pointerId);
+        e.preventDefault(); e.stopPropagation();
     }, {passive:false});
-    window.addEventListener('pointermove', e => {
-        if(!dragging)return;
-        const dx=Math.max(-35,Math.min(35,e.clientX-dragX0));
-        const dy=Math.max(-35,Math.min(35,e.clientY-dragY0));
+    jZone.addEventListener('pointermove', e => {
+        if (e.pointerId !== joyTouchId) return;
+        const dx=Math.max(-45,Math.min(45,e.clientX-joyX0));
+        const dy=Math.max(-45,Math.min(45,e.clientY-joyY0));
         jKnob.style.transform=`translate(${dx}px,${dy}px)`;
-        input.x=dx/35;
-        input.y=-dy/35;
+        input.x=dx/45;
+        input.y=-dy/45; // up = positive
+        e.stopPropagation();
     });
-    window.addEventListener('pointerup', ()=>{
-        if(!dragging)return; dragging=false;
+    jZone.addEventListener('pointerup', e => {
+        if (e.pointerId !== joyTouchId) return;
+        joyTouchId = null;
+        jKnob.style.transform='translate(0,0)';
+        jKnob.style.background='rgba(255,255,255,.5)';
+        input.x=0; input.y=0;
+        e.stopPropagation();
+    });
+    jZone.addEventListener('pointercancel', e => {
+        if (e.pointerId !== joyTouchId) return;
+        joyTouchId = null;
         jKnob.style.transform='translate(0,0)';
         jKnob.style.background='rgba(255,255,255,.5)';
         input.x=0; input.y=0;
     });
 
+    // ===== Jump Button =====
     const jBtn = document.getElementById('jump-btn');
-    jBtn.addEventListener('pointerdown', e=>{input.jump=true;jBtn.classList.add('pressed');e.preventDefault()},{passive:false});
-    jBtn.addEventListener('pointerup', ()=>jBtn.classList.remove('pressed'));
-    jBtn.addEventListener('pointercancel', ()=>jBtn.classList.remove('pressed'));
+    jBtn.addEventListener('pointerdown', e=>{
+        input.jump=true; jBtn.classList.add('pressed');
+        e.preventDefault(); e.stopPropagation();
+    },{passive:false});
+    jBtn.addEventListener('pointerup', e=>{ jBtn.classList.remove('pressed'); e.stopPropagation(); });
+    jBtn.addEventListener('pointercancel', e=>{ jBtn.classList.remove('pressed'); });
 
+    // ===== Keyboard =====
     window.addEventListener('keydown', e=>{
         if(e.key==='ArrowUp'||e.key==='w')input.y=1;
         if(e.key==='ArrowDown'||e.key==='s')input.y=-1;
         if(e.key==='ArrowLeft'||e.key==='a')input.x=-1;
         if(e.key==='ArrowRight'||e.key==='d')input.x=1;
         if(e.key===' ')input.jump=true;
+        // Mouse wheel for camera pan on desktop
     });
     window.addEventListener('keyup', e=>{
         if(['ArrowUp','w','ArrowDown','s'].includes(e.key))input.y=0;
         if(['ArrowLeft','a','ArrowRight','d'].includes(e.key))input.x=0;
     });
+    // Mouse wheel for desktop camera pan
+    window.addEventListener('wheel', e=>{
+        viewY += e.deltaY * 0.002;
+        e.preventDefault();
+    }, {passive:false});
 
     // ===== Game State =====
     const clock = new THREE.Clock();
-    let state = 'CLIMB', vy = 0, deaths = 0;
-    let deathTimer = 0, jumpStartY = 0;
+    let state = 'CLIMB', fallVY = 0, deaths = 0;
+    let deathTimer = 0;
     const dbg = document.getElementById('debug-info');
+    const halfVisW = camZ * Math.tan(THREE.MathUtils.degToRad(VFOV/2)) * (W()/H());
 
-    // Character starts at bottom of screen (y=0.05)
+    // Character starts near ground
     character.root.position.set(0, 0.05, 0);
 
     function tick() {
@@ -467,20 +533,15 @@ async function main() {
 
         analyzer.analyze(t * 1000);
 
-        // Half visible width at z=0 plane
-        const halfVisW = camZ * Math.tan(THREE.MathUtils.degToRad(VFOV/2)) * (W()/H());
-
+        // ===== Game Logic =====
         switch (state) {
             case 'CLIMB':
                 if (Math.abs(input.y) > 0.1 || Math.abs(input.x) > 0.1) {
                     character.setState('CLIMB');
-                    // Vertical climb
                     pos.y += input.y * 0.3 * dt;
-                    if (pos.y < 0.05) pos.y = 0.05;
-                    // Horizontal movement
+                    if (pos.y < 0.02) pos.y = 0.02;
                     pos.x += input.x * 0.25 * dt;
-                    // Clamp X to stay within visible area
-                    pos.x = Math.max(-halfVisW + 0.05, Math.min(halfVisW - 0.05, pos.x));
+                    pos.x = Math.max(-halfVisW + 0.02, Math.min(halfVisW - 0.02, pos.x));
                 } else {
                     character.setState('IDLE');
                 }
@@ -488,29 +549,27 @@ async function main() {
                     input.jump = false;
                     state = 'JUMPING';
                     character.setState('JUMP');
-                    character.root.rotation.y = 0; // face camera
-                    vy = 0.5;
-                    jumpStartY = pos.y; // remember where we jumped from
+                    character.root.rotation.y = 0;
+                    fallVY = 0.4;
                     deaths++;
                 }
                 break;
 
             case 'JUMPING':
-                vy -= 1.5 * dt; // gravity
-                pos.y += vy * dt;
-                pos.z += 0.3 * dt; // fly toward camera
-                if (pos.y <= 0.02) {
-                    // HIT GROUND — death!
-                    pos.y = 0.02;
-                    vy = 0;
+                fallVY -= 1.8 * dt; // gravity
+                pos.y += fallVY * dt;
+                pos.z += 0.2 * dt; // slightly toward camera
+                if (pos.y <= 0.01) {
+                    pos.y = 0.01;
+                    fallVY = 0;
                     state = 'DEAD';
                     character.setState('DEATH');
                     deathTimer = 4.0;
-                    // Spawn blood bursts at impact point
-                    const impactPos = pos.clone();
-                    blood.spawn(impactPos);
-                    blood.spawn(impactPos.clone().add(new THREE.Vector3(0, 0.03, 0)));
-                    blood.spawn(impactPos.clone().add(new THREE.Vector3(0.02, 0.01, 0)));
+                    blood.spawn(pos.clone());
+                    blood.spawn(pos.clone().add(new THREE.Vector3(0, 0.02, 0)));
+                    blood.spawn(pos.clone().add(new THREE.Vector3(0.01, 0.005, 0)));
+                    // Auto-pan camera down to see the corpse
+                    viewY = 0.5;
                 }
                 break;
 
@@ -522,34 +581,42 @@ async function main() {
                     character.root.rotation.y = Math.PI;
                     character.setState('IDLE');
                     gyro.resetBase();
+                    viewY = 0.5;
                 }
                 break;
         }
         input.jump = false;
 
-        // Force wall-facing during climb
         if (state === 'CLIMB') character.root.rotation.y = Math.PI;
 
-        // === Camera: FIXED base position, only gyro shifts it ===
-        // Base: camera at y=0.5 sees scene y=0..1
-        // Gyro tilt moves camera up/down to reveal beyond screen
-        // NO auto-follow — character must visibly climb up the screen
-        let gyroOffset = gyro.enabled ? gyro.tiltY : 0;
-        gyroOffset = Math.max(-1.0, Math.min(5.0, gyroOffset));
-        const targetCamY = 0.5 + gyroOffset;
-        camera.position.y += (targetCamY - camera.position.y) * 0.12;
+        // ===== Camera: viewY is the center of the viewport =====
+        // Gyro adds to viewY continuously
+        if (gyro.enabled) {
+            viewY += gyro.tiltY * dt * 0.5; // gyro slowly shifts view
+        }
+
+        // Clamp viewY: don't look below ground too much
+        viewY = Math.max(0.3, viewY);
+
+        // Smooth camera to target
+        const targetCamY = viewY;
+        camera.position.y += (targetCamY - camera.position.y) * 0.15;
         camera.lookAt(0, camera.position.y, 0);
 
-        // Update
+        // Update systems
         character.update(dt, input.y);
         blood.update(dt);
 
-        // Debug
+        // ===== Debug =====
+        const screenBottom = camera.position.y - 0.5;
+        const screenTop = camera.position.y + 0.5;
+        const charVisible = pos.y >= screenBottom && pos.y <= screenTop;
+
         dbg.innerHTML = [
-            `Pos: ${pos.x.toFixed(2)},${pos.y.toFixed(2)} | ${state}`,
-            `Input: ${input.x.toFixed(1)},${input.y.toFixed(1)}`,
-            `CamY: ${camera.position.y.toFixed(2)}`,
-            `Gyro: ${gyro.enabled ? gyro.tiltY.toFixed(2) : 'OFF'} base:${gyro.baseBeta !== null ? gyro.baseBeta.toFixed(0) : '-'}`,
+            `角色: x${pos.x.toFixed(2)} y${pos.y.toFixed(2)} | ${state}`,
+            `鏡頭: ${camera.position.y.toFixed(2)} (見 ${screenBottom.toFixed(1)}~${screenTop.toFixed(1)})`,
+            `角色${charVisible ? '在螢幕內' : '在螢幕外 ↕拖曳找他'}`,
+            `Gyro: ${gyro.enabled ? gyro.tiltY.toFixed(2) : 'OFF'}`,
             `Blood: ${blood.particles.length} | Deaths: ${deaths}`,
             hasCamera ? 'CAM:ON' : 'CAM:OFF',
         ].join('<br>');
