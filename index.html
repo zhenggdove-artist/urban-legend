@@ -581,9 +581,9 @@ async function main() {
             case 'CLIMB':
                 if (Math.abs(input.y) > 0.1 || Math.abs(input.x) > 0.1) {
                     character.setState('CLIMB');
-                    pos.y += input.y * 0.3 * dt;
+                    pos.y += input.y * 0.04 * dt;
                     if (pos.y < 0.02) pos.y = 0.02;
-                    pos.x += input.x * 0.1 * dt;
+                    pos.x += input.x * 0.03 * dt;
                     pos.x = Math.max(-halfVisW + 0.02, Math.min(halfVisW - 0.02, pos.x));
                 } else {
                     character.setState('IDLE');
