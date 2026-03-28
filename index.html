@@ -107,11 +107,15 @@ async function startCamera() {
     }
 }
 
-// ===== Gyroscope =====
+// ===== Gyroscope — absolute angle mapping =====
+// Phone beta angle directly controls which part of the 3D world is visible.
+// beta ≈ 90: phone vertical (normal hold) → default view (ground level)
+// beta < 90: phone tilted up (looking at sky/building top) → see higher
+// beta > 90: phone tilted down (looking at ground) → see ground/corpse
 class GyroTracker {
     constructor() {
-        this.tiltY = 0;
-        this.baseBeta = null;
+        this.viewY = 0.5;   // mapped camera Y in scene units
+        this.rawBeta = 90;   // raw beta angle
         this.enabled = false;
     }
     async init() {
@@ -124,14 +128,21 @@ class GyroTracker {
         }
         window.addEventListener('deviceorientation', e => {
             if (e.beta === null) return;
-            if (this.baseBeta === null) this.baseBeta = e.beta;
-            const deltaBeta = e.beta - this.baseBeta;
-            // Every 8 degrees = 1 scene unit of camera pan
-            this.tiltY = -deltaBeta / 8;
+            this.rawBeta = e.beta;
+            // Mapping:
+            //   beta=30 (tilted far up, looking at sky)   → viewY = 5.0 (high up)
+            //   beta=60 (tilted up, looking at building)   → viewY = 2.5
+            //   beta=90 (vertical, normal hold)            → viewY = 0.5 (default)
+            //   beta=120 (tilted down, toward ground)      → viewY = -0.3 (ground)
+            //   beta=150 (almost horizontal, facing floor) → viewY = -0.5
+            //
+            // Linear: viewY = (90 - beta) * scale + 0.5
+            // scale: 60 degrees up → ~4.5 units up, so scale ≈ 0.075
+            const degreesFromVertical = 90 - e.beta; // positive = tilted up
+            this.viewY = 0.5 + degreesFromVertical * 0.08;
             this.enabled = true;
         });
     }
-    resetBase() { this.baseBeta = null; this.tiltY = 0; }
 }
 
 // ===== Scene Analyzer =====
@@ -568,8 +579,8 @@ async function main() {
                     blood.spawn(pos.clone());
                     blood.spawn(pos.clone().add(new THREE.Vector3(0, 0.02, 0)));
                     blood.spawn(pos.clone().add(new THREE.Vector3(0.01, 0.005, 0)));
-                    // Auto-pan camera down to see the corpse
-                    viewY = 0.5;
+                    // If no gyro, auto-pan to ground to see corpse
+                    if (!gyro.enabled) viewY = 0.5;
                 }
                 break;
 
@@ -580,8 +591,7 @@ async function main() {
                     pos.set(0, 0.05, 0);
                     character.root.rotation.y = Math.PI;
                     character.setState('IDLE');
-                    gyro.resetBase();
-                    viewY = 0.5;
+                    if (!gyro.enabled) viewY = 0.5;
                 }
                 break;
         }
@@ -589,18 +599,19 @@ async function main() {
 
         if (state === 'CLIMB') character.root.rotation.y = Math.PI;
 
-        // ===== Camera: viewY is the center of the viewport =====
-        // Gyro adds to viewY continuously
+        // ===== Camera controlled by gyro (primary) or touch drag (fallback) =====
+        // Gyro: absolute phone angle directly determines viewY
+        // Touch: manual drag adjusts viewY
         if (gyro.enabled) {
-            viewY += gyro.tiltY * dt * 0.5; // gyro slowly shifts view
+            // Gyro overrides: phone angle = what you see
+            viewY = gyro.viewY;
         }
 
-        // Clamp viewY: don't look below ground too much
-        viewY = Math.max(0.3, viewY);
+        // Clamp: don't look too far below ground
+        viewY = Math.max(-0.3, viewY);
 
         // Smooth camera to target
-        const targetCamY = viewY;
-        camera.position.y += (targetCamY - camera.position.y) * 0.15;
+        camera.position.y += (viewY - camera.position.y) * 0.15;
         camera.lookAt(0, camera.position.y, 0);
 
         // Update systems
@@ -613,12 +624,13 @@ async function main() {
         const charVisible = pos.y >= screenBottom && pos.y <= screenTop;
 
         dbg.innerHTML = [
-            `角色: x${pos.x.toFixed(2)} y${pos.y.toFixed(2)} | ${state}`,
+            `角色: y${pos.y.toFixed(2)} | ${state}`,
             `鏡頭: ${camera.position.y.toFixed(2)} (見 ${screenBottom.toFixed(1)}~${screenTop.toFixed(1)})`,
-            `角色${charVisible ? '在螢幕內' : '在螢幕外 ↕拖曳找他'}`,
-            `Gyro: ${gyro.enabled ? gyro.tiltY.toFixed(2) : 'OFF'}`,
+            `角色${charVisible ? '在螢幕內' : '在螢幕外'}`,
+            gyro.enabled
+                ? `陀螺儀: beta=${gyro.rawBeta.toFixed(0)}° → viewY=${gyro.viewY.toFixed(2)}`
+                : '陀螺儀: OFF (用手指拖曳)',
             `Blood: ${blood.particles.length} | Deaths: ${deaths}`,
-            hasCamera ? 'CAM:ON' : 'CAM:OFF',
         ].join('<br>');
 
         renderer.render(scene, camera);
