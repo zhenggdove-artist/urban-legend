@@ -416,9 +416,11 @@ async function main() {
         $status.textContent = '啟動中...';
         $start.style.display = 'none';
         try {
+            // IMPORTANT: gyro permission MUST be called first, synchronously
+            // in the user gesture. Any await before this will break iOS permission.
+            await gyro.init();
             const hasCam = await startCamera();
             window._hasCam = hasCam;
-            await gyro.init();
         } catch(e) { console.warn('Init error:', e); }
         $loading.style.display = 'none';
         r();
