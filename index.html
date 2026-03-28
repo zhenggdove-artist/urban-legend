@@ -110,16 +110,30 @@ async function startCamera() {
 // ===== Gyroscope — absolute angle mapping =====
 class GyroTracker {
     constructor() {
-        this.viewY = 0.5;
+        this.viewX = 0;      // camera X offset (left/right)
+        this.viewY = 0.5;    // camera Y position
         this.rawBeta = 90;
+        this.rawGamma = 0;
         this.enabled = false;
-        this.status = 'init'; // tracks what happened during init
+        this.status = 'init';
     }
     _onOrientation(e) {
         if (e.beta === null) { this.status = 'beta-null'; return; }
         this.rawBeta = e.beta;
-        const degreesFromVertical = 90 - e.beta;
+        this.rawGamma = e.gamma || 0;
+
+        // Beta = up/down tilt (0=flat face-up, 90=vertical, 180=flat face-down)
+        // Phone tilts UP (beta decreases) → camera looks higher → viewY increases
+        // Phone tilts DOWN (beta increases) → camera looks at ground → viewY decreases
+        const degreesFromVertical = 90 - e.beta; // positive = tilted up
         this.viewY = 0.5 + degreesFromVertical * 0.08;
+
+        // Gamma = left/right tilt (-90 to 90)
+        // Phone tilts RIGHT (gamma > 0) → camera pans right → viewX increases
+        // Phone tilts LEFT (gamma < 0) → camera pans left → viewX decreases
+        // Character appears to move opposite direction (AR effect)
+        this.viewX = this.rawGamma * 0.012;
+
         this.enabled = true;
         this.status = 'active';
     }
@@ -429,10 +443,10 @@ async function main() {
     const hasCamera = window._hasCam;
 
     // ===== Camera Pan State =====
-    // This is the key: viewY is which part of the 3D world the screen shows.
-    // viewY=0.5 means screen shows y=0..1. viewY=2.5 means screen shows y=2..3.
-    // Touch drag and gyro both modify viewY.
-    let viewY = 0.5; // center of viewport in scene units
+    // viewX/viewY = which part of the 3D world the screen shows.
+    // Gyro and touch drag both modify these.
+    let viewX = 0;     // horizontal pan
+    let viewY = 0.5;   // vertical pan (center of viewport)
 
     // ===== Touch Camera Pan (on pan-zone, the screen background) =====
     const panZone = document.getElementById('pan-zone');
@@ -449,18 +463,23 @@ async function main() {
         if (ex >= jb.left-pad && ex <= jb.right+pad && ey >= jb.top-pad && ey <= jb.bottom+pad) return;
 
         panTouchId = e.pointerId;
+        panLastX = e.clientX;
         panLastY = e.clientY;
         panZone.setPointerCapture(e.pointerId);
         e.preventDefault();
     }, {passive: false});
 
+    let panLastX = 0;
     panZone.addEventListener('pointermove', e => {
         if (e.pointerId !== panTouchId) return;
+        const dx = e.clientX - panLastX;
         const dy = e.clientY - panLastY;
+        panLastX = e.clientX;
         panLastY = e.clientY;
         // Drag up (dy<0) = look higher = increase viewY
-        // Scale: dragging full screen height = pan 2 scene units
         viewY -= dy / H() * 2.0;
+        // Drag right (dx>0) = look right = increase viewX
+        viewX += dx / W() * 1.5;
         e.preventDefault();
     }, {passive: false});
 
@@ -613,19 +632,18 @@ async function main() {
         if (state === 'CLIMB') character.root.rotation.y = Math.PI;
 
         // ===== Camera controlled by gyro (primary) or touch drag (fallback) =====
-        // Gyro: absolute phone angle directly determines viewY
-        // Touch: manual drag adjusts viewY
         if (gyro.enabled) {
-            // Gyro overrides: phone angle = what you see
             viewY = gyro.viewY;
+            viewX = gyro.viewX;
         }
 
-        // Clamp: don't look too far below ground
+        // Clamp
         viewY = Math.max(-0.3, viewY);
 
-        // Smooth camera to target
+        // Smooth camera to target position
+        camera.position.x += (viewX - camera.position.x) * 0.15;
         camera.position.y += (viewY - camera.position.y) * 0.15;
-        camera.lookAt(0, camera.position.y, 0);
+        camera.lookAt(camera.position.x, camera.position.y, 0);
 
         // Update systems
         character.update(dt, input.y);
@@ -641,7 +659,7 @@ async function main() {
             `鏡頭: ${camera.position.y.toFixed(2)} (見 ${screenBottom.toFixed(1)}~${screenTop.toFixed(1)})`,
             `角色${charVisible ? '在螢幕內' : '在螢幕外'}`,
             gyro.enabled
-                ? `陀螺儀: beta=${gyro.rawBeta.toFixed(0)}° → viewY=${gyro.viewY.toFixed(2)}`
+                ? `陀螺儀: β${gyro.rawBeta.toFixed(0)}° γ${gyro.rawGamma.toFixed(0)}° → ${viewX.toFixed(1)},${viewY.toFixed(1)}`
                 : `陀螺儀: OFF [${gyro.status}] (用手指拖曳)`,
             `Blood: ${blood.particles.length} | Deaths: ${deaths}`,
         ].join('<br>');
