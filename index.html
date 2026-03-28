@@ -132,7 +132,7 @@ class GyroTracker {
         // Phone tilts RIGHT (gamma > 0) → camera pans right → viewX increases
         // Phone tilts LEFT (gamma < 0) → camera pans left → viewX decreases
         // Character appears to move opposite direction (AR effect)
-        this.viewX = this.rawGamma * 0.012;
+        this.viewX = this.rawGamma * 0.005;
 
         this.enabled = true;
         this.status = 'active';
@@ -565,8 +565,8 @@ async function main() {
     const dbg = document.getElementById('debug-info');
     const halfVisW = camZ * Math.tan(THREE.MathUtils.degToRad(VFOV/2)) * (W()/H());
 
-    // Character starts near ground
-    character.root.position.set(0, 0.05, 0);
+    // Character starts at screen center (viewY=0.5 means screen shows y=0..1, center=0.5)
+    character.root.position.set(0, 0.5, 0);
 
     function tick() {
         requestAnimationFrame(tick);
@@ -583,7 +583,7 @@ async function main() {
                     character.setState('CLIMB');
                     pos.y += input.y * 0.3 * dt;
                     if (pos.y < 0.02) pos.y = 0.02;
-                    pos.x += input.x * 0.25 * dt;
+                    pos.x += input.x * 0.1 * dt;
                     pos.x = Math.max(-halfVisW + 0.02, Math.min(halfVisW - 0.02, pos.x));
                 } else {
                     character.setState('IDLE');
@@ -620,7 +620,7 @@ async function main() {
                 deathTimer -= dt;
                 if (deathTimer <= 0) {
                     state = 'CLIMB';
-                    pos.set(0, 0.05, 0);
+                    pos.set(0, 0.5, 0);
                     character.root.rotation.y = Math.PI;
                     character.setState('IDLE');
                     if (!gyro.enabled) viewY = 0.5;
