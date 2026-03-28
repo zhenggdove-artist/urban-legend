@@ -108,40 +108,50 @@ async function startCamera() {
 }
 
 // ===== Gyroscope — absolute angle mapping =====
-// Phone beta angle directly controls which part of the 3D world is visible.
-// beta ≈ 90: phone vertical (normal hold) → default view (ground level)
-// beta < 90: phone tilted up (looking at sky/building top) → see higher
-// beta > 90: phone tilted down (looking at ground) → see ground/corpse
 class GyroTracker {
     constructor() {
-        this.viewY = 0.5;   // mapped camera Y in scene units
-        this.rawBeta = 90;   // raw beta angle
+        this.viewY = 0.5;
+        this.rawBeta = 90;
         this.enabled = false;
+        this.status = 'init'; // tracks what happened during init
+    }
+    _onOrientation(e) {
+        if (e.beta === null) { this.status = 'beta-null'; return; }
+        this.rawBeta = e.beta;
+        const degreesFromVertical = 90 - e.beta;
+        this.viewY = 0.5 + degreesFromVertical * 0.08;
+        this.enabled = true;
+        this.status = 'active';
     }
     async init() {
+        const handler = e => this._onOrientation(e);
+
+        // iOS 13+ requires permission from user gesture
         if (typeof DeviceOrientationEvent !== 'undefined' &&
             typeof DeviceOrientationEvent.requestPermission === 'function') {
             try {
                 const p = await DeviceOrientationEvent.requestPermission();
-                if (p !== 'granted') return;
-            } catch (e) { return; }
+                this.status = 'ios-' + p;
+                if (p === 'granted') {
+                    window.addEventListener('deviceorientation', handler);
+                }
+            } catch (e) {
+                this.status = 'ios-err:' + e.message;
+            }
+            return;
         }
-        window.addEventListener('deviceorientation', e => {
-            if (e.beta === null) return;
-            this.rawBeta = e.beta;
-            // Mapping:
-            //   beta=30 (tilted far up, looking at sky)   → viewY = 5.0 (high up)
-            //   beta=60 (tilted up, looking at building)   → viewY = 2.5
-            //   beta=90 (vertical, normal hold)            → viewY = 0.5 (default)
-            //   beta=120 (tilted down, toward ground)      → viewY = -0.3 (ground)
-            //   beta=150 (almost horizontal, facing floor) → viewY = -0.5
-            //
-            // Linear: viewY = (90 - beta) * scale + 0.5
-            // scale: 60 degrees up → ~4.5 units up, so scale ≈ 0.075
-            const degreesFromVertical = 90 - e.beta; // positive = tilted up
-            this.viewY = 0.5 + degreesFromVertical * 0.08;
-            this.enabled = true;
-        });
+
+        // Android / other: just listen, no permission needed
+        this.status = 'listening';
+        window.addEventListener('deviceorientation', handler);
+
+        // Also try 'deviceorientationabsolute' as fallback
+        window.addEventListener('deviceorientationabsolute', handler);
+
+        // Check after 2 seconds if we got any data
+        setTimeout(() => {
+            if (!this.enabled) this.status = 'no-events';
+        }, 2000);
     }
 }
 
@@ -630,7 +640,7 @@ async function main() {
             `角色${charVisible ? '在螢幕內' : '在螢幕外'}`,
             gyro.enabled
                 ? `陀螺儀: beta=${gyro.rawBeta.toFixed(0)}° → viewY=${gyro.viewY.toFixed(2)}`
-                : '陀螺儀: OFF (用手指拖曳)',
+                : `陀螺儀: OFF [${gyro.status}] (用手指拖曳)`,
             `Blood: ${blood.particles.length} | Deaths: ${deaths}`,
         ].join('<br>');
 
