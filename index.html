@@ -293,10 +293,10 @@
 
                 // Placeholder
                 this.placeholder = new THREE.Mesh(
-                    new THREE.CapsuleGeometry(0.06, 0.2, 6, 12),
+                    new THREE.CapsuleGeometry(0.006, 0.02, 6, 12),
                     new THREE.MeshStandardMaterial({ color: 0x999999 })
                 );
-                this.placeholder.position.y = 0.15;
+                this.placeholder.position.y = 0.015;
                 this.root.add(this.placeholder);
             }
 
@@ -332,10 +332,10 @@
                     this.root.remove(this.placeholder);
                     const model = idleG.scene;
 
-                    // Scale to 0.4 units tall (1/5 of original 2.0)
+                    // Scale to 0.04 units tall (tiny character on screen)
                     const box = new THREE.Box3().setFromObject(model);
                     const h = box.getSize(new THREE.Vector3()).y;
-                    const sc = 0.4 / h;
+                    const sc = 0.04 / h;
                     model.scale.setScalar(sc);
                     // Feet at y=0
                     const box2 = new THREE.Box3().setFromObject(model);
@@ -426,10 +426,11 @@
 
             const scene = new THREE.Scene();
 
-            // Camera setup - closer for smaller character
-            const camera = new THREE.PerspectiveCamera(50, sw() / sh(), 0.01, 100);
-            camera.position.set(0, 0.3, 1.2);
-            camera.lookAt(0, 0.2, 0);
+            // Camera: fixed position, looking at the building surface
+            // Character moves up/down in this fixed view
+            const camera = new THREE.PerspectiveCamera(50, sw() / sh(), 0.001, 10);
+            camera.position.set(0, 0.04, 0.15);
+            camera.lookAt(0, 0.04, 0);
 
             const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -446,7 +447,7 @@
             scene.add(new THREE.AmbientLight(0xaaaaaa));
             scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 0.5));
 
-            // Character (no meatball system - removed to fix brown blob)
+            // Character
             const character = new GameCharacter(scene);
             await character.load();
 
@@ -519,10 +520,13 @@
             let state = 'CLIMB', vy = 0, deaths = 0;
             const dbg = document.getElementById('debug-info');
 
-            // The character climbs in 3D space.
-            // Building height in 3D = mapped from screen analysis.
-            // Sky line ratio (0-1 from top) determines max climb height.
-            const MAX_3D_HEIGHT = 3.0; // max height in 3D units
+            // Character climbs up in 3D, camera stays FIXED so you see movement.
+            // The character's Y range maps to screen bottom → sky line.
+            const CLIMB_SPEED = 0.03; // 3D units per second
+            const JUMP_VY = 0.02;
+            const GRAVITY = 0.08;
+            // Max Y in 3D = how far character can go up on screen
+            const MAX_Y = 0.08;
 
             function tick() {
                 requestAnimationFrame(tick);
@@ -530,22 +534,20 @@
                 const t = clock.getElapsedTime();
                 const pos = character.root.position;
 
-                // Analyze camera every ~500ms
+                // Analyze camera
                 analyzer.analyze(t * 1000);
-
-                // Building covers from skyLine to bottom of screen.
-                // Map 3D height: 0 = bottom of building, maxH = sky line
-                const climbableRatio = analyzer.getClimbableHeight(); // e.g. 0.6
-                const maxClimbHeight = MAX_3D_HEIGHT * climbableRatio;
+                const climbableRatio = analyzer.getClimbableHeight();
+                // Map max climb to sky line (character can't go past sky)
+                const maxY = MAX_Y * climbableRatio;
 
                 switch (state) {
                     case 'CLIMB':
                         if (Math.abs(input.y) > 0.1) {
                             character.setState('CLIMB');
-                            pos.y += input.y * 1.0 * dt;
-                            // Clamp: can't go below ground or above sky line
+                            // Move character Y position — this is visible because camera is fixed!
+                            pos.y += input.y * CLIMB_SPEED * dt;
                             if (pos.y < 0) pos.y = 0;
-                            if (pos.y > maxClimbHeight) pos.y = maxClimbHeight;
+                            if (pos.y > maxY) pos.y = maxY;
                         } else {
                             character.setState('IDLE');
                         }
@@ -553,21 +555,21 @@
                             input.jump = false;
                             state = 'JUMP_UP';
                             character.setState('JUMP');
-                            vy = 1.5;
+                            vy = JUMP_VY;
                             deaths++;
                             fb.add();
                         }
                         break;
                     case 'JUMP_UP':
-                        vy -= 5.0 * dt;
+                        vy -= GRAVITY * dt;
                         pos.y += vy * dt;
-                        pos.z += 0.8 * dt;
+                        pos.z += 0.03 * dt; // move toward camera
                         if (vy <= 0) state = 'FALL';
                         break;
                     case 'FALL':
-                        vy -= 5.0 * dt;
+                        vy -= GRAVITY * dt;
                         pos.y += vy * dt;
-                        pos.z += 0.5 * dt;
+                        pos.z += 0.02 * dt;
                         if (pos.y <= 0) {
                             pos.y = 0; vy = 0; state = 'LAND';
                             character.setState('IDLE');
@@ -581,25 +583,22 @@
                 // Force facing wall
                 character.root.rotation.y = Math.PI;
 
-                // Camera follows character
-                const camY = pos.y + 0.3;
-                camera.position.y += (camY - camera.position.y) * 3.0 * dt;
-                camera.position.z = 1.2 + pos.z * 0.2;
-                camera.lookAt(pos.x, pos.y + 0.2, pos.z);
+                // Camera stays FIXED - does NOT follow character
+                // This makes the character visibly move up/down on screen
+                // Only slight lookAt adjustment so character stays in frame
+                camera.lookAt(0, 0.04, 0);
 
                 character.update(dt, input.y);
 
-                // Screen position of character (for debug)
-                const charScreenY = 1.0 - (pos.y / MAX_3D_HEIGHT);
+                const charScreenY = 1.0 - (pos.y / MAX_Y);
                 const onBuilding = analyzer.isBuilding(charScreenY);
 
                 dbg.innerHTML = [
-                    `H: ${pos.y.toFixed(2)}m`,
-                    `State: ${state}`,
-                    `Deaths: ${deaths}`,
-                    `Sky line: ${(analyzer.skyLineRatio * 100).toFixed(0)}%`,
-                    `On building: ${onBuilding}`,
-                    `Camera: ${hasCamera ? 'AR' : 'SIM'}`,
+                    `H: ${(pos.y * 1000).toFixed(0)}cm`,
+                    `${state} | D:${deaths}`,
+                    `Sky: ${(analyzer.skyLineRatio * 100).toFixed(0)}%`,
+                    `Building: ${onBuilding ? 'YES' : 'NO'}`,
+                    hasCamera ? 'AR' : 'SIM',
                 ].join('<br>');
 
                 renderer.render(scene, camera);
