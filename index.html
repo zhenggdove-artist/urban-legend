@@ -125,7 +125,7 @@ class GyroTracker {
         this.rawGamma = e.gamma || 0;
 
         // Raw target from gyro angles (low sensitivity)
-        const degreesFromVertical = 90 - e.beta;
+        const degreesFromVertical = e.beta - 90;
         this.viewY = 0.5 + degreesFromVertical * 0.025;
         this.viewX = this.rawGamma * 0.002;
 
