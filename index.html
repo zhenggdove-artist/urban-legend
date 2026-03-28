@@ -405,10 +405,11 @@ async function main() {
     await new Promise(r => $start.addEventListener('click', async () => {
         $status.textContent = '啟動中...';
         $start.style.display = 'none';
-        const hasCam = await startCamera();
-        window._hasCam = hasCam;
-        await gyro.init();
-        gyro.resetBase();
+        try {
+            const hasCam = await startCamera();
+            window._hasCam = hasCam;
+            await gyro.init();
+        } catch(e) { console.warn('Init error:', e); }
         $loading.style.display = 'none';
         r();
     }, { once: true }));
