@@ -119,8 +119,9 @@ class GyroTracker {
             if (this.baseBeta === null) this.baseBeta = e.beta;
             // beta: 0=flat, 90=vertical. tilt up = beta decreases
             const deltaBeta = e.beta - this.baseBeta;
-            // Map: every 10 degrees of tilt = 1 scene unit of vertical pan
-            this.tiltY = -deltaBeta / 15;
+            // Map: every 8 degrees of tilt = 1 scene unit of vertical pan
+            // Negative because tilting up (decreasing beta) should move camera up
+            this.tiltY = -deltaBeta / 8;
             this.enabled = true;
         });
     }
@@ -180,32 +181,38 @@ class BloodEffect {
         scene.add(this.group);
     }
     spawn(pos) {
-        // Create 30 blood particles
-        for (let i = 0; i < 30; i++) {
-            const geo = new THREE.SphereGeometry(0.008 + Math.random()*0.012, 4, 4);
+        // Create 40 blood particles - big enough to see
+        for (let i = 0; i < 40; i++) {
+            const size = 0.015 + Math.random()*0.025; // bigger particles
+            const geo = new THREE.SphereGeometry(size, 6, 6);
             const mat = new THREE.MeshBasicMaterial({
-                color: new THREE.Color(0.5 + Math.random()*0.5, 0, 0)
+                color: new THREE.Color(0.6 + Math.random()*0.4, 0, 0),
+                transparent: true, opacity: 1.0, depthTest: false
             });
             const m = new THREE.Mesh(geo, mat);
             m.position.copy(pos);
-            // Random velocity - mostly outward and up
-            const vx = (Math.random()-0.5) * 0.8;
-            const vy = Math.random() * 0.5 + 0.2;
-            const vz = (Math.random()-0.5) * 0.8;
-            this.particles.push({ mesh: m, vx, vy, vz, life: 1.5 + Math.random() });
+            m.renderOrder = 999; // render on top
+            // Random velocity - spread outward
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 0.3 + Math.random() * 0.6;
+            const vx = Math.cos(angle) * speed;
+            const vy = Math.random() * 0.8 + 0.1;
+            const vz = Math.sin(angle) * speed * 0.5 + 0.2; // bias toward camera
+            this.particles.push({ mesh: m, vx, vy, vz, life: 2.0 + Math.random() * 1.5 });
             this.group.add(m);
         }
     }
     update(dt) {
         for (let i = this.particles.length - 1; i >= 0; i--) {
             const p = this.particles[i];
-            p.vy -= 2.0 * dt; // gravity
+            p.vy -= 1.5 * dt; // gravity
             p.mesh.position.x += p.vx * dt;
             p.mesh.position.y += p.vy * dt;
             p.mesh.position.z += p.vz * dt;
+            // Stop at ground
+            if (p.mesh.position.y < 0) { p.mesh.position.y = 0; p.vx *= 0.9; p.vz *= 0.9; p.vy = 0; }
             p.life -= dt;
-            p.mesh.material.opacity = Math.max(0, p.life / 1.5);
-            p.mesh.material.transparent = true;
+            p.mesh.material.opacity = Math.max(0, Math.min(1, p.life / 1.0));
             if (p.life <= 0) {
                 this.group.remove(p.mesh);
                 p.mesh.geometry.dispose(); p.mesh.material.dispose();
@@ -402,26 +409,28 @@ async function main() {
     const hasCamera = window._hasCam;
 
     // ===== Input =====
-    const input = { y: 0, jump: false };
+    const input = { x: 0, y: 0, jump: false };
     const jZone = document.getElementById('joystick-zone');
     const jKnob = document.getElementById('joystick-knob');
-    let dragging = false, dragY0 = 0;
+    let dragging = false, dragX0 = 0, dragY0 = 0;
 
     jZone.addEventListener('pointerdown', e => {
-        dragging=true; dragY0=e.clientY;
+        dragging=true; dragX0=e.clientX; dragY0=e.clientY;
         jKnob.style.background='rgba(255,255,255,.8)'; e.preventDefault();
     }, {passive:false});
     window.addEventListener('pointermove', e => {
         if(!dragging)return;
+        const dx=Math.max(-35,Math.min(35,e.clientX-dragX0));
         const dy=Math.max(-35,Math.min(35,e.clientY-dragY0));
-        jKnob.style.transform=`translateY(${dy}px)`;
+        jKnob.style.transform=`translate(${dx}px,${dy}px)`;
+        input.x=dx/35;
         input.y=-dy/35;
     });
     window.addEventListener('pointerup', ()=>{
         if(!dragging)return; dragging=false;
-        jKnob.style.transform='translateY(0)';
+        jKnob.style.transform='translate(0,0)';
         jKnob.style.background='rgba(255,255,255,.5)';
-        input.y=0;
+        input.x=0; input.y=0;
     });
 
     const jBtn = document.getElementById('jump-btn');
@@ -432,16 +441,19 @@ async function main() {
     window.addEventListener('keydown', e=>{
         if(e.key==='ArrowUp'||e.key==='w')input.y=1;
         if(e.key==='ArrowDown'||e.key==='s')input.y=-1;
+        if(e.key==='ArrowLeft'||e.key==='a')input.x=-1;
+        if(e.key==='ArrowRight'||e.key==='d')input.x=1;
         if(e.key===' ')input.jump=true;
     });
     window.addEventListener('keyup', e=>{
         if(['ArrowUp','w','ArrowDown','s'].includes(e.key))input.y=0;
+        if(['ArrowLeft','a','ArrowRight','d'].includes(e.key))input.x=0;
     });
 
     // ===== Game State =====
     const clock = new THREE.Clock();
     let state = 'CLIMB', vy = 0, deaths = 0;
-    let deathTimer = 0;
+    let deathTimer = 0, jumpStartY = 0;
     const dbg = document.getElementById('debug-info');
 
     // Character starts at bottom of screen (y=0.05)
@@ -455,15 +467,20 @@ async function main() {
 
         analyzer.analyze(t * 1000);
 
+        // Half visible width at z=0 plane
+        const halfVisW = camZ * Math.tan(THREE.MathUtils.degToRad(VFOV/2)) * (W()/H());
+
         switch (state) {
             case 'CLIMB':
-                if (Math.abs(input.y) > 0.1) {
+                if (Math.abs(input.y) > 0.1 || Math.abs(input.x) > 0.1) {
                     character.setState('CLIMB');
-                    // Character moves UP in scene = visible on screen
-                    // 0.3 units/sec climb speed
+                    // Vertical climb
                     pos.y += input.y * 0.3 * dt;
                     if (pos.y < 0.05) pos.y = 0.05;
-                    // NO upper limit — character can climb past screen top!
+                    // Horizontal movement
+                    pos.x += input.x * 0.25 * dt;
+                    // Clamp X to stay within visible area
+                    pos.x = Math.max(-halfVisW + 0.05, Math.min(halfVisW - 0.05, pos.x));
                 } else {
                     character.setState('IDLE');
                 }
@@ -471,9 +488,9 @@ async function main() {
                     input.jump = false;
                     state = 'JUMPING';
                     character.setState('JUMP');
-                    // Face outward (toward camera) for the jump
-                    character.root.rotation.y = 0;
+                    character.root.rotation.y = 0; // face camera
                     vy = 0.5;
+                    jumpStartY = pos.y; // remember where we jumped from
                     deaths++;
                 }
                 break;
@@ -482,27 +499,29 @@ async function main() {
                 vy -= 1.5 * dt; // gravity
                 pos.y += vy * dt;
                 pos.z += 0.3 * dt; // fly toward camera
-                if (pos.y <= 0.05) {
+                if (pos.y <= 0.02) {
                     // HIT GROUND — death!
-                    pos.y = 0.05;
+                    pos.y = 0.02;
                     vy = 0;
                     state = 'DEAD';
                     character.setState('DEATH');
-                    deathTimer = 3.0;
-                    // Spawn blood at character position
-                    blood.spawn(pos.clone());
-                    blood.spawn(pos.clone().add(new THREE.Vector3(0, 0.05, 0)));
+                    deathTimer = 4.0;
+                    // Spawn blood bursts at impact point
+                    const impactPos = pos.clone();
+                    blood.spawn(impactPos);
+                    blood.spawn(impactPos.clone().add(new THREE.Vector3(0, 0.03, 0)));
+                    blood.spawn(impactPos.clone().add(new THREE.Vector3(0.02, 0.01, 0)));
                 }
                 break;
 
             case 'DEAD':
                 deathTimer -= dt;
                 if (deathTimer <= 0) {
-                    // Reset
                     state = 'CLIMB';
-                    pos.z = 0;
-                    character.root.rotation.y = Math.PI; // face wall again
+                    pos.set(0, 0.05, 0);
+                    character.root.rotation.y = Math.PI;
                     character.setState('IDLE');
+                    gyro.resetBase();
                 }
                 break;
         }
@@ -511,29 +530,34 @@ async function main() {
         // Force wall-facing during climb
         if (state === 'CLIMB') character.root.rotation.y = Math.PI;
 
-        // === Camera: gyroscope controls vertical pan ===
-        // Base camera Y = 0.5 (center of screen at scene y=0.5)
-        // Gyro tilt adds offset so tilting phone up reveals higher parts
-        let camOffsetY = gyro.enabled ? gyro.tiltY : 0;
-        // Clamp offset
-        camOffsetY = Math.max(-0.5, Math.min(3.0, camOffsetY));
-        camera.position.y = 0.5 + camOffsetY;
-        camera.lookAt(0, 0.5 + camOffsetY, 0);
+        // === Camera vertical pan ===
+        let targetCamY;
+        if (state === 'DEAD' || state === 'JUMPING') {
+            // During jump/death: camera follows the character down to see impact
+            targetCamY = Math.max(0.3, pos.y + 0.2);
+            if (gyro.enabled) targetCamY += gyro.tiltY * 0.5;
+        } else if (gyro.enabled) {
+            // Climbing with gyro: base at character height + gyro offset
+            targetCamY = pos.y + gyro.tiltY;
+        } else {
+            // No gyro: auto-follow character Y
+            targetCamY = pos.y + 0.3;
+        }
+        targetCamY = Math.max(0.25, targetCamY);
+        // Smooth camera
+        camera.position.y += (targetCamY - camera.position.y) * 0.08;
+        camera.lookAt(0, camera.position.y, 0);
 
         // Update
         character.update(dt, input.y);
         blood.update(dt);
 
         // Debug
-        const screenBottom = camOffsetY;
-        const screenTop = camOffsetY + 1.0;
-        const charOnScreen = pos.y >= screenBottom && pos.y <= screenTop;
-
         dbg.innerHTML = [
-            `H: ${pos.y.toFixed(2)} | ${state}`,
+            `XY: ${pos.x.toFixed(2)},${pos.y.toFixed(2)} | ${state}`,
             `Deaths: ${deaths}`,
-            `Gyro: ${gyro.enabled ? camOffsetY.toFixed(1) : 'OFF'}`,
-            `OnScreen: ${charOnScreen ? 'YES' : 'TILT UP'}`,
+            `CamY: ${camera.position.y.toFixed(2)} Gyro: ${gyro.enabled ? gyro.tiltY.toFixed(1) : 'OFF'}`,
+            `Blood: ${blood.particles.length}`,
             `Sky: ${(analyzer.skyLine*100).toFixed(0)}%`,
             hasCamera ? 'AR' : 'SIM',
         ].join('<br>');
