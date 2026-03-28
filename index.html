@@ -107,11 +107,13 @@ async function startCamera() {
     }
 }
 
-// ===== Gyroscope — absolute angle mapping =====
+// ===== Gyroscope — absolute angle mapping + smoothing =====
 class GyroTracker {
     constructor() {
-        this.viewX = 0;      // camera X offset (left/right)
-        this.viewY = 0.5;    // camera Y position
+        this.viewX = 0;
+        this.viewY = 0.5;
+        this.smoothX = 0;    // smoothed output
+        this.smoothY = 0.5;  // smoothed output
         this.rawBeta = 90;
         this.rawGamma = 0;
         this.enabled = false;
@@ -122,17 +124,15 @@ class GyroTracker {
         this.rawBeta = e.beta;
         this.rawGamma = e.gamma || 0;
 
-        // Beta = up/down tilt (0=flat face-up, 90=vertical, 180=flat face-down)
-        // Phone tilts UP (beta decreases) → camera looks higher → viewY increases
-        // Phone tilts DOWN (beta increases) → camera looks at ground → viewY decreases
-        const degreesFromVertical = 90 - e.beta; // positive = tilted up
-        this.viewY = 0.5 + degreesFromVertical * 0.08;
+        // Raw target from gyro angles (low sensitivity)
+        const degreesFromVertical = 90 - e.beta;
+        this.viewY = 0.5 + degreesFromVertical * 0.025;
+        this.viewX = this.rawGamma * 0.002;
 
-        // Gamma = left/right tilt (-90 to 90)
-        // Phone tilts RIGHT (gamma > 0) → camera pans right → viewX increases
-        // Phone tilts LEFT (gamma < 0) → camera pans left → viewX decreases
-        // Character appears to move opposite direction (AR effect)
-        this.viewX = this.rawGamma * 0.005;
+        // Low-pass filter: heavy smoothing to prevent jitter/flicker
+        // 0.08 = very smooth (slow response), prevents shaking
+        this.smoothX += (this.viewX - this.smoothX) * 0.08;
+        this.smoothY += (this.viewY - this.smoothY) * 0.08;
 
         this.enabled = true;
         this.status = 'active';
@@ -611,8 +611,6 @@ async function main() {
                     blood.spawn(pos.clone());
                     blood.spawn(pos.clone().add(new THREE.Vector3(0, 0.02, 0)));
                     blood.spawn(pos.clone().add(new THREE.Vector3(0.01, 0.005, 0)));
-                    // If no gyro, auto-pan to ground to see corpse
-                    if (!gyro.enabled) viewY = 0.5;
                 }
                 break;
 
@@ -623,7 +621,7 @@ async function main() {
                     pos.set(0, 0.5, 0);
                     character.root.rotation.y = Math.PI;
                     character.setState('IDLE');
-                    if (!gyro.enabled) viewY = 0.5;
+                    viewY = 0.5; // reset camera to center
                 }
                 break;
         }
@@ -631,18 +629,30 @@ async function main() {
 
         if (state === 'CLIMB') character.root.rotation.y = Math.PI;
 
-        // ===== Camera controlled by gyro (primary) or touch drag (fallback) =====
-        if (gyro.enabled) {
-            viewY = gyro.viewY;
-            viewX = gyro.viewX;
+        // ===== Camera =====
+        if (state === 'JUMPING' || state === 'DEAD') {
+            // During jump/death: camera smoothly tracks the character
+            // so the falling body / corpse is always visible
+            // Target: character at screen center
+            const targetY = pos.y + 0.1; // slightly above character so corpse is centered
+            viewY += (targetY - viewY) * 0.04; // slow smooth pan down
+            if (gyro.enabled) {
+                viewX = gyro.smoothX;
+            }
+        } else {
+            // Normal climb: gyro or touch controls camera
+            if (gyro.enabled) {
+                viewY = gyro.smoothY;
+                viewX = gyro.smoothX;
+            }
         }
 
         // Clamp
-        viewY = Math.max(-0.3, viewY);
+        viewY = Math.max(-0.2, viewY);
 
         // Smooth camera to target position
-        camera.position.x += (viewX - camera.position.x) * 0.15;
-        camera.position.y += (viewY - camera.position.y) * 0.15;
+        camera.position.x += (viewX - camera.position.x) * 0.08;
+        camera.position.y += (viewY - camera.position.y) * 0.08;
         camera.lookAt(camera.position.x, camera.position.y, 0);
 
         // Update systems
