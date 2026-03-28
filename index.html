@@ -8,38 +8,29 @@
         *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
         html { width: 100%; height: 100%; overflow: hidden; }
         body {
-            width: 100%; height: 100dvh; height: 100vh;
+            width: 100%; height: 100%;
             overflow: hidden; background: #000;
             touch-action: none;
             -webkit-touch-callout: none; -webkit-user-select: none; user-select: none;
         }
 
-        /* Layers stacked: video -> canvas -> overlay -> UI */
+        /* Video camera layer - bottom-most */
         #camera-video {
             position: absolute; top: 0; left: 0;
             width: 100%; height: 100%;
             object-fit: cover; z-index: 0;
-            background: #111;
-        }
-        #game-canvas {
-            position: absolute; top: 0; left: 0;
-            width: 100%; height: 100%;
-            z-index: 1;
-            /* canvas element itself, no background */
-        }
-        #paper-overlay {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            pointer-events: none; z-index: 2; opacity: 0.1; mix-blend-mode: multiply;
-            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" stitchTiles="stitch"/></filter><rect width="100%" height="100%" filter="url(%23n)" opacity="0.5"/></svg>');
+            background: linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
         }
 
-        /* UI - use pixel-based positioning, no env() */
+        /* Debug info */
         #debug-info {
             position: absolute; top: 40px; left: 10px; z-index: 10;
             color: #fff; font: 11px/1.4 monospace;
             background: rgba(0,0,0,0.5); padding: 5px 8px; border-radius: 4px;
             pointer-events: none;
         }
+
+        /* Joystick */
         #joystick-zone {
             position: absolute; z-index: 10;
             width: 100px; height: 100px;
@@ -54,6 +45,8 @@
             background: rgba(255,255,255,0.5);
             border-radius: 50%;
         }
+
+        /* Jump button */
         #jump-btn {
             position: absolute; z-index: 10;
             width: 80px; height: 80px;
@@ -66,7 +59,7 @@
         }
         #jump-btn.pressed { transform: scale(0.9); background: rgba(255, 50, 50, 0.85); }
 
-        /* Loading */
+        /* Loading screen */
         #loading-screen {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.92); z-index: 100;
@@ -94,9 +87,9 @@
     </script>
 </head>
 <body>
+    <!-- Camera video as background (no canvas element here - created by Three.js) -->
     <video id="camera-video" autoplay playsinline muted></video>
-    <canvas id="game-canvas"></canvas>
-    <div id="paper-overlay"></div>
+    <!-- UI directly on body, no wrapper divs -->
     <div id="debug-info">Loading...</div>
     <div id="joystick-zone"><div id="joystick-knob"></div></div>
     <div id="jump-btn">JUMP</div>
@@ -112,28 +105,23 @@
         import { GLTFLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
         import { DRACOLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/DRACOLoader.js';
 
-        // ===== Helpers =====
-        function screenW() { return window.innerWidth; }
-        function screenH() { return window.innerHeight; }
+        // ===== Screen size =====
+        function sw() { return window.innerWidth; }
+        function sh() { return window.innerHeight; }
 
-        // Position UI elements via JS (avoids CSS env() issues)
         function layoutUI() {
-            const w = screenW(), h = screenH();
-            const pad = 24;
-            const bot = 40; // bottom padding
-
+            const w = sw(), h = sh();
             const jz = document.getElementById('joystick-zone');
-            jz.style.left = pad + 'px';
-            jz.style.top = (h - 100 - bot) + 'px';
-
+            jz.style.left = '24px';
+            jz.style.top = (h - 140) + 'px';
             const jb = document.getElementById('jump-btn');
-            jb.style.left = (w - 80 - pad) + 'px';
-            jb.style.top = (h - 80 - bot) + 'px';
+            jb.style.left = (w - 104) + 'px';
+            jb.style.top = (h - 120) + 'px';
         }
         layoutUI();
         window.addEventListener('resize', layoutUI);
 
-        // ===== Loading =====
+        // ===== Loading UI =====
         const loadingBar = document.getElementById('loading-bar');
         const loadingStatus = document.getElementById('loading-status');
         const loadingScreen = document.getElementById('loading-screen');
@@ -143,37 +131,35 @@
             loadingBar.style.width = Math.round((prog.camera + prog.idle + prog.climb + prog.jump) / 4) + '%';
         }
 
-        // ===== Camera =====
+        // ===== Camera - MUST be called from user gesture on iOS =====
         async function startCamera() {
             const video = document.getElementById('camera-video');
-            loadingStatus.textContent = '正在啟動相機...';
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
                     audio: false
                 });
                 video.srcObject = stream;
+                // On iOS, play() must happen in user gesture context
                 await video.play();
                 prog.camera = 100; updateBar();
-                loadingStatus.textContent = '相機已啟動';
                 return true;
             } catch (err) {
                 console.warn('Camera failed:', err);
-                video.style.background = 'linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)';
+                // Fallback gradient is already set as CSS background on video
                 prog.camera = 100; updateBar();
-                loadingStatus.textContent = '無相機，使用模擬背景';
                 return false;
             }
         }
 
-        // ===== Meatball System =====
+        // ===== Meatball =====
         class MeatballManager {
             constructor(scene) {
                 this.scene = scene;
                 this.cluster = new THREE.Group();
                 this.spheres = [];
                 this.baseScale = 1.0;
-                const mat = new THREE.MeshToonMaterial({ color: 0x8B4513 });
+                const mat = new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.9 });
                 for (let i = 0; i < 5; i++) {
                     const m = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), mat.clone());
                     m.position.set((Math.random()-0.5)*0.2, (Math.random()-0.5)*0.2, (Math.random()-0.5)*0.2);
@@ -182,11 +168,8 @@
             }
             attachTo(p) { (p || this.scene).add(this.cluster); }
             detach() { this.cluster.parent?.remove(this.cluster); }
-            update(t) {
-                const s = this.baseScale + Math.sin(t * 3) * 0.08;
-                this.cluster.scale.setScalar(s);
-            }
-            grow(count) { this.baseScale = 1.0 + Math.min(count / 50, 2.0); }
+            update(t) { this.cluster.scale.setScalar(this.baseScale + Math.sin(t * 3) * 0.08); }
+            grow(c) { this.baseScale = 1.0 + Math.min(c / 50, 2.0); }
         }
 
         // ===== Character =====
@@ -200,11 +183,13 @@
                 this.curAction = null;
                 this.curState = 'IDLE';
                 this.meatball = meatball;
+                // Character faces AWAY from camera (toward wall) by default
+                this.root.rotation.y = Math.PI;
 
                 // Placeholder
                 const ph = new THREE.Mesh(
                     new THREE.CapsuleGeometry(0.3, 1.0, 6, 12),
-                    new THREE.MeshToonMaterial({ color: 0x999999 })
+                    new THREE.MeshStandardMaterial({ color: 0x999999 })
                 );
                 ph.position.y = 0.8;
                 this.placeholder = ph;
@@ -218,16 +203,16 @@
                 dr.setDecoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/draco/');
                 gl.setDRACOLoader(dr);
 
-                // Load texture
+                // Load skin texture
                 const texLoader = new THREE.TextureLoader();
                 let skinTex = null;
                 try {
-                    skinTex = await new Promise((res, rej) => {
-                        texLoader.load('./playermodel/tripo_model_basecolor.JPEG', res, undefined, rej);
-                    });
-                    skinTex.flipY = false; // GLB uses non-flipped UVs
+                    skinTex = await new Promise((res, rej) =>
+                        texLoader.load('./playermodel/tripo_model_basecolor.JPEG', res, undefined, rej)
+                    );
+                    skinTex.flipY = false;
                     skinTex.colorSpace = THREE.SRGBColorSpace;
-                } catch (e) { console.warn('Skin texture not loaded:', e); }
+                } catch (e) { console.warn('Texture load failed:', e); }
 
                 const loadGLB = (url, key) => new Promise((res, rej) => {
                     gl.load(url,
@@ -244,28 +229,21 @@
                     this.root.remove(this.placeholder);
                     const model = idleG.scene;
 
-                    // Auto-scale to ~2 units tall
+                    // Auto-scale to ~2 units
                     const box = new THREE.Box3().setFromObject(model);
                     const h = box.getSize(new THREE.Vector3()).y;
                     const sc = 2.0 / h;
                     model.scale.setScalar(sc);
-
                     // Feet at y=0
                     const box2 = new THREE.Box3().setFromObject(model);
                     model.position.y = -box2.min.y;
 
-                    // Apply skin texture to meshes, keep original material structure
+                    // Apply skin texture
                     model.traverse(child => {
                         if (child.isMesh) {
-                            // Use MeshStandardMaterial with skin texture
-                            const mat = new THREE.MeshStandardMaterial({
-                                map: skinTex,
-                                roughness: 0.8,
-                                metalness: 0.1,
-                                side: THREE.DoubleSide
+                            child.material = new THREE.MeshStandardMaterial({
+                                map: skinTex, roughness: 0.8, metalness: 0.1, side: THREE.DoubleSide
                             });
-                            // If skinned mesh, the material will work with bones automatically
-                            child.material = mat;
                             child.frustumCulled = false;
                         }
                     });
@@ -274,40 +252,55 @@
                     this.root.add(model);
                     this.mixer = new THREE.AnimationMixer(model);
 
+                    // Strip position/quaternion tracks from animations
+                    // to prevent Mixamo root motion from rotating the character
+                    const stripRootTracks = (clip) => {
+                        clip.tracks = clip.tracks.filter(track => {
+                            // Remove root bone position and quaternion tracks
+                            const isRoot = /mixamorig.*Hips\.(position|quaternion)/i.test(track.name)
+                                        || /RootNode\.(position|quaternion)/i.test(track.name);
+                            return !isRoot;
+                        });
+                        return clip;
+                    };
+
                     if (idleG.animations.length > 0) {
+                        stripRootTracks(idleG.animations[0]);
                         this.anims['IDLE'] = this.mixer.clipAction(idleG.animations[0]);
                         this.anims['IDLE'].play();
                         this.curAction = this.anims['IDLE'];
                     }
 
-                    // Meatball to head bone
+                    // Meatball to head
                     let head = null;
                     model.traverse(c => { if (c.isBone && /head/i.test(c.name)) head = c; });
                     if (head) {
                         this.meatball.detach();
                         this.meatball.attachTo(head);
-                        // Scale meatball relative to model scale
                         const ms = 0.25 / sc;
                         this.meatball.cluster.scale.set(ms, ms, ms);
                     }
 
-                    // Load animations
+                    // Load extra animations
                     loadingStatus.textContent = '載入動畫...';
                     const [cR, jR] = await Promise.allSettled([
                         loadGLB('./playermodel/climb.glb', 'climb'),
                         loadGLB('./playermodel/jump.glb', 'jump')
                     ]);
 
-                    if (cR.status === 'fulfilled' && cR.value.animations.length > 0)
+                    if (cR.status === 'fulfilled' && cR.value.animations.length > 0) {
+                        stripRootTracks(cR.value.animations[0]);
                         this.anims['CLIMB'] = this.mixer.clipAction(cR.value.animations[0]);
+                    }
                     if (jR.status === 'fulfilled' && jR.value.animations.length > 0) {
+                        stripRootTracks(jR.value.animations[0]);
                         this.anims['JUMP'] = this.mixer.clipAction(jR.value.animations[0]);
                         this.anims['JUMP'].setLoop(THREE.LoopOnce);
                         this.anims['JUMP'].clampWhenFinished = true;
                     }
 
                     this.loaded = true;
-                    console.log('Loaded anims:', Object.keys(this.anims));
+                    console.log('Loaded:', Object.keys(this.anims));
 
                 } catch (err) {
                     console.error('Load failed:', err);
@@ -338,26 +331,33 @@
         }
 
         // ===== Firebase Stub =====
-        const firebase = { count: 0, add() { return ++this.count; } };
+        const fb = { count: 0, add() { return ++this.count; } };
 
         // ===== Main =====
         async function main() {
-            const hasCamera = await startCamera();
+            // Pre-load models BEFORE user click (while loading screen is showing)
+            loadingStatus.textContent = '載入模型中...';
+            prog.camera = 100; updateBar(); // Camera will start later
 
-            const canvas = document.getElementById('game-canvas');
             const scene = new THREE.Scene();
-
-            const camera = new THREE.PerspectiveCamera(50, screenW() / screenH(), 0.1, 500);
+            const camera = new THREE.PerspectiveCamera(50, sw() / sh(), 0.1, 500);
             camera.position.set(0, 1.5, 5);
             camera.lookAt(0, 1, 0);
 
-            const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+            const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-            renderer.setSize(screenW(), screenH());
+            renderer.setSize(sw(), sh());
             renderer.setClearColor(0x000000, 0);
+            // Insert canvas AFTER video element so it layers on top
+            const videoEl = document.getElementById('camera-video');
+            const canvasEl = renderer.domElement;
+            canvasEl.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;z-index:1;';
+            videoEl.after(canvasEl);
 
             // Lighting
-            scene.add(new THREE.DirectionalLight(0xffffff, 1.5).translateX(3).translateY(8).translateZ(5));
+            const dl = new THREE.DirectionalLight(0xffffff, 1.5);
+            dl.position.set(3, 8, 5);
+            scene.add(dl);
             scene.add(new THREE.AmbientLight(0x888888));
             scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 0.5));
 
@@ -372,12 +372,26 @@
             await character.load();
             meatball.grow(0);
 
-            // Ready
+            // Show start button
             loadingStatus.textContent = '準備完成！';
             startBtn.style.display = 'block';
-            await new Promise(r => startBtn.addEventListener('click', () => { loadingScreen.style.display = 'none'; r(); }, { once: true }));
 
-            // Input
+            // Start camera + game on button click (user gesture for iOS)
+            await new Promise(resolve => {
+                startBtn.addEventListener('click', async () => {
+                    loadingStatus.textContent = '啟動相機...';
+                    startBtn.style.display = 'none';
+                    // Start camera inside user gesture
+                    const hasCam = await startCamera();
+                    window._hasCam = hasCam;
+                    loadingScreen.style.display = 'none';
+                    resolve();
+                }, { once: true });
+            });
+
+            const hasCamera = window._hasCam;
+
+            // ===== Input =====
             const input = { y: 0, jump: false };
 
             const jZone = document.getElementById('joystick-zone');
@@ -418,7 +432,7 @@
                 if (['ArrowUp','w','ArrowDown','s'].includes(e.key)) input.y = 0;
             });
 
-            // Game state
+            // ===== Game Loop =====
             const clock = new THREE.Clock();
             let state = 'CLIMB', vy = 0, deaths = 0;
             const dbg = document.getElementById('debug-info');
@@ -444,7 +458,7 @@
                             character.setState('JUMP');
                             vy = 5.0;
                             deaths++;
-                            meatball.grow(firebase.add());
+                            meatball.grow(fb.add());
                         }
                         break;
                     case 'JUMP_UP':
@@ -467,9 +481,11 @@
                 }
                 input.jump = false;
 
+                // Force character to always face away from camera (climbing wall)
+                character.root.rotation.y = Math.PI;
+
                 // Camera follow
-                const camTargetY = pos.y + 1.5;
-                camera.position.y += (camTargetY - camera.position.y) * 3.0 * dt;
+                camera.position.y += ((pos.y + 1.5) - camera.position.y) * 3.0 * dt;
                 camera.position.z = 5 + pos.z * 0.3;
                 camera.lookAt(pos.x, pos.y + 1.0, pos.z);
 
@@ -479,14 +495,13 @@
                 meatball.update(t);
 
                 dbg.textContent = `H:${pos.y.toFixed(1)}m | ${state} | Deaths:${deaths} | ${hasCamera ? 'AR' : 'SIM'}`;
-
                 renderer.render(scene, camera);
             }
 
             function onResize() {
-                camera.aspect = screenW() / screenH();
+                camera.aspect = sw() / sh();
                 camera.updateProjectionMatrix();
-                renderer.setSize(screenW(), screenH());
+                renderer.setSize(sw(), sh());
                 layoutUI();
             }
             window.addEventListener('resize', onResize);
