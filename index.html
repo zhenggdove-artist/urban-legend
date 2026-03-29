@@ -399,11 +399,11 @@ class TentacleSystem2D {
         this.canvas = document.getElementById('tentacle-canvas');
         this.ctx = this.canvas.getContext('2d');
         this.tentacles = []; // persists across deaths
-        this.RINGS = 24;
-        this.PTS_PER_RING = 7;
+        this.RINGS = 28;
+        this.PTS_PER_RING = 12;
         this.SCALE = 2.0;
         this.GLYPHS = ['.', '\u00B7', '\u2022', '\u2219', '\u25E6', '\u2218', 'o', '\u00B0', '*', '+'];
-        this.PALETTES = [[255,40,40]];
+        this.PALETTES = [[235,170,150]];
     }
     // Build interpolated spine from control points
     _buildSpine(ctrls, numSeg) {
@@ -443,8 +443,8 @@ class TentacleSystem2D {
                     speed: 0.3+Math.random()*1.0,
                     amp: 0.3+Math.random()*1.5*(1-u*0.5),
                     glyph: this.GLYPHS[Math.floor(Math.random()*this.GLYPHS.length)],
-                    size: 0.9*(1-u*0.35),
-                    alpha: 0.7*(1-u*0.25)
+                    size: 0.55*(1-u*0.35),
+                    alpha: 0.65*(1-u*0.25)
                 });
             }
             rings.push(ringPts);
@@ -591,15 +591,15 @@ class TentacleSystem2D {
                     const fadeZone=0.15;
                     ringAlpha = Math.max(0,Math.min(1,(growT-u+fadeZone)/fadeZone));
                 }
-                const cr=Math.min(255,Math.floor(cr0*(1-u*0.1)));
-                const cg=Math.min(255,Math.floor(cg0*(1-u*0.1)));
-                const cb=Math.min(255,Math.floor(cb0*(1-u*0.1)));
+                const cr=Math.min(255,Math.floor(cr0*(1-u*0.08)));
+                const cg=Math.min(255,Math.floor(cg0*(1-u*0.08)));
+                const cb=Math.min(255,Math.floor(cb0*(1-u*0.08)));
                 ctx.fillStyle=`rgb(${cr},${cg},${cb})`;
                 const ring=ten.rings[r];
                 for (let j=0; j<ring.length; j++) {
                     const p=ring[j];
-                    ctx.globalAlpha = Math.min(1,p.alpha*ringAlpha*2.0);
-                    const s = Math.max(2, p.size*ringAlpha*2.0);
+                    ctx.globalAlpha = Math.min(1,p.alpha*ringAlpha*1.6);
+                    const s = Math.max(1.2, p.size*ringAlpha*1.8);
                     ctx.fillRect(p.x - s*0.5, p.y - s*0.5, s, s);
                 }
             }
@@ -1015,8 +1015,11 @@ async function main() {
     let deathBeta = 90;
     let deathRevealPx = 0;
     let deathRevealTargetPx = 0;
+    let deathCenterY = 0;
     let gyroNeutralX = 0;
     let gyroNeutralY = 0.5;
+    let gyroNeutralBeta = 90;
+    let gyroNeutralGamma = 0;
     let gyroOffsetX = 0;
     let gyroOffsetY = 0;
     let gyroOffsetPrevX = 0;
@@ -1083,6 +1086,8 @@ async function main() {
             if (!gyroIdleReady) {
                 gyroNeutralX = gyro.smoothX;
                 gyroNeutralY = gyro.smoothY;
+                gyroNeutralBeta = gyro.rawBeta || 90;
+                gyroNeutralGamma = gyro.rawGamma || 0;
                 gyroOffsetX = 0;
                 gyroOffsetY = 0;
                 gyroOffsetPrevX = 0;
@@ -1090,12 +1095,12 @@ async function main() {
                 gyroIdleReady = true;
             }
             // Slow neutral drift to prevent jitter
-            gyroNeutralX += (gyro.smoothX - gyroNeutralX) * 0.02;
-            gyroNeutralY += (gyro.smoothY - gyroNeutralY) * 0.02;
-            const dx = gyro.smoothX - gyroNeutralX;
-            const dy = gyro.smoothY - gyroNeutralY;
-            const rawOffX = clamp(-dx * W() * 0.6, -W()*0.45, W()*0.45);
-            const rawOffY = clamp(-dy * H() * 0.7, -H()*0.55, H()*0.55);
+            gyroNeutralBeta += ((gyro.rawBeta || 90) - gyroNeutralBeta) * 0.02;
+            gyroNeutralGamma += ((gyro.rawGamma || 0) - gyroNeutralGamma) * 0.02;
+            const dBeta = gyroNeutralBeta - (gyro.rawBeta || 90);   // tilt up => positive
+            const dGamma = (gyro.rawGamma || 0) - gyroNeutralGamma; // tilt right => positive
+            const rawOffX = clamp(-dGamma * W() * 0.015, -W()*0.45, W()*0.45);
+            const rawOffY = clamp(dBeta * H() * 0.012, -H()*0.55, H()*0.55);
             gyroOffsetX += (rawOffX - gyroOffsetX) * 0.12;
             gyroOffsetY += (rawOffY - gyroOffsetY) * 0.12;
         } else {
@@ -1253,6 +1258,7 @@ async function main() {
                         deathBurst.x = (tmpVec.x*0.5+0.5)*W();
                         deathBurst.y = (-tmpVec.y*0.5+0.5)*H();
                         deathBurst.valid = true;
+                        deathCenterY = deathBurst.y;
                         blood.edgeBurstBottom(deathScreen.x);
                         blood.burst(deathBurst.x, deathBurst.y);
                         deathStartTime = t;
@@ -1370,7 +1376,8 @@ async function main() {
         if (state === 'DEAD' && gyro.enabled) {
             const tiltDelta = (gyro.rawBeta || 90) - (deathBeta || 90);
             const revealNorm = Math.max(0, Math.min(1, tiltDelta / 45));
-            deathRevealTargetPx = revealNorm * (H() * 0.7);
+            const needShift = clamp(deathCenterY - H()/2, -H()*0.7, H()*0.7);
+            deathRevealTargetPx = revealNorm * needShift;
             deathRevealPx += (deathRevealTargetPx - deathRevealPx) * 0.08;
             revealPx = deathRevealPx;
         } else {
