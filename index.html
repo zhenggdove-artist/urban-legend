@@ -103,7 +103,7 @@
     <canvas id="blood-canvas"></canvas>
     <canvas id="seg-overlay"></canvas>
     <!-- 3D canvas inserted by JS -->
-    <canvas id="tentacle-canvas" style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:4;pointer-events:none;image-rendering:auto"></canvas>
+    <canvas id="tentacle-canvas" style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:2;pointer-events:none;image-rendering:auto"></canvas>
     <div id="vhs-scanlines"></div>
     <canvas id="vhs-noise"></canvas>
     <div id="vhs-tracking"></div>
@@ -443,8 +443,8 @@ class TentacleSystem2D {
                     speed: 0.3+Math.random()*1.0,
                     amp: 0.3+Math.random()*1.5*(1-u*0.5),
                     glyph: this.GLYPHS[Math.floor(Math.random()*this.GLYPHS.length)],
-                    size: 1.5*(1-u*0.4),
-                    alpha: 0.8*(1-u*0.3)
+                    size: 0.9*(1-u*0.35),
+                    alpha: 0.7*(1-u*0.25)
                 });
             }
             rings.push(ringPts);
@@ -598,8 +598,8 @@ class TentacleSystem2D {
                 const ring=ten.rings[r];
                 for (let j=0; j<ring.length; j++) {
                     const p=ring[j];
-                    ctx.globalAlpha = Math.min(1,p.alpha*ringAlpha*3.2);
-                    const s = Math.max(6, p.size*ringAlpha*3.6);
+                    ctx.globalAlpha = Math.min(1,p.alpha*ringAlpha*2.0);
+                    const s = Math.max(2, p.size*ringAlpha*2.0);
                     ctx.fillRect(p.x - s*0.5, p.y - s*0.5, s, s);
                 }
             }
@@ -1015,6 +1015,13 @@ async function main() {
     let deathBeta = 90;
     let deathRevealPx = 0;
     let deathRevealTargetPx = 0;
+    let gyroNeutralX = 0;
+    let gyroNeutralY = 0.5;
+    let gyroOffsetX = 0;
+    let gyroOffsetY = 0;
+    let gyroOffsetPrevX = 0;
+    let gyroOffsetPrevY = 0;
+    let gyroIdleReady = false;
     let tentacleTargetCount = 0;
     let deathWorld = new THREE.Vector3(0,0,0);
     let deathWorldValid = false;
@@ -1071,6 +1078,33 @@ async function main() {
         }
         const useObstacles = !!hasCamera && startAnchorSet;
         const holdClimbPose = useObstacles && climbEngaged && !moving;
+        const idleGyro = useObstacles && !moving && !climbEngaged && gyro.enabled && state==='CLIMB';
+        if (idleGyro) {
+            if (!gyroIdleReady) {
+                gyroNeutralX = gyro.smoothX;
+                gyroNeutralY = gyro.smoothY;
+                gyroOffsetX = 0;
+                gyroOffsetY = 0;
+                gyroOffsetPrevX = 0;
+                gyroOffsetPrevY = 0;
+                gyroIdleReady = true;
+            }
+            // Slow neutral drift to prevent jitter
+            gyroNeutralX += (gyro.smoothX - gyroNeutralX) * 0.02;
+            gyroNeutralY += (gyro.smoothY - gyroNeutralY) * 0.02;
+            const dx = gyro.smoothX - gyroNeutralX;
+            const dy = gyro.smoothY - gyroNeutralY;
+            const rawOffX = clamp(-dx * W() * 0.6, -W()*0.45, W()*0.45);
+            const rawOffY = clamp(-dy * H() * 0.7, -H()*0.55, H()*0.55);
+            gyroOffsetX += (rawOffX - gyroOffsetX) * 0.12;
+            gyroOffsetY += (rawOffY - gyroOffsetY) * 0.12;
+        } else {
+            gyroIdleReady = false;
+            gyroOffsetX += (0 - gyroOffsetX) * 0.2;
+            gyroOffsetY += (0 - gyroOffsetY) * 0.2;
+            gyroOffsetPrevX = gyroOffsetX;
+            gyroOffsetPrevY = gyroOffsetY;
+        }
 
         // Game Logic
         switch(state) {
@@ -1092,14 +1126,14 @@ async function main() {
                     const prevTX = targetScreen.x;
                     const prevTY = targetScreen.y;
                     const maxStep = 14;
-                    if (USE_GYRO_SCROLL && gyro.enabled && charScreen.y < 70) {
-                        const tiltDelta = (gyro.smoothY - lastTilt);
-                        const scroll = tiltDelta * H() * 0.9;
-                        if (Math.abs(scroll) > 0.2) {
-                            targetScreen.y += scroll;
-                            targetScreen.y = clamp(targetScreen.y, 10, H()-10);
-                        }
+                    const gdx = gyroOffsetX - gyroOffsetPrevX;
+                    const gdy = gyroOffsetY - gyroOffsetPrevY;
+                    if (idleGyro && (Math.abs(gdx) > 0.01 || Math.abs(gdy) > 0.01)) {
+                        targetScreen.x += gdx;
+                        targetScreen.y += gdy;
                     }
+                    gyroOffsetPrevX = gyroOffsetX;
+                    gyroOffsetPrevY = gyroOffsetY;
                     if (!lockLand) {
                         let nextX = targetScreen.x + input.x*speedX*dt;
                         let nextY = targetScreen.y - input.y*speedY*dt;
@@ -1279,7 +1313,7 @@ async function main() {
         jBtn.textContent = state==='DEAD'?'REVIVE':'JUMP';
 
         // Camera
-        const gyroAllowed = USE_GYRO && gyro.enabled && !moving;
+        const gyroAllowed = USE_GYRO && gyro.enabled && !moving && state==='JUMPING';
         if(state==='JUMPING'){
             const targetY=pos.y+0.1;
             viewY+=(targetY-viewY)*0.04;
@@ -1314,7 +1348,7 @@ async function main() {
         const bodyOffset = character.charHeight * BODY_OFFSET_SCALE;
         tmpVec2.copy(pos); tmpVec2.y += bodyOffset; tmpVec2.project(camera);
         const effectSX = (tmpVec2.x*0.5+0.5)*W();
-        const effectSY = (-tmpVec2.y*0.5+0.5)*H();
+        const effectSY = (-tmpVec2.y*0.5+0.5)*H() + 10;
         if (state === 'DEAD' && deathStartTime) {
             const delay = 1.0;
             const duration = 5.0;
@@ -1335,8 +1369,7 @@ async function main() {
         let revealPx = 0;
         if (state === 'DEAD' && gyro.enabled) {
             const tiltDelta = (gyro.rawBeta || 90) - (deathBeta || 90);
-            const excess = tiltDelta - 40;
-            const revealNorm = Math.max(0, Math.min(1, excess / 45));
+            const revealNorm = Math.max(0, Math.min(1, tiltDelta / 45));
             deathRevealTargetPx = revealNorm * (H() * 0.7);
             deathRevealPx += (deathRevealTargetPx - deathRevealPx) * 0.08;
             revealPx = deathRevealPx;
