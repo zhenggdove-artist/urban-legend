@@ -7,7 +7,8 @@
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
         html,body{width:100%;height:100%;overflow:hidden;background:#000;
-            touch-action:none;-webkit-user-select:none;user-select:none}
+            touch-action:none;-webkit-user-select:none;user-select:none;
+            font-family:'Courier New',monospace}
         #camera-video{position:absolute;top:0;left:0;width:100%;height:100%;
             object-fit:cover;z-index:0;
             background:linear-gradient(180deg,#87CEEB 0%,#4a90d9 40%,#2c3e50 40.5%,#1a1a2e 100%)}
@@ -17,36 +18,69 @@
         #vhs-scanlines{position:absolute;top:0;left:0;width:100%;height:100%;
             z-index:3;pointer-events:none;
             background:repeating-linear-gradient(0deg,
-                transparent 0px,transparent 2px,
-                rgba(0,0,0,0.08) 2px,rgba(0,0,0,0.08) 4px)}
+                transparent 0px,transparent 3px,
+                rgba(0,0,0,0.04) 3px,rgba(0,0,0,0.04) 6px)}
         #vhs-noise{position:absolute;top:0;left:0;width:100%;height:100%;
-            z-index:4;pointer-events:none;opacity:0.12}
+            z-index:4;pointer-events:none;opacity:0.10}
         #vhs-tracking{position:absolute;left:0;width:100%;height:0;
             z-index:4;pointer-events:none;background:rgba(255,255,255,0.08)}
         #pan-zone{position:absolute;top:0;left:0;width:100%;height:100%;z-index:5;touch-action:none}
         #debug-info{position:absolute;top:40px;left:10px;z-index:30;
-            color:#0f0;font:11px/1.4 monospace;background:rgba(0,0,0,.6);
-            padding:5px 8px;border-radius:4px;pointer-events:none;max-width:260px;
-            text-shadow:0 0 4px #0f0}
+            color:rgba(120,120,144,0.7);font:11px/1.4 'Courier New',monospace;
+            background:rgba(0,0,0,.5);padding:5px 8px;border-radius:0;
+            pointer-events:none;max-width:260px;letter-spacing:1px}
         #joystick-zone{position:absolute;z-index:31;width:120px;height:120px;
-            background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.25);
+            background:rgba(120,120,144,.08);border:1px solid rgba(184,184,208,.2);
             border-radius:50%;touch-action:none}
         #joystick-knob{position:absolute;top:30px;left:30px;width:60px;height:60px;
-            background:rgba(255,255,255,.4);border-radius:50%}
+            background:rgba(184,184,208,.25);border-radius:50%;
+            border:1px solid rgba(184,184,208,.3)}
         #jump-btn{position:absolute;z-index:31;width:80px;height:80px;
-            background:rgba(220,40,40,.5);border:2px solid rgba(255,80,80,.4);
+            background:rgba(200,50,50,.25);border:1px solid rgba(255,80,80,.3);
             border-radius:50%;display:flex;justify-content:center;align-items:center;
-            color:#fff;font:bold 14px sans-serif;touch-action:none}
-        #jump-btn.pressed{transform:scale(.9);background:rgba(255,50,50,.8)}
+            color:rgba(184,184,208,.8);font:bold 12px 'Courier New',monospace;
+            letter-spacing:2px;touch-action:none;text-transform:uppercase}
+        #jump-btn.pressed{transform:scale(.9);background:rgba(255,50,50,.5);
+            color:#fff;text-shadow:0 0 8px rgba(255,80,80,0.6)}
+        /* Off-screen arrow indicator */
+        #offscreen-arrow{position:absolute;z-index:25;pointer-events:none;
+            font-size:28px;color:rgba(0,255,220,0.9);
+            text-shadow:0 0 12px rgba(0,255,220,0.6),0 0 24px rgba(0,255,220,0.3);
+            font-family:'Courier New',monospace;display:none;
+            animation:arrowPulse 1s ease-in-out infinite}
+        @keyframes arrowPulse{
+            0%,100%{opacity:0.6;transform:translate(-50%,-50%) scale(1)}
+            50%{opacity:1;transform:translate(-50%,-50%) scale(1.2)}
+        }
+        /* Loading screen — reference site style */
         #loading-screen{position:absolute;top:0;left:0;width:100%;height:100%;
-            background:rgba(0,0,0,.92);z-index:100;display:flex;flex-direction:column;
-            justify-content:center;align-items:center;color:#fff;font-family:sans-serif}
-        #loading-screen h2{margin-bottom:16px;font-size:20px}
-        #loading-bar-bg{width:160px;height:5px;background:rgba(255,255,255,.15);border-radius:3px;overflow:hidden}
-        #loading-bar{width:0%;height:100%;background:#e63946;border-radius:3px;transition:width .3s}
-        #loading-status{margin-top:10px;font-size:13px;opacity:.6}
-        #start-btn{display:none;margin-top:20px;padding:12px 44px;background:#e63946;
-            color:#fff;border:none;border-radius:10px;font-size:17px;font-weight:bold;cursor:pointer}
+            background:#000;z-index:100;display:flex;flex-direction:column;
+            justify-content:center;align-items:center;color:rgba(184,184,208,0.7)}
+        .loading-scanlines{position:absolute;inset:0;pointer-events:none;
+            background:repeating-linear-gradient(to bottom,
+                transparent 0px,transparent 3px,
+                rgba(0,0,0,0.03) 3px,rgba(0,0,0,0.03) 6px)}
+        .loading-deco{font-family:'Courier New',monospace;font-size:0.8rem;
+            color:rgba(120,120,144,0.35);letter-spacing:3px;margin-bottom:1.5rem}
+        #loading-screen h2{margin-bottom:8px;font-family:'Courier New',monospace;
+            font-size:1.6rem;letter-spacing:0.4em;color:rgba(184,184,208,0.8);
+            font-weight:normal;text-transform:uppercase}
+        .loading-sub{font-size:0.7rem;color:rgba(120,120,144,0.5);
+            letter-spacing:2px;font-style:italic;margin-bottom:2rem}
+        #loading-bar-bg{width:200px;height:1px;background:rgba(184,184,208,.15);overflow:hidden}
+        #loading-bar{width:0%;height:100%;background:rgba(184,184,208,0.5);transition:width .3s}
+        #loading-status{margin-top:12px;font-size:0.7rem;color:rgba(120,120,144,0.4);
+            letter-spacing:2px;font-family:'Courier New',monospace}
+        #start-btn{display:none;margin-top:2rem;padding:10px 40px;
+            background:transparent;color:rgba(184,184,208,0.7);
+            border:1px solid rgba(184,184,208,0.25);font-size:0.8rem;
+            font-family:'Courier New',monospace;letter-spacing:4px;
+            text-transform:uppercase;cursor:pointer;transition:all 0.3s}
+        #start-btn:hover,#start-btn:active{color:#fff;
+            border-color:rgba(184,184,208,0.5);
+            text-shadow:0 0 8px rgba(255,255,255,0.3)}
+        .loading-ornament{margin-top:2rem;font-size:0.7rem;
+            color:rgba(120,120,144,0.2);letter-spacing:2px}
     </style>
     <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
     <script type="importmap">{"imports":{
@@ -57,7 +91,7 @@
 <body>
     <video id="camera-video" autoplay playsinline muted></video>
     <!-- 3D canvas inserted by JS -->
-    <canvas id="tentacle-canvas" style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:2;pointer-events:none"></canvas>
+    <canvas id="tentacle-canvas" style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:2;pointer-events:none;image-rendering:auto"></canvas>
     <div id="vhs-scanlines"></div>
     <canvas id="vhs-noise"></canvas>
     <div id="vhs-tracking"></div>
@@ -65,11 +99,16 @@
     <div id="debug-info">Loading...</div>
     <div id="joystick-zone"><div id="joystick-knob"></div></div>
     <div id="jump-btn">JUMP</div>
+    <div id="offscreen-arrow"></div>
     <div id="loading-screen">
+        <div class="loading-scanlines"></div>
+        <div class="loading-deco">o()xxxx[{:::::::::::::::::::&gt;</div>
         <h2>都市傳說</h2>
+        <div class="loading-sub">&middot; urban legend &middot;</div>
         <div id="loading-bar-bg"><div id="loading-bar"></div></div>
         <div id="loading-status">初始化中...</div>
-        <button id="start-btn">開始遊戲</button>
+        <button id="start-btn">&#x2727; 開始 &#x2727;</button>
+        <div class="loading-ornament">&lt;:::::::::::::::::::}]xxxx()o</div>
     </div>
 <script type="module">
 import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
@@ -120,11 +159,15 @@ class GyroTracker {
     }
     _onOrientation(e) {
         if (e.beta===null) { this.status='beta-null'; return; }
-        this.rawBeta=e.beta; this.rawGamma=e.gamma||0;
+        this.rawBeta=e.beta;
+        // Clamp gamma to avoid gimbal lock flicker near +-90
+        this.rawGamma=Math.max(-60, Math.min(60, e.gamma||0));
         this.viewY = 0.5 + (e.beta-90)*0.025;
         this.viewX = this.rawGamma*0.002;
-        this.smoothX += (this.viewX-this.smoothX)*0.08;
-        this.smoothY += (this.viewY-this.smoothY)*0.08;
+        // Heavier smoothing to prevent jitter/flicker
+        const sf = 0.04;
+        this.smoothX += (this.viewX-this.smoothX)*sf;
+        this.smoothY += (this.viewY-this.smoothY)*sf;
         this.enabled=true; this.status='active';
     }
     async init() {
@@ -190,7 +233,7 @@ class TentacleSystem2D {
         this.RINGS = 35;
         this.PTS_PER_RING = 10;
         this.GLYPHS = ['.', '\u00B7', '\u2022', '\u2219', '\u25E6', '\u2218', 'o', '\u00B0', '*', '+'];
-        this.PALETTES = [[0,255,220],[255,0,180],[0,220,80],[200,200,230],[255,80,80]];
+        this.PALETTES = [[0,255,220],[255,50,200],[50,255,120],[220,180,255],[255,100,100]];
     }
     // Build interpolated spine from control points
     _buildSpine(ctrls, numSeg) {
@@ -367,8 +410,11 @@ class TentacleSystem2D {
                 p.y = p.baseY+Math.cos(t*p.speed*0.7+p.phase)*p.amp;
             }));
 
-            // Draw
+            // Draw with glow
             const visRings = Math.ceil(ten.totalRings*growT);
+            const cr0=ten.color[0], cg0=ten.color[1], cb0=ten.color[2];
+            ctx.shadowColor=`rgba(${cr0},${cg0},${cb0},0.8)`;
+            ctx.shadowBlur=10;
             for (let r=0; r<visRings&&r<ten.rings.length; r++) {
                 const u = r/ten.rings.length;
                 let ringAlpha = 1;
@@ -376,18 +422,19 @@ class TentacleSystem2D {
                     const fadeZone=0.15;
                     ringAlpha = Math.max(0,Math.min(1,(growT-u+fadeZone)/fadeZone));
                 }
-                const cr=Math.min(255,Math.floor(ten.color[0]*(1-u*0.3)));
-                const cg=Math.min(255,Math.floor(ten.color[1]*(1-u*0.2)));
-                const cb=Math.min(255,Math.floor(ten.color[2]*(1-u*0.1)));
+                const cr=Math.min(255,Math.floor(cr0*(1-u*0.15)));
+                const cg=Math.min(255,Math.floor(cg0*(1-u*0.1)));
+                const cb=Math.min(255,Math.floor(cb0*(1-u*0.05)));
                 ctx.fillStyle=`rgb(${cr},${cg},${cb})`;
                 const ring=ten.rings[r];
                 for (let j=0; j<ring.length; j++) {
                     const p=ring[j];
-                    ctx.globalAlpha = Math.min(1,p.alpha*ringAlpha);
-                    ctx.font = Math.max(2,p.size*ringAlpha)+'px "Courier New",monospace';
+                    ctx.globalAlpha = Math.min(1,p.alpha*ringAlpha*1.3);
+                    ctx.font = `bold ${Math.max(3,p.size*ringAlpha*1.4)}px "Courier New",monospace`;
                     ctx.fillText(p.glyph, p.x, p.y);
                 }
             }
+            ctx.shadowBlur=0;
         }
         ctx.globalAlpha=1;
     }
@@ -399,15 +446,15 @@ class BloodSplatter2D {
         this.canvas = document.getElementById('tentacle-canvas');
         this.ctx = this.canvas.getContext('2d');
         this.particles = [];
-        this.GLYPHS = ['*','#','@','%','&','+','x','X','!','.',','];
-        this.COLORS = ['#ff0000','#cc0000','#990000','#ff3333','#bb0011','#dd2200','#ff1111'];
+        this.GLYPHS = ['*','#','@','%','&','+','x','X','!','.',',','$','~'];
+        this.COLORS = ['#ff2222','#ff0000','#ff4444','#ee0033','#ff1155','#ff0044','#cc0000'];
     }
     spawn(sx, sy) {
-        const count = 40+Math.floor(Math.random()*30);
+        const count = 60+Math.floor(Math.random()*40);
         for (let i=0; i<count; i++) {
             const angle = Math.random()*Math.PI*2;
-            const speed = 50+Math.random()*250;
-            const size = 6+Math.random()*18;
+            const speed = 80+Math.random()*350;
+            const size = 10+Math.random()*22;
             this.particles.push({
                 x:sx, y:sy,
                 vx: Math.cos(angle)*speed,
@@ -436,21 +483,25 @@ class BloodSplatter2D {
             p.rotation += p.rotSpeed*dt;
             p.life -= p.decay*dt;
             if (p.life<=0) { this.particles.splice(i,1); continue; }
-            // Draw dripping/splatting glyph
+            // Draw dripping/splatting glyph with glow
             ctx.save();
             ctx.translate(p.x, p.y);
             ctx.rotate(p.rotation);
-            ctx.globalAlpha = Math.min(1, p.life);
+            ctx.globalAlpha = Math.min(1, p.life*1.2);
             ctx.fillStyle = p.color;
-            ctx.font = `bold ${Math.max(3, p.size*p.life)}px "Courier New",monospace`;
+            ctx.shadowColor = '#ff0000';
+            ctx.shadowBlur = 12*p.life;
+            ctx.font = `bold ${Math.max(4, p.size*Math.max(0.4,p.life))}px "Courier New",monospace`;
             ctx.fillText(p.glyph, 0, 0);
             // Drip trail effect
             if (p.life>0.3) {
-                ctx.globalAlpha = p.life*0.3;
-                ctx.font = `${Math.max(2, p.size*0.5)}px "Courier New",monospace`;
-                ctx.fillText('.', 0, -p.size*0.6);
-                ctx.fillText('.', 0, -p.size*1.2);
+                ctx.globalAlpha = p.life*0.5;
+                ctx.font = `bold ${Math.max(3, p.size*0.6)}px "Courier New",monospace`;
+                ctx.fillText('.', 0, -p.size*0.5);
+                ctx.fillText(',', 0, -p.size*1.0);
+                ctx.fillText('.', 0, -p.size*1.5);
             }
+            ctx.shadowBlur = 0;
             ctx.restore();
         }
         ctx.globalAlpha=1;
@@ -641,7 +692,7 @@ async function main() {
     let joyTouchId=null, joyX0=0, joyY0=0;
     jZone.addEventListener('pointerdown', e=>{
         joyTouchId=e.pointerId; joyX0=e.clientX; joyY0=e.clientY;
-        jKnob.style.background='rgba(255,255,255,.7)';
+        jKnob.style.background='rgba(184,184,208,.5)';
         jZone.setPointerCapture(e.pointerId);
         e.preventDefault(); e.stopPropagation();
     },{passive:false});
@@ -657,14 +708,14 @@ async function main() {
         if(e.pointerId!==joyTouchId) return;
         joyTouchId=null;
         jKnob.style.transform='translate(0,0)';
-        jKnob.style.background='rgba(255,255,255,.4)';
+        jKnob.style.background='rgba(184,184,208,.25)';
         input.x=0; input.y=0; e.stopPropagation();
     });
     jZone.addEventListener('pointercancel', e=>{
         if(e.pointerId!==joyTouchId) return;
         joyTouchId=null;
         jKnob.style.transform='translate(0,0)';
-        jKnob.style.background='rgba(255,255,255,.4)';
+        jKnob.style.background='rgba(184,184,208,.25)';
         input.x=0; input.y=0;
     });
 
@@ -693,7 +744,7 @@ async function main() {
 
     // ===== Game State =====
     const clock = new THREE.Clock();
-    let state='CLIMB', fallVY=0, deaths=0, deathTimer=0;
+    let state='CLIMB', fallVY=0, deaths=0;
     const dbg = document.getElementById('debug-info');
     const halfVisW = camZ*Math.tan(THREE.MathUtils.degToRad(VFOV/2))*(W()/H());
 
@@ -734,7 +785,6 @@ async function main() {
                     pos.y=0.01; fallVY=0;
                     state='DEAD';
                     character.setState('DEATH');
-                    deathTimer=4.0;
                     // Project character to screen coords and spawn 2D tentacles + blood
                     const pv = new THREE.Vector3().copy(pos).project(camera);
                     const sx = (pv.x*0.5+0.5)*W();
@@ -744,18 +794,20 @@ async function main() {
                 }
                 break;
             case 'DEAD':
-                deathTimer -= dt;
-                if(deathTimer<=0){
+                // Stay dead until player presses jump to respawn
+                if(input.jump){
                     state='CLIMB';
                     pos.set(0,0.5,0);
+                    pos.z=0;
                     character.root.rotation.y=Math.PI;
                     character.setState('IDLE');
-                    viewY=0.5;
+                    viewY=0.5; viewX=0;
                 }
                 break;
         }
         input.jump=false;
         if(state==='CLIMB') character.root.rotation.y=Math.PI;
+        jBtn.textContent = state==='DEAD'?'REVIVE':'JUMP';
 
         // Camera
         if(state==='JUMPING'||state==='DEAD'){
@@ -791,6 +843,30 @@ async function main() {
 
         // Render 3D scene directly
         renderer.render(scene, camera);
+
+        // Off-screen arrow indicator
+        const arrow = document.getElementById('offscreen-arrow');
+        const margin = 30;
+        const onScreen = charSX>margin && charSX<W()-margin && charSY>margin && charSY<H()-margin;
+        if (!onScreen && state!=='DEAD') {
+            arrow.style.display='block';
+            // Clamp to screen edge
+            const cx=W()/2, cy=H()/2;
+            const dx=charSX-cx, dy=charSY-cy;
+            const angle=Math.atan2(dy,dx);
+            const edgeX=Math.max(40,Math.min(W()-40, cx+Math.cos(angle)*(W()/2-50)));
+            const edgeY=Math.max(40,Math.min(H()-40, cy+Math.sin(angle)*(H()/2-50)));
+            arrow.style.left=edgeX+'px';
+            arrow.style.top=edgeY+'px';
+            // Arrow character based on direction
+            const deg=angle*180/Math.PI;
+            if(deg>-45&&deg<=45) arrow.textContent='\u25B6';
+            else if(deg>45&&deg<=135) arrow.textContent='\u25BC';
+            else if(deg>-135&&deg<=-45) arrow.textContent='\u25B2';
+            else arrow.textContent='\u25C0';
+        } else {
+            arrow.style.display='none';
+        }
 
         // Debug
         const sb=camera.position.y-0.5, st=camera.position.y+0.5;
