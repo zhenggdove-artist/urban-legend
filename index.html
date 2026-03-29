@@ -14,6 +14,8 @@
             background:linear-gradient(180deg,#87CEEB 0%,#4a90d9 40%,#2c3e50 40.5%,#1a1a2e 100%)}
         #canvas3d{position:absolute;top:0;left:0;width:100%;height:100%;
             z-index:2;pointer-events:none}
+        #blood-canvas{position:absolute;top:0;left:0;width:100%;height:100%;
+            z-index:1;pointer-events:none}
         /* VHS scanlines */
         #vhs-scanlines{position:absolute;top:0;left:0;width:100%;height:100%;
             z-index:3;pointer-events:none;
@@ -96,6 +98,7 @@
 </head>
 <body>
     <video id="camera-video" autoplay playsinline muted></video>
+    <canvas id="blood-canvas"></canvas>
     <!-- 3D canvas inserted by JS -->
     <canvas id="tentacle-canvas" style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:2;pointer-events:none;image-rendering:auto"></canvas>
     <div id="vhs-scanlines"></div>
@@ -145,7 +148,11 @@ const SAT_THRESHOLD = 0.35;
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
 function updateSegmentation(video) {
-    if (!video || video.readyState < 2) { segActive = false; return; }
+    if (!video || video.readyState < 2) {
+        segActive = false;
+        for (let y = 0; y < SEG_H; y++) obstacleMap[y].fill(0);
+        return;
+    }
     segFrame++;
     if (segFrame % 2 !== 0) return;
     segCtx.drawImage(video, 0, 0, SEG_W, SEG_H);
@@ -182,7 +189,6 @@ function updateSegmentation(video) {
 }
 
 function isObstacleAt(sx, sy) {
-    if (!segActive) return false;
     const gx = clamp(Math.floor(sx / W() * SEG_W), 0, SEG_W - 1);
     const gy = clamp(Math.floor(sy / H() * SEG_H), 0, SEG_H - 1);
     return obstacleMap[gy][gx] === 1;
@@ -503,10 +509,11 @@ class TentacleSystem2D {
 // ===== Blood Particles (persistent) =====
 class BloodSystem2D {
     constructor() {
-        this.canvas = document.getElementById('tentacle-canvas');
+        this.canvas = document.getElementById('blood-canvas');
         this.ctx = this.canvas.getContext('2d');
         this.particles = [];
         this.stains = [];
+        this.GLYPHS = ['.', '\u00B7', '\u2022', '\u2219', '\u25E6', '\u2218', 'o', '\u00B0', '*', '+'];
         this.COLORS = ['#ff1a2a', '#d1001b', '#b00018', '#ff3040', '#aa0015'];
         this.bleedTimer = 0;
         this.maxParticles = 900;
@@ -522,23 +529,34 @@ class BloodSystem2D {
             vy: Math.sin(angle)*speed,
             gravity: 520+Math.random()*220,
             age: 0,
-            size: 2+Math.random()*3,
+            size: 4+Math.random()*6,
+            glyph: this.GLYPHS[Math.floor(Math.random()*this.GLYPHS.length)],
             color: this.COLORS[Math.floor(Math.random()*this.COLORS.length)]
         });
     }
     _addStain(x, y, size, color) {
         if (this.stains.length >= this.maxStains) return;
+        const spots = [];
+        const spotCount = 3 + Math.floor(Math.random()*4);
+        for (let i=0; i<spotCount; i++) {
+            spots.push({
+                dx: (Math.random()-0.5)*0.9,
+                dy: (Math.random()-0.5)*0.9,
+                glyph: this.GLYPHS[Math.floor(Math.random()*this.GLYPHS.length)]
+            });
+        }
         this.stains.push({
             x, y,
             r: size,
             grow: 6+Math.random()*10,
             alpha: 0.6+Math.random()*0.3,
-            color
+            color,
+            spots
         });
     }
     burst(sx, sy) {
         for (let i=0; i<80; i++) {
-            this._spawnParticle(sx, sy, 80, 320, Math.PI*2);
+            this._spawnParticle(sx, sy, 140, 420, Math.PI/2);
         }
         for (let i=0; i<10; i++) {
             this._addStain(sx+(Math.random()-0.5)*18, sy+(Math.random()-0.5)*18, 6+Math.random()*10,
@@ -549,7 +567,7 @@ class BloodSystem2D {
         this.bleedTimer += dt;
         while (this.bleedTimer > 0.05) {
             this.bleedTimer -= 0.05;
-            this._spawnParticle(sx+(Math.random()-0.5)*6, sy+(Math.random()-0.5)*6, 20, 120, Math.PI/2);
+            this._spawnParticle(sx+(Math.random()-0.5)*6, sy+(Math.random()-0.5)*6, 15, 80, Math.PI/3);
             if (Math.random() < 0.4) {
                 this._addStain(sx+(Math.random()-0.5)*10, sy+(Math.random()-0.5)*10, 3+Math.random()*4,
                     this.COLORS[Math.floor(Math.random()*this.COLORS.length)]);
@@ -563,14 +581,23 @@ class BloodSystem2D {
     }
     update(dt) {
         const ctx = this.ctx;
+        if (this.canvas.width !== W() || this.canvas.height !== H()) {
+            this.canvas.width = W();
+            this.canvas.height = H();
+        }
+        ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        ctx.textAlign='center'; ctx.textBaseline='middle';
         ctx.save();
         for (const s of this.stains) {
             s.r += s.grow*dt;
-            ctx.globalAlpha = s.alpha;
+            ctx.globalAlpha = s.alpha*0.9;
             ctx.fillStyle = s.color;
-            ctx.beginPath();
-            ctx.arc(s.x, s.y, s.r, 0, Math.PI*2);
-            ctx.fill();
+            for (const sp of s.spots) {
+                const px = s.x + sp.dx * s.r;
+                const py = s.y + sp.dy * s.r;
+                ctx.font = `bold ${Math.max(4, s.r*0.7)}px "Courier New",monospace`;
+                ctx.fillText(sp.glyph, px, py);
+            }
         }
         for (let i=this.particles.length-1; i>=0; i--) {
             const p = this.particles[i];
@@ -582,9 +609,8 @@ class BloodSystem2D {
             p.vy *= 0.98;
             ctx.globalAlpha = 0.9;
             ctx.fillStyle = p.color;
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
-            ctx.fill();
+            ctx.font = `bold ${Math.max(4, p.size)}px "Courier New",monospace`;
+            ctx.fillText(p.glyph, p.x, p.y);
             if (p.age > 0.7 || (Math.abs(p.vx)+Math.abs(p.vy)) < 30) {
                 this._addStain(p.x, p.y, 4+Math.random()*5, p.color);
                 this.particles.splice(i,1);
@@ -690,10 +716,21 @@ class GameCharacter {
         } else next.reset().play();
         this.curAction=next;
     }
-    update(dt, moveY) {
+    update(dt, moveY, holdClimbPose) {
         if(!this.mixer) return;
-        if(this.curState==='CLIMB'&&this.anims['CLIMB'])
-            this.anims['CLIMB'].timeScale = moveY>0?1.5:(moveY<0?-1.5:0);
+        if(this.curState==='CLIMB'&&this.anims['CLIMB']) {
+            const act = this.anims['CLIMB'];
+            if (holdClimbPose) {
+                act.play();
+                act.paused = true;
+                const dur = act.getClip().duration || 0;
+                act.time = Math.max(0, dur - 0.02);
+                act.timeScale = 0;
+            } else {
+                act.paused = false;
+                act.timeScale = moveY>0?1.5:(moveY<0?-1.5:1.0);
+            }
+        }
         this.mixer.update(dt);
     }
 }
@@ -730,6 +767,7 @@ async function main() {
     const blood = new BloodSystem2D();
     const gyro = new GyroTracker();
     const vhs = new VHSEffect();
+    const USE_GYRO = false;
 
     $status.textContent='ready.';
     $start.style.display='block';
@@ -738,7 +776,7 @@ async function main() {
         $status.textContent='launching...';
         $start.style.display='none';
         try {
-            await gyro.init();
+            if (USE_GYRO) await gyro.init();
             const hasCam = await startCamera();
             window._hasCam = hasCam;
         } catch(e){ console.warn('Init error:',e); }
@@ -833,6 +871,7 @@ async function main() {
     // ===== Game State =====
     const clock = new THREE.Clock();
     let state='CLIMB', fallVY=0, deaths=0;
+    let climbEngaged = false;
     const dbg = document.getElementById('debug-info');
     const halfVisW = camZ*Math.tan(THREE.MathUtils.degToRad(VFOV/2))*(W()/H());
 
@@ -862,13 +901,24 @@ async function main() {
         const pos = character.root.position;
         updateSegmentation(videoEl);
 
+        const moving = Math.abs(input.y)>0.1||Math.abs(input.x)>0.1;
+        const useObstacles = !!hasCamera;
+        const holdClimbPose = useObstacles && climbEngaged && !moving;
+
         // Game Logic
         switch(state) {
             case 'CLIMB':
-                if(Math.abs(input.y)>0.1||Math.abs(input.x)>0.1) character.setState('CLIMB');
-                else character.setState('IDLE');
+                if (useObstacles) {
+                    if (moving) climbEngaged = true;
+                    if (!climbEngaged && !moving) character.setState('IDLE');
+                    else character.setState('CLIMB');
+                } else {
+                    if(moving) character.setState('CLIMB');
+                    else character.setState('IDLE');
+                    climbEngaged = false;
+                }
 
-                if (segActive) {
+                if (useObstacles) {
                     const speedX = 170;
                     const speedY = 160;
                     let nextX = charScreen.x + input.x*speedX*dt;
@@ -902,6 +952,7 @@ async function main() {
                     character.root.rotation.y=0;
                     fallVY=0.4;
                     deaths++;
+                    climbEngaged = false;
                 }
                 break;
             case 'JUMPING':
@@ -935,6 +986,7 @@ async function main() {
                     viewY=0.5; viewX=0;
                     charScreen = worldToScreen(pos);
                     blood.reset();
+                    climbEngaged = false;
                 }
                 break;
         }
@@ -946,14 +998,14 @@ async function main() {
         if(state==='JUMPING'||state==='DEAD'){
             const targetY=pos.y+0.1;
             viewY+=(targetY-viewY)*0.04;
-            if(gyro.enabled) viewX=gyro.smoothX;
+            if(USE_GYRO && gyro.enabled) viewX=gyro.smoothX;
         } else {
-            if(gyro.enabled){
+            if(USE_GYRO && gyro.enabled){
                 viewY=gyro.smoothY; viewX=gyro.smoothX;
             }
         }
         viewY=Math.max(-0.2, viewY);
-        if(gyro.enabled) {
+        if(USE_GYRO && gyro.enabled) {
             // Gyro already smoothed — apply directly to avoid double-smoothing lag
             camera.position.x = viewX;
             camera.position.y = viewY;
@@ -964,13 +1016,13 @@ async function main() {
         camera.lookAt(camera.position.x, camera.position.y, 0);
 
         // Update systems
-        character.update(dt, input.y);
+        character.update(dt, input.y, holdClimbPose);
         // Move tentacle anchors to follow character's screen position
         const proj = new THREE.Vector3().copy(pos).project(camera);
         const charSX = (proj.x*0.5+0.5)*W();
         const charSY = (-proj.y*0.5+0.5)*H();
         charScreen.x = charSX; charScreen.y = charSY;
-        if (state === 'DEAD') blood.bleed(charSX, charSY, dt);
+        if (state === 'DEAD') blood.bleed(charSX, charSY+6, dt);
         tentacles.moveAnchors(charSX, charSY);
         tentacles.update(t);
         blood.update(dt);
