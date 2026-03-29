@@ -401,8 +401,9 @@ class TentacleSystem2D {
         this.tentacles = []; // persists across deaths
         this.RINGS = 24;
         this.PTS_PER_RING = 7;
+        this.SCALE = 2.0;
         this.GLYPHS = ['.', '\u00B7', '\u2022', '\u2219', '\u25E6', '\u2218', 'o', '\u00B0', '*', '+'];
-        this.PALETTES = [[0,255,220],[255,80,220],[80,255,160],[220,200,255],[255,140,140]];
+        this.PALETTES = [[255,40,40]];
     }
     // Build interpolated spine from control points
     _buildSpine(ctrls, numSeg) {
@@ -473,10 +474,10 @@ class TentacleSystem2D {
         const count = 4+Math.floor(Math.random()*3);
         for (let i=0; i<count; i++) {
             const baseAngle = Math.random()*Math.PI*2;
-            const totalLen = 30+Math.random()*50;
+            const totalLen = (30+Math.random()*50) * this.SCALE;
             const spiralDir = Math.random()<0.5?1:-1;
             const spiralStr = 0.5+Math.random()*1.2;
-            const wiggle = 2+Math.random()*4;
+            const wiggle = (2+Math.random()*4) * this.SCALE;
             const ctrlCount = 10;
             const ctrls = [{x:sx, y:sy}];
             let cx=sx, cy=sy, angle=baseAngle;
@@ -489,7 +490,7 @@ class TentacleSystem2D {
                 ctrls.push({x:cx, y:cy});
             }
             const spine = this._buildSpine(ctrls, this.RINGS);
-            const baseR = 5.0+Math.random()*6.0;
+            const baseR = (5.0+Math.random()*6.0) * this.SCALE;
             const rings = this._generateRings(spine, baseR, 0.85);
             const pal = this.PALETTES[Math.floor(Math.random()*this.PALETTES.length)];
             const gd = 200+Math.random()*500;
@@ -503,7 +504,7 @@ class TentacleSystem2D {
                 totalRings: this.RINGS, color: pal, baseR,
                 wrigglePhase: Math.random()*Math.PI*2,
                 wriggleFreq: 1.5+Math.random()*2.5,
-                wriggleAmp: 2+Math.random()*4,
+                wriggleAmp: (2+Math.random()*4) * this.SCALE,
                 recoilTarget,
                 recoilDuration: gd*(1-recoilTarget)*recoilSpeedMul*(0.8+Math.random()*0.4)*4,
                 relaxDuration: gd*(1-recoilTarget)/(0.15+Math.random()*0.1),
@@ -524,6 +525,7 @@ class TentacleSystem2D {
         this.canvas.width = cw; this.canvas.height = ch;
         const ctx = this.ctx;
         ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.imageSmoothingEnabled = false;
         const now = Date.now();
 
         for (const ten of this.tentacles) {
@@ -579,7 +581,7 @@ class TentacleSystem2D {
                 p.y = p.baseY+Math.cos(t*p.speed*0.7+p.phase)*p.amp;
             }));
 
-            // Draw — no shadowBlur for performance; use bright colors + bold for visibility
+            // Draw — solid red squares for sharp, high-contrast silhouette
             const visRings = Math.ceil(ten.totalRings*growT);
             const cr0=ten.color[0], cg0=ten.color[1], cb0=ten.color[2];
             for (let r=0; r<visRings&&r<ten.rings.length; r++) {
@@ -589,16 +591,16 @@ class TentacleSystem2D {
                     const fadeZone=0.15;
                     ringAlpha = Math.max(0,Math.min(1,(growT-u+fadeZone)/fadeZone));
                 }
-                const cr=Math.min(255,Math.floor(cr0*(1-u*0.15)));
+                const cr=Math.min(255,Math.floor(cr0*(1-u*0.1)));
                 const cg=Math.min(255,Math.floor(cg0*(1-u*0.1)));
-                const cb=Math.min(255,Math.floor(cb0*(1-u*0.05)));
+                const cb=Math.min(255,Math.floor(cb0*(1-u*0.1)));
                 ctx.fillStyle=`rgb(${cr},${cg},${cb})`;
                 const ring=ten.rings[r];
                 for (let j=0; j<ring.length; j++) {
                     const p=ring[j];
                     ctx.globalAlpha = Math.min(1,p.alpha*ringAlpha*3.2);
-                    ctx.font = `bold ${Math.max(6,p.size*ringAlpha*3.6)}px "Courier New",monospace`;
-                    ctx.fillText(p.glyph, p.x, p.y);
+                    const s = Math.max(6, p.size*ringAlpha*3.6);
+                    ctx.fillRect(p.x - s*0.5, p.y - s*0.5, s, s);
                 }
             }
         }
@@ -751,7 +753,7 @@ class GameCharacter {
         scene.add(this.root);
         this.mixer=null; this.anims={}; this.curAction=null; this.curState='IDLE';
         this.root.rotation.y = Math.PI;
-        this.charHeight = 0.033;
+        this.charHeight = 0.066;
     }
     async load() {
         const gl = new GLTFLoader();
@@ -1010,11 +1012,15 @@ async function main() {
     let lastTilt = 0.5;
     let deadViewX = 0;
     let deadViewY = 0.5;
+    let deathBeta = 90;
+    let deathRevealPx = 0;
+    let deathRevealTargetPx = 0;
     let tentacleTargetCount = 0;
     let deathWorld = new THREE.Vector3(0,0,0);
     let deathWorldValid = false;
     const dbg = document.getElementById('debug-info');
     const halfVisW = camZ*Math.tan(THREE.MathUtils.degToRad(VFOV/2))*(W()/H());
+    const halfVisH = camZ*Math.tan(THREE.MathUtils.degToRad(VFOV/2));
     const tmpVec = new THREE.Vector3();
     const tmpVec2 = new THREE.Vector3();
     const BODY_OFFSET_SCALE = 0.55;
@@ -1219,6 +1225,9 @@ async function main() {
                         tentacleBurstCount = 0;
                         tentacleTargetCount = 3 + Math.floor(Math.random()*3);
                         deadViewX = viewX; deadViewY = viewY;
+                        deathBeta = gyro.rawBeta || 90;
+                        deathRevealPx = 0;
+                        deathRevealTargetPx = 0;
                     } else {
                         state='CLIMB';
                         character.setState('IDLE');
@@ -1276,18 +1285,9 @@ async function main() {
             viewY+=(targetY-viewY)*0.04;
             if(gyroAllowed) viewX=gyro.smoothX;
         } else if (state==='DEAD') {
-            let targetX = deadViewX;
-            let targetY = deadViewY;
-            if (gyroAllowed) {
-                const dx = gyro.smoothX - deadViewX;
-                const dy = gyro.smoothY - deadViewY;
-                if (Math.abs(dx) > 0.03 || Math.abs(dy) > 0.03) {
-                    targetX = gyro.smoothX;
-                    targetY = gyro.smoothY;
-                }
-            }
-            viewX += (targetX-viewX)*0.08;
-            viewY += (targetY-viewY)*0.08;
+            // Gyro camera OFF after death; only reveal corpse via tilt mapping
+            viewX += (deadViewX-viewX)*0.08;
+            viewY += (deadViewY-viewY)*0.08;
         } else {
             if(gyroAllowed){
                 viewY=gyro.smoothY; viewX=gyro.smoothX;
@@ -1330,6 +1330,25 @@ async function main() {
         tentacles.update(t);
         blood.update(dt);
         vhs.update();
+
+        // Death reveal: slide overlays + character up from bottom when tilting down 45°
+        let revealPx = 0;
+        if (state === 'DEAD' && gyro.enabled) {
+            const tiltDelta = (gyro.rawBeta || 90) - (deathBeta || 90);
+            const excess = tiltDelta - 40;
+            const revealNorm = Math.max(0, Math.min(1, excess / 45));
+            deathRevealTargetPx = revealNorm * (H() * 0.7);
+            deathRevealPx += (deathRevealTargetPx - deathRevealPx) * 0.08;
+            revealPx = deathRevealPx;
+        } else {
+            deathRevealTargetPx = 0;
+            deathRevealPx += (deathRevealTargetPx - deathRevealPx) * 0.08;
+            revealPx = deathRevealPx;
+        }
+        const dy = -revealPx;
+        renderer.domElement.style.transform = `translateY(${dy}px)`;
+        document.getElementById('blood-canvas').style.transform = `translateY(${dy}px)`;
+        document.getElementById('tentacle-canvas').style.transform = `translateY(${dy}px)`;
 
         // Render 3D scene directly
         renderer.render(scene, camera);
