@@ -587,7 +587,7 @@ class BloodSystem2D {
         this.COLORS = ['#ff1a2a', '#d1001b', '#b00018', '#ff3040', '#aa0015'];
         this.bleedTimer = 0;
         this.maxParticles = 700;
-        this.maxDots = 3000;
+        this.maxDots = 3600;
         this.maxPools = 180;
     }
     _spawnRadialParticle(cx, cy, speedMin, speedMax) {
@@ -668,22 +668,21 @@ class BloodSystem2D {
             p.r += p.v*dt;
             p.v *= p.decay;
             if (p.r > p.maxR) { p.r = p.maxR; p.v = 0; }
-            const dots = Math.max(2, Math.floor(p.r * 0.08));
+            const dots = Math.max(4, Math.floor(p.r * 0.18));
             for (let i=0; i<dots; i++) {
                 const a = Math.random() * Math.PI * 2;
                 const rr = Math.sqrt(Math.random()) * p.r;
                 const x = p.cx + Math.cos(a) * rr;
                 const y = p.cy + Math.sin(a) * rr;
-                this._addStaticDot(x, y, 1.0+Math.random()*0.8, p.color);
+                this._addStaticDot(x, y, 1.2+Math.random()*0.9, p.color);
             }
         }
         // Static dots
-        ctx.globalAlpha = 0.9;
+        ctx.globalAlpha = 0.85;
         for (const d of this.staticDots) {
             ctx.fillStyle = d.color;
-            ctx.beginPath();
-            ctx.arc(d.x, d.y, d.size, 0, Math.PI*2);
-            ctx.fill();
+            const s = d.size;
+            ctx.fillRect(d.x - s*0.5, d.y - s*0.5, s, s);
         }
         // Radial particles (fountain burst)
         for (let i=this.particles.length-1; i>=0; i--) {
@@ -694,11 +693,10 @@ class BloodSystem2D {
             const y = p.cy + Math.sin(p.angle) * p.radius;
             ctx.globalAlpha = 0.95;
             ctx.fillStyle = p.color;
-            ctx.beginPath();
-            ctx.arc(x, y, p.size, 0, Math.PI*2);
-            ctx.fill();
+            const s = p.size;
+            ctx.fillRect(x - s*0.5, y - s*0.5, s, s);
             if (p.age > 0.35 || p.radius > 90) {
-                this._addStaticDot(x, y, 1.0+Math.random()*0.9, p.color);
+                this._addStaticDot(x, y, 1.1+Math.random()*0.8, p.color);
                 this.particles.splice(i,1);
             }
         }
