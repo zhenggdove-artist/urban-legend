@@ -131,6 +131,63 @@ function layoutUI() {
 }
 layoutUI(); window.addEventListener('resize', layoutUI);
 
+// ===== Scene Segmentation (high-saturation obstacles) =====
+const SEG_W = 80, SEG_H = 60;
+const segCanvas = document.createElement('canvas');
+segCanvas.width = SEG_W; segCanvas.height = SEG_H;
+const segCtx = segCanvas.getContext('2d', { willReadFrequently: true });
+const obstacleMap = Array.from({ length: SEG_H }, () => new Uint8Array(SEG_W));
+const obstacleMapTmp = Array.from({ length: SEG_H }, () => new Uint8Array(SEG_W));
+let segActive = false;
+let segFrame = 0;
+const SAT_THRESHOLD = 0.35;
+
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+function updateSegmentation(video) {
+    if (!video || video.readyState < 2) { segActive = false; return; }
+    segFrame++;
+    if (segFrame % 2 !== 0) return;
+    segCtx.drawImage(video, 0, 0, SEG_W, SEG_H);
+    const data = segCtx.getImageData(0, 0, SEG_W, SEG_H).data;
+    let obstacleCount = 0;
+    for (let y = 0; y < SEG_H; y++) {
+        for (let x = 0; x < SEG_W; x++) {
+            const i = (y * SEG_W + x) * 4;
+            const r = data[i], g = data[i + 1], b = data[i + 2];
+            const max = Math.max(r, g, b), min = Math.min(r, g, b);
+            const luma = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+            const sat = max === 0 ? 0 : (max - min) / max;
+            const obstacle = (sat > SAT_THRESHOLD && luma > 0.08 && luma < 0.95) ? 1 : 0;
+            obstacleMapTmp[y][x] = obstacle;
+            obstacleCount += obstacle;
+        }
+    }
+    for (let y = 0; y < SEG_H; y++) {
+        for (let x = 0; x < SEG_W; x++) {
+            const c = obstacleMapTmp[y][x];
+            let n = 0;
+            if (x > 0) n += obstacleMapTmp[y][x - 1];
+            if (x < SEG_W - 1) n += obstacleMapTmp[y][x + 1];
+            if (y > 0) n += obstacleMapTmp[y - 1][x];
+            if (y < SEG_H - 1) n += obstacleMapTmp[y + 1][x];
+            let out = c;
+            if (c) out = n >= 1 ? 1 : 0;
+            else out = n >= 3 ? 1 : 0;
+            obstacleMap[y][x] = out;
+        }
+    }
+    const ratio = obstacleCount / (SEG_W * SEG_H);
+    segActive = obstacleCount > 6 && ratio < 0.95;
+}
+
+function isObstacleAt(sx, sy) {
+    if (!segActive) return false;
+    const gx = clamp(Math.floor(sx / W() * SEG_W), 0, SEG_W - 1);
+    const gy = clamp(Math.floor(sy / H() * SEG_H), 0, SEG_H - 1);
+    return obstacleMap[gy][gx] === 1;
+}
+
 // ===== Loading =====
 const $bar = document.getElementById('loading-bar');
 const $status = document.getElementById('loading-status');
@@ -443,68 +500,98 @@ class TentacleSystem2D {
     }
 }
 
-// ===== ASCII Blood Splatter =====
-class BloodSplatter2D {
+// ===== Blood Particles (persistent) =====
+class BloodSystem2D {
     constructor() {
         this.canvas = document.getElementById('tentacle-canvas');
         this.ctx = this.canvas.getContext('2d');
         this.particles = [];
-        this.GLYPHS = ['*','#','@','%','&','+','x','X','!','.',',','$','~'];
-        this.COLORS = ['#ff2222','#ff0000','#ff4444','#ee0033','#ff1155','#ff0044','#cc0000'];
+        this.stains = [];
+        this.COLORS = ['#ff1a2a', '#d1001b', '#b00018', '#ff3040', '#aa0015'];
+        this.bleedTimer = 0;
+        this.maxParticles = 900;
+        this.maxStains = 1400;
     }
-    spawn(sx, sy) {
-        const count = 30+Math.floor(Math.random()*20);
-        for (let i=0; i<count; i++) {
-            const angle = Math.random()*Math.PI*2;
-            const speed = 80+Math.random()*350;
-            const size = 10+Math.random()*22;
-            this.particles.push({
-                x:sx, y:sy,
-                vx: Math.cos(angle)*speed,
-                vy: Math.sin(angle)*speed - Math.random()*150,
-                gravity: 300+Math.random()*200,
-                life: 1.0,
-                decay: 0.3+Math.random()*0.5,
-                glyph: this.GLYPHS[Math.floor(Math.random()*this.GLYPHS.length)],
-                color: this.COLORS[Math.floor(Math.random()*this.COLORS.length)],
-                size,
-                rotation: Math.random()*Math.PI*2,
-                rotSpeed: (Math.random()-0.5)*5,
-                trail: [] // blood trail
-            });
+    _spawnParticle(sx, sy, speedMin, speedMax, spread) {
+        if (this.particles.length >= this.maxParticles) return;
+        const angle = (Math.random()-0.5)*spread + (-Math.PI/2);
+        const speed = speedMin + Math.random()*(speedMax-speedMin);
+        this.particles.push({
+            x:sx, y:sy,
+            vx: Math.cos(angle)*speed,
+            vy: Math.sin(angle)*speed,
+            gravity: 520+Math.random()*220,
+            age: 0,
+            size: 2+Math.random()*3,
+            color: this.COLORS[Math.floor(Math.random()*this.COLORS.length)]
+        });
+    }
+    _addStain(x, y, size, color) {
+        if (this.stains.length >= this.maxStains) return;
+        this.stains.push({
+            x, y,
+            r: size,
+            grow: 6+Math.random()*10,
+            alpha: 0.6+Math.random()*0.3,
+            color
+        });
+    }
+    burst(sx, sy) {
+        for (let i=0; i<80; i++) {
+            this._spawnParticle(sx, sy, 80, 320, Math.PI*2);
         }
+        for (let i=0; i<10; i++) {
+            this._addStain(sx+(Math.random()-0.5)*18, sy+(Math.random()-0.5)*18, 6+Math.random()*10,
+                this.COLORS[Math.floor(Math.random()*this.COLORS.length)]);
+        }
+    }
+    bleed(sx, sy, dt) {
+        this.bleedTimer += dt;
+        while (this.bleedTimer > 0.05) {
+            this.bleedTimer -= 0.05;
+            this._spawnParticle(sx+(Math.random()-0.5)*6, sy+(Math.random()-0.5)*6, 20, 120, Math.PI/2);
+            if (Math.random() < 0.4) {
+                this._addStain(sx+(Math.random()-0.5)*10, sy+(Math.random()-0.5)*10, 3+Math.random()*4,
+                    this.COLORS[Math.floor(Math.random()*this.COLORS.length)]);
+            }
+        }
+    }
+    reset() {
+        this.particles.length = 0;
+        this.stains.length = 0;
+        this.bleedTimer = 0;
     }
     update(dt) {
         const ctx = this.ctx;
-        ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.save();
+        for (const s of this.stains) {
+            s.r += s.grow*dt;
+            ctx.globalAlpha = s.alpha;
+            ctx.fillStyle = s.color;
+            ctx.beginPath();
+            ctx.arc(s.x, s.y, s.r, 0, Math.PI*2);
+            ctx.fill();
+        }
         for (let i=this.particles.length-1; i>=0; i--) {
-            const p=this.particles[i];
+            const p = this.particles[i];
+            p.age += dt;
             p.vy += p.gravity*dt;
             p.x += p.vx*dt;
             p.y += p.vy*dt;
             p.vx *= 0.98;
-            p.rotation += p.rotSpeed*dt;
-            p.life -= p.decay*dt;
-            if (p.life<=0) { this.particles.splice(i,1); continue; }
-            // Draw dripping/splatting glyph with glow
-            ctx.save();
-            ctx.translate(p.x, p.y);
-            ctx.rotate(p.rotation);
-            ctx.globalAlpha = Math.min(1, p.life*1.2);
+            p.vy *= 0.98;
+            ctx.globalAlpha = 0.9;
             ctx.fillStyle = p.color;
-            ctx.font = `bold ${Math.max(4, p.size*Math.max(0.4,p.life))}px "Courier New",monospace`;
-            ctx.fillText(p.glyph, 0, 0);
-            // Drip trail effect
-            if (p.life>0.3) {
-                ctx.globalAlpha = p.life*0.5;
-                ctx.font = `bold ${Math.max(3, p.size*0.6)}px "Courier New",monospace`;
-                ctx.fillText('.', 0, -p.size*0.5);
-                ctx.fillText(',', 0, -p.size*1.0);
-                ctx.fillText('.', 0, -p.size*1.5);
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
+            ctx.fill();
+            if (p.age > 0.7 || (Math.abs(p.vx)+Math.abs(p.vy)) < 30) {
+                this._addStain(p.x, p.y, 4+Math.random()*5, p.color);
+                this.particles.splice(i,1);
             }
-            ctx.restore();
         }
-        ctx.globalAlpha=1;
+        ctx.restore();
+        ctx.globalAlpha = 1;
     }
 }
 
@@ -640,7 +727,7 @@ async function main() {
     await character.load();
 
     const tentacles = new TentacleSystem2D();
-    const blood = new BloodSplatter2D();
+    const blood = new BloodSystem2D();
     const gyro = new GyroTracker();
     const vhs = new VHSEffect();
 
@@ -660,6 +747,7 @@ async function main() {
     },{once:true}));
 
     const hasCamera = window._hasCam;
+    const videoEl = document.getElementById('camera-video');
 
     let viewX=0, viewY=0.5;
     const panZone = document.getElementById('pan-zone');
@@ -749,24 +837,63 @@ async function main() {
     const halfVisW = camZ*Math.tan(THREE.MathUtils.degToRad(VFOV/2))*(W()/H());
 
     character.root.position.set(0, 0.5, 0);
+    let charScreen = { x: W()/2, y: H()*0.6 };
+
+    function worldToScreen(p) {
+        const pv = new THREE.Vector3().copy(p).project(camera);
+        return {
+            x: (pv.x*0.5+0.5)*W(),
+            y: (-pv.y*0.5+0.5)*H()
+        };
+    }
+    function screenToWorld(sx, sy) {
+        const ndc = new THREE.Vector3((sx/W())*2-1, -(sy/H())*2+1, 0.5);
+        ndc.unproject(camera);
+        const dir = ndc.sub(camera.position).normalize();
+        const t = -camera.position.z / dir.z;
+        return camera.position.clone().add(dir.multiplyScalar(t));
+    }
+    charScreen = worldToScreen(character.root.position);
 
     function tick() {
         requestAnimationFrame(tick);
         const dt = Math.min(clock.getDelta(), 0.05);
         const t = clock.getElapsedTime();
         const pos = character.root.position;
+        updateSegmentation(videoEl);
 
         // Game Logic
         switch(state) {
             case 'CLIMB':
-                if(Math.abs(input.y)>0.1||Math.abs(input.x)>0.1){
-                    character.setState('CLIMB');
-                    pos.y += input.y*0.04*dt;
-                    if(pos.y<0.02) pos.y=0.02;
-                    pos.x += input.x*0.03*dt;
-                    pos.x = Math.max(-halfVisW+0.02, Math.min(halfVisW-0.02, pos.x));
+                if(Math.abs(input.y)>0.1||Math.abs(input.x)>0.1) character.setState('CLIMB');
+                else character.setState('IDLE');
+
+                if (segActive) {
+                    const speedX = 170;
+                    const speedY = 160;
+                    let nextX = charScreen.x + input.x*speedX*dt;
+                    let nextY = charScreen.y - input.y*speedY*dt;
+                    nextX = clamp(nextX, 10, W()-10);
+                    nextY = clamp(nextY, 10, H()-10);
+
+                    if (!isObstacleAt(nextX, nextY)) {
+                        charScreen.x = nextX;
+                        charScreen.y = nextY;
+                    } else {
+                        if (!isObstacleAt(nextX, charScreen.y)) charScreen.x = nextX;
+                        if (!isObstacleAt(charScreen.x, nextY)) charScreen.y = nextY;
+                    }
+                    const wpos = screenToWorld(charScreen.x, charScreen.y);
+                    pos.x = wpos.x; pos.y = wpos.y; pos.z = 0;
                 } else {
-                    character.setState('IDLE');
+                    if(Math.abs(input.y)>0.1||Math.abs(input.x)>0.1){
+                        pos.y += input.y*0.04*dt;
+                        if(pos.y<0.02) pos.y=0.02;
+                        pos.x += input.x*0.03*dt;
+                        pos.x = Math.max(-halfVisW+0.02, Math.min(halfVisW-0.02, pos.x));
+                    }
+                    const screenPos = worldToScreen(pos);
+                    charScreen.x = screenPos.x; charScreen.y = screenPos.y;
                 }
                 if(input.jump){
                     input.jump=false;
@@ -781,6 +908,10 @@ async function main() {
                 fallVY -= 1.8*dt;
                 pos.y += fallVY*dt;
                 pos.z += 0.2*dt;
+                {
+                    const screenPos = worldToScreen(pos);
+                    charScreen.x = screenPos.x; charScreen.y = screenPos.y;
+                }
                 if(pos.y<=0.01){
                     pos.y=0.01; fallVY=0;
                     state='DEAD';
@@ -790,7 +921,7 @@ async function main() {
                     const sx = (pv.x*0.5+0.5)*W();
                     const sy = (-pv.y*0.5+0.5)*H();
                     tentacles.spawnAtScreen(sx, sy);
-                    blood.spawn(sx, sy);
+                    blood.burst(sx, sy);
                 }
                 break;
             case 'DEAD':
@@ -802,6 +933,8 @@ async function main() {
                     character.root.rotation.y=Math.PI;
                     character.setState('IDLE');
                     viewY=0.5; viewX=0;
+                    charScreen = worldToScreen(pos);
+                    blood.reset();
                 }
                 break;
         }
@@ -836,6 +969,8 @@ async function main() {
         const proj = new THREE.Vector3().copy(pos).project(camera);
         const charSX = (proj.x*0.5+0.5)*W();
         const charSY = (-proj.y*0.5+0.5)*H();
+        charScreen.x = charSX; charScreen.y = charSY;
+        if (state === 'DEAD') blood.bleed(charSX, charSY, dt);
         tentacles.moveAnchors(charSX, charSY);
         tentacles.update(t);
         blood.update(dt);
@@ -879,6 +1014,7 @@ async function main() {
                 ?`GYRO:β${gyro.rawBeta.toFixed(0)}° γ${gyro.rawGamma.toFixed(0)}°`
                 :`GYRO:OFF[${gyro.status}]`,
             `TENTACLES:${tentacles.tentacles.length} DEATHS:${deaths}`,
+            `SEG:${segActive?'ON':'OFF'} SAT>${SAT_THRESHOLD.toFixed(2)}`,
         ].join('<br>');
     }
 
