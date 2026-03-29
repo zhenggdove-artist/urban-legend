@@ -1166,7 +1166,7 @@ async function main() {
         const charSX = (proj.x*0.5+0.5)*W();
         const charSY = (-proj.y*0.5+0.5)*H();
         charScreen.x = charSX; charScreen.y = charSY;
-        if (state === 'DEAD') blood.bleed(charSX-2, charSY+10, dt);
+        if (state === 'DEAD') blood.bleed(charSX, charSY, dt);
         tentacles.moveAnchors(charSX, charSY);
         tentacles.update(t);
         blood.update(dt);
