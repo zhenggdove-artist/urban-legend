@@ -882,6 +882,7 @@ async function main() {
     const gyro = new GyroTracker();
     const vhs = new VHSEffect();
     const USE_GYRO = false;
+    const USE_GYRO_SCROLL = true;
 
     $status.textContent='ready.';
     $start.style.display='block';
@@ -890,7 +891,7 @@ async function main() {
         $status.textContent='launching...';
         $start.style.display='none';
         try {
-            if (USE_GYRO) await gyro.init();
+            if (USE_GYRO || USE_GYRO_SCROLL) await gyro.init();
             const hasCam = await startCamera();
             window._hasCam = hasCam;
         } catch(e){ console.warn('Init error:',e); }
@@ -997,6 +998,7 @@ async function main() {
     let landedFrames = 0;
     let deathStartTime = 0;
     let tentacleBurstCount = 0;
+    let lastTilt = 0.5;
     const dbg = document.getElementById('debug-info');
     const halfVisW = camZ*Math.tan(THREE.MathUtils.degToRad(VFOV/2))*(W()/H());
 
@@ -1067,6 +1069,14 @@ async function main() {
                     const prevTX = targetScreen.x;
                     const prevTY = targetScreen.y;
                     const maxStep = 14;
+                    if (USE_GYRO_SCROLL && gyro.enabled && charScreen.y < 70) {
+                        const tiltDelta = (gyro.smoothY - lastTilt);
+                        const scroll = tiltDelta * H() * 0.9;
+                        if (Math.abs(scroll) > 0.2) {
+                            targetScreen.y += scroll;
+                            targetScreen.y = clamp(targetScreen.y, 10, H()-10);
+                        }
+                    }
                     if (!lockLand) {
                         let nextX = targetScreen.x + input.x*speedX*dt;
                         let nextY = targetScreen.y - input.y*speedY*dt;
@@ -1198,8 +1208,8 @@ async function main() {
             case 'DEAD':
                 // Stay dead until player presses jump to respawn
                 if (deathStartTime && (t - deathStartTime) > 0.6) {
-                    const interval = 0.7;
-                    const want = Math.min(6, Math.floor((t - deathStartTime - 0.6) / interval) + 1);
+                    const interval = 1.4;
+                    const want = Math.min(5, Math.floor((t - deathStartTime - 0.6) / interval) + 1);
                     while (tentacleBurstCount < want) {
                         tentacles.spawnAtScreen(deathScreen.valid ? deathScreen.x : charScreen.x,
                             deathScreen.valid ? deathScreen.y : charScreen.y);
@@ -1231,6 +1241,7 @@ async function main() {
                 break;
         }
         input.jump=false;
+        if (USE_GYRO_SCROLL && gyro.enabled) lastTilt = gyro.smoothY;
         if (landedFrames > 0) landedFrames--;
         if(state==='CLIMB') character.root.rotation.y=Math.PI;
         jBtn.textContent = state==='DEAD'?'REVIVE':'JUMP';
