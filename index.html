@@ -960,6 +960,7 @@ async function main() {
     let offClimbFrames = 0;
     let anchorLost = 0;
     let climbBaseGridY = null;
+    let climbHeightMax = 0;
     let jumpHeight = 0;
     let lastClimbScreen = { x: W()/2, y: H()*0.6 };
     let deathScreen = { x: 0, y: 0, valid: false };
@@ -997,8 +998,7 @@ async function main() {
         const moving = Math.abs(input.y)>0.1||Math.abs(input.x)>0.1;
         const segReady = segStableFrames > 8;
         if (!startAnchorSet && hasCamera && segReady) {
-            const nearCenter = findNearestClimbable(W()/2, H()/2, 8);
-            const start = nearCenter || pickRandomClimbable();
+            const start = findNearestClimbable(W()/2, H()/2, 6);
             if (start) {
                 charScreen.x = start.x; charScreen.y = start.y;
                 targetScreen.x = start.x; targetScreen.y = start.y;
@@ -1007,6 +1007,7 @@ async function main() {
                 offClimbFrames = 0;
                 const g = screenToGrid(start.x, start.y);
                 climbBaseGridY = g.y;
+                climbHeightMax = 0;
                 lastClimbScreen.x = start.x; lastClimbScreen.y = start.y;
             }
         }
@@ -1085,6 +1086,11 @@ async function main() {
                         lastClimbScreen.x = charScreen.x;
                         lastClimbScreen.y = charScreen.y;
                     }
+                    if (useObstacles && climbBaseGridY !== null) {
+                        const cg = screenToGrid(charScreen.x, charScreen.y);
+                        const diff = Math.max(0, (climbBaseGridY - cg.y));
+                        if (diff > climbHeightMax) climbHeightMax = diff;
+                    }
                     const wpos = screenToWorld(charScreen.x, charScreen.y);
                     pos.x = wpos.x; pos.y = wpos.y; pos.z = 0;
                 } else {
@@ -1107,9 +1113,11 @@ async function main() {
                     climbEngaged = false;
                     deathScreen.valid = false;
                     if (useObstacles) {
-                        const g = screenToGrid(charScreen.x, charScreen.y);
-                        if (climbBaseGridY === null) climbBaseGridY = g.y;
-                        jumpHeight = Math.max(0, (climbBaseGridY - g.y));
+                        if (climbBaseGridY === null) {
+                            const g = screenToGrid(charScreen.x, charScreen.y);
+                            climbBaseGridY = g.y;
+                        }
+                        jumpHeight = climbHeightMax;
                     } else {
                         jumpHeight = 0;
                     }
@@ -1140,11 +1148,11 @@ async function main() {
                         character.setState('IDLE');
                         pos.z = 0;
                         if (useObstacles) {
-                            charScreen.x = lastClimbScreen.x;
-                            charScreen.y = lastClimbScreen.y;
+                            // stay at landing position
+                            const screenPos = worldToScreen(pos);
+                            charScreen.x = screenPos.x; charScreen.y = screenPos.y;
                             targetScreen.x = charScreen.x; targetScreen.y = charScreen.y;
-                            const wpos = screenToWorld(charScreen.x, charScreen.y);
-                            pos.x = wpos.x; pos.y = wpos.y;
+                            climbEngaged = false;
                         }
                     }
                 }
@@ -1166,6 +1174,7 @@ async function main() {
                     offClimbFrames = 0;
                     anchorLost = 0;
                     climbBaseGridY = null;
+                    climbHeightMax = 0;
                     jumpHeight = 0;
                     deathScreen.valid = false;
                 }
