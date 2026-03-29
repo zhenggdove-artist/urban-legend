@@ -11,28 +11,33 @@
         #camera-video{position:absolute;top:0;left:0;width:100%;height:100%;
             object-fit:cover;z-index:0;
             background:linear-gradient(180deg,#87CEEB 0%,#4a90d9 40%,#2c3e50 40.5%,#1a1a2e 100%)}
-        #analysis-canvas{position:absolute;top:0;left:0;width:100%;height:100%;
-            z-index:1;opacity:0.15;pointer-events:none}
-        /* Touch pan zone covers entire screen, sits behind UI controls */
-        #pan-zone{position:absolute;top:0;left:0;width:100%;height:100%;z-index:3;touch-action:none}
+        #ascii-canvas{position:absolute;top:0;left:0;width:100%;height:100%;
+            z-index:2;pointer-events:none}
+        /* VHS scanlines */
+        #vhs-scanlines{position:absolute;top:0;left:0;width:100%;height:100%;
+            z-index:3;pointer-events:none;
+            background:repeating-linear-gradient(0deg,
+                transparent 0px,transparent 2px,
+                rgba(0,0,0,0.08) 2px,rgba(0,0,0,0.08) 4px)}
+        #vhs-noise{position:absolute;top:0;left:0;width:100%;height:100%;
+            z-index:4;pointer-events:none;opacity:0.12}
+        #vhs-tracking{position:absolute;left:0;width:100%;height:0;
+            z-index:4;pointer-events:none;background:rgba(255,255,255,0.08)}
+        #pan-zone{position:absolute;top:0;left:0;width:100%;height:100%;z-index:5;touch-action:none}
         #debug-info{position:absolute;top:40px;left:10px;z-index:30;
-            color:#fff;font:11px/1.4 monospace;background:rgba(0,0,0,.5);
-            padding:5px 8px;border-radius:4px;pointer-events:none;max-width:250px}
+            color:#0f0;font:11px/1.4 monospace;background:rgba(0,0,0,.6);
+            padding:5px 8px;border-radius:4px;pointer-events:none;max-width:260px;
+            text-shadow:0 0 4px #0f0}
         #joystick-zone{position:absolute;z-index:31;width:120px;height:120px;
-            background:rgba(255,255,255,.15);border:2px solid rgba(255,255,255,.3);
+            background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.25);
             border-radius:50%;touch-action:none}
         #joystick-knob{position:absolute;top:30px;left:30px;width:60px;height:60px;
-            background:rgba(255,255,255,.5);border-radius:50%}
+            background:rgba(255,255,255,.4);border-radius:50%}
         #jump-btn{position:absolute;z-index:31;width:80px;height:80px;
-            background:rgba(220,40,40,.6);border:2px solid rgba(255,80,80,.5);
+            background:rgba(220,40,40,.5);border:2px solid rgba(255,80,80,.4);
             border-radius:50%;display:flex;justify-content:center;align-items:center;
             color:#fff;font:bold 14px sans-serif;touch-action:none}
-        #jump-btn.pressed{transform:scale(.9);background:rgba(255,50,50,.85)}
-        /* Camera pan indicator */
-        #pan-indicator{position:absolute;right:10px;top:50%;z-index:30;
-            transform:translateY(-50%);pointer-events:none;
-            color:rgba(255,255,255,.4);font:12px sans-serif;text-align:center;
-            writing-mode:vertical-rl}
+        #jump-btn.pressed{transform:scale(.9);background:rgba(255,50,50,.8)}
         #loading-screen{position:absolute;top:0;left:0;width:100%;height:100%;
             background:rgba(0,0,0,.92);z-index:100;display:flex;flex-direction:column;
             justify-content:center;align-items:center;color:#fff;font-family:sans-serif}
@@ -51,12 +56,14 @@
 </head>
 <body>
     <video id="camera-video" autoplay playsinline muted></video>
-    <canvas id="analysis-canvas"></canvas>
+    <canvas id="ascii-canvas"></canvas>
+    <div id="vhs-scanlines"></div>
+    <canvas id="vhs-noise"></canvas>
+    <div id="vhs-tracking"></div>
     <div id="pan-zone"></div>
     <div id="debug-info">Loading...</div>
     <div id="joystick-zone"><div id="joystick-knob"></div></div>
     <div id="jump-btn">JUMP</div>
-    <div id="pan-indicator">▲ 拖曳畫面移動鏡頭 ▼</div>
     <div id="loading-screen">
         <h2>都市傳說</h2>
         <div id="loading-bar-bg"><div id="loading-bar"></div></div>
@@ -68,14 +75,13 @@ import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
 import { GLTFLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/DRACOLoader.js';
 
-// ===== Globals =====
 const W = () => window.innerWidth, H = () => window.innerHeight;
 function layoutUI() {
     const w = W(), h = H();
-    const jz = document.getElementById('joystick-zone');
-    jz.style.left = '20px'; jz.style.top = (h - 160) + 'px';
-    const jb = document.getElementById('jump-btn');
-    jb.style.left = (w - 104) + 'px'; jb.style.top = (h - 120) + 'px';
+    document.getElementById('joystick-zone').style.cssText +=
+        `;left:20px;top:${h-160}px`;
+    document.getElementById('jump-btn').style.cssText +=
+        `;left:${w-104}px;top:${h-120}px`;
 }
 layoutUI(); window.addEventListener('resize', layoutUI);
 
@@ -84,9 +90,9 @@ const $bar = document.getElementById('loading-bar');
 const $status = document.getElementById('loading-status');
 const $loading = document.getElementById('loading-screen');
 const $start = document.getElementById('start-btn');
-let prog = { camera: 0, model: 0, anim: 0, death: 0 };
+let prog = { camera:0, model:0, anim:0, death:0 };
 function updateBar() {
-    $bar.style.width = Math.round((prog.camera+prog.model+prog.anim+prog.death)/4) + '%';
+    $bar.style.width = Math.round((prog.camera+prog.model+prog.anim+prog.death)/4)+'%';
 }
 
 // ===== Camera =====
@@ -94,177 +100,216 @@ async function startCamera() {
     const v = document.getElementById('camera-video');
     try {
         v.srcObject = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
-            audio: false
+            video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},
+            audio:false
         });
         await v.play();
-        prog.camera = 100; updateBar();
+        prog.camera=100; updateBar();
         return true;
-    } catch (e) {
-        console.warn('Camera:', e);
-        prog.camera = 100; updateBar();
-        return false;
-    }
+    } catch(e) { console.warn('Camera:',e); prog.camera=100; updateBar(); return false; }
 }
 
-// ===== Gyroscope — absolute angle mapping + smoothing =====
+// ===== Gyroscope =====
 class GyroTracker {
     constructor() {
-        this.viewX = 0;
-        this.viewY = 0.5;
-        this.smoothX = 0;    // smoothed output
-        this.smoothY = 0.5;  // smoothed output
-        this.rawBeta = 90;
-        this.rawGamma = 0;
-        this.enabled = false;
-        this.status = 'init';
+        this.viewX=0; this.viewY=0.5;
+        this.smoothX=0; this.smoothY=0.5;
+        this.rawBeta=90; this.rawGamma=0;
+        this.enabled=false; this.status='init';
     }
     _onOrientation(e) {
-        if (e.beta === null) { this.status = 'beta-null'; return; }
-        this.rawBeta = e.beta;
-        this.rawGamma = e.gamma || 0;
-
-        // Raw target from gyro angles (low sensitivity)
-        const degreesFromVertical = e.beta - 90;
-        this.viewY = 0.5 + degreesFromVertical * 0.025;
-        this.viewX = this.rawGamma * 0.002;
-
-        // Low-pass filter: heavy smoothing to prevent jitter/flicker
-        // 0.08 = very smooth (slow response), prevents shaking
-        this.smoothX += (this.viewX - this.smoothX) * 0.08;
-        this.smoothY += (this.viewY - this.smoothY) * 0.08;
-
-        this.enabled = true;
-        this.status = 'active';
+        if (e.beta===null) { this.status='beta-null'; return; }
+        this.rawBeta=e.beta; this.rawGamma=e.gamma||0;
+        this.viewY = 0.5 + (e.beta-90)*0.025;
+        this.viewX = this.rawGamma*0.002;
+        this.smoothX += (this.viewX-this.smoothX)*0.08;
+        this.smoothY += (this.viewY-this.smoothY)*0.08;
+        this.enabled=true; this.status='active';
     }
     async init() {
-        const handler = e => this._onOrientation(e);
-
-        // iOS 13+ requires permission from user gesture
-        if (typeof DeviceOrientationEvent !== 'undefined' &&
-            typeof DeviceOrientationEvent.requestPermission === 'function') {
+        const h = e => this._onOrientation(e);
+        if (typeof DeviceOrientationEvent!=='undefined' &&
+            typeof DeviceOrientationEvent.requestPermission==='function') {
             try {
                 const p = await DeviceOrientationEvent.requestPermission();
-                this.status = 'ios-' + p;
-                if (p === 'granted') {
-                    window.addEventListener('deviceorientation', handler);
-                }
-            } catch (e) {
-                this.status = 'ios-err:' + e.message;
-            }
+                this.status='ios-'+p;
+                if (p==='granted') window.addEventListener('deviceorientation',h);
+            } catch(e) { this.status='ios-err:'+e.message; }
             return;
         }
-
-        // Android / other: just listen, no permission needed
-        this.status = 'listening';
-        window.addEventListener('deviceorientation', handler);
-
-        // Also try 'deviceorientationabsolute' as fallback
-        window.addEventListener('deviceorientationabsolute', handler);
-
-        // Check after 2 seconds if we got any data
-        setTimeout(() => {
-            if (!this.enabled) this.status = 'no-events';
-        }, 2000);
+        this.status='listening';
+        window.addEventListener('deviceorientation',h);
+        window.addEventListener('deviceorientationabsolute',h);
+        setTimeout(()=>{ if(!this.enabled) this.status='no-events'; },2000);
     }
 }
 
-// ===== Scene Analyzer =====
-class SceneAnalyzer {
-    constructor(video) {
-        this.video = video;
-        this.sc = document.createElement('canvas');
-        this.sc.width = 32; this.sc.height = 48;
-        this.sctx = this.sc.getContext('2d', { willReadFrequently: true });
-        this.dc = document.getElementById('analysis-canvas');
-        this.dctx = this.dc.getContext('2d');
-        this.skyLine = 0.4;
-        this.last = 0;
+// ===== VHS Effect =====
+class VHSEffect {
+    constructor() {
+        this.noiseCanvas = document.getElementById('vhs-noise');
+        this.noiseCtx = this.noiseCanvas.getContext('2d');
+        this.tracking = document.getElementById('vhs-tracking');
+        this.frame = 0;
     }
-    analyze(now) {
-        if (now - this.last < 500) return;
-        this.last = now;
-        const v = this.video;
-        if (!v.srcObject || v.readyState < 2) return;
-        const sw = 32, sh = 48;
-        this.sctx.drawImage(v, 0, 0, sw, sh);
-        const d = this.sctx.getImageData(0, 0, sw, sh).data;
-        let skyY = 0;
-        for (let y = 0; y < sh; y++) {
-            let sR=0,sG=0,sB=0; const cols=[];
-            for (let x=0;x<sw;x++){const i=(y*sw+x)*4;const r=d[i],g=d[i+1],b=d[i+2];sR+=r;sG+=g;sB+=b;cols.push([r,g,b]);}
-            const aR=sR/sw,aG=sG/sw,aB=sB/sw;
-            let v2=0; for(const[r,g,b]of cols) v2+=(r-aR)**2+(g-aG)**2+(b-aB)**2;
-            v2/=sw;
-            if(y+2<sh && v2>800){skyY=y;break;}
+    update() {
+        this.frame++;
+        // Update noise every 3 frames
+        if (this.frame % 3 === 0) {
+            const w = 64, h = 64;
+            this.noiseCanvas.width = w; this.noiseCanvas.height = h;
+            const ctx = this.noiseCtx;
+            const img = ctx.createImageData(w, h);
+            const d = img.data;
+            for (let i = 0; i < d.length; i += 4) {
+                const v = Math.random()*255;
+                d[i]=d[i+1]=d[i+2]=v; d[i+3]=40;
+            }
+            ctx.putImageData(img, 0, 0);
         }
-        this.skyLine = this.skyLine * 0.7 + (skyY/sh) * 0.3;
-        this.dc.width = W(); this.dc.height = H();
-        const ctx = this.dctx, cw = this.dc.width/sw, ch = this.dc.height/sh;
-        ctx.clearRect(0,0,this.dc.width,this.dc.height);
-        for(let y=0;y<sh;y++){
-            ctx.fillStyle = (y/sh)<=this.skyLine ? 'rgba(100,180,255,.08)' : 'rgba(0,255,100,.05)';
-            ctx.fillRect(0, y*ch, this.dc.width, ch);
+        // Random tracking line
+        if (Math.random() > 0.96) {
+            const y = Math.random()*100;
+            const h = 2+Math.random()*6;
+            this.tracking.style.cssText =
+                `position:absolute;left:0;width:100%;z-index:4;pointer-events:none;`+
+                `top:${y}%;height:${h}px;background:rgba(255,255,255,${0.04+Math.random()*0.08})`;
+            setTimeout(()=>{ this.tracking.style.height='0'; }, 80+Math.random()*120);
         }
     }
 }
 
-// ===== Meatball / Blood Particle System =====
-class BloodEffect {
-    constructor(scene) {
-        this.scene = scene;
-        this.particles = [];
-        this.group = new THREE.Group();
-        scene.add(this.group);
+// ===== ASCII Renderer =====
+class AsciiRenderer {
+    constructor(renderer, camera) {
+        this.renderer = renderer;
+        this.camera = camera;
+        this.chars = ' .,:;+*?%S#@';
+        this.cellSize = 8;
+        this.canvas = document.getElementById('ascii-canvas');
+        this.ctx = this.canvas.getContext('2d');
+        this.cols = 1; this.rows = 1;
+        this.target = null; this.pixels = null;
+        this._resize();
     }
-    spawn(pos) {
-        // Spawn fleshy meatball chunks + blood splatter
-        for (let i = 0; i < 25; i++) {
-            // Mix of big flesh chunks and small blood drops
-            const isBigChunk = i < 8;
-            const size = isBigChunk
-                ? 0.008 + Math.random() * 0.015  // big flesh chunks
-                : 0.003 + Math.random() * 0.006;  // small blood drops
-            const geo = new THREE.SphereGeometry(size, 6, 6);
-            const color = isBigChunk
-                ? new THREE.Color(0.5 + Math.random()*0.3, 0.1, 0.05) // fleshy pink-red
-                : new THREE.Color(0.7 + Math.random()*0.3, 0, 0);     // bright red blood
-            const mat = new THREE.MeshBasicMaterial({
-                color, transparent: true, opacity: 1.0, depthTest: false
-            });
-            const m = new THREE.Mesh(geo, mat);
-            // Spawn slightly in front of character (positive Z = toward camera)
-            m.position.set(pos.x, pos.y, pos.z + 0.02);
-            m.renderOrder = 999;
-            const angle = Math.random() * Math.PI * 2;
-            const speed = isBigChunk
-                ? 0.03 + Math.random() * 0.06
-                : 0.05 + Math.random() * 0.12;
-            const vx = Math.cos(angle) * speed;
-            const vy = Math.random() * 0.15 + 0.02;
-            const vz = Math.abs(Math.sin(angle)) * speed * 0.3 + 0.02; // always toward camera
-            this.particles.push({ mesh: m, vx, vy, vz, life: 3.0 + Math.random() * 2.0 });
-            this.group.add(m);
+    _resize() {
+        this.cols = Math.ceil(W()/this.cellSize);
+        this.rows = Math.ceil(H()/this.cellSize);
+        if (this.target) this.target.dispose();
+        this.target = new THREE.WebGLRenderTarget(this.cols, this.rows, {
+            minFilter:THREE.NearestFilter, magFilter:THREE.NearestFilter
+        });
+        this.pixels = new Uint8Array(this.cols*this.rows*4);
+    }
+    render(scene) {
+        const cols = Math.ceil(W()/this.cellSize);
+        const rows = Math.ceil(H()/this.cellSize);
+        if (cols!==this.cols||rows!==this.rows) this._resize();
+
+        // Render 3D scene to low-res offscreen target
+        this.renderer.setRenderTarget(this.target);
+        this.renderer.render(scene, this.camera);
+        this.renderer.setRenderTarget(null);
+        this.renderer.readRenderTargetPixels(this.target,0,0,this.cols,this.rows,this.pixels);
+
+        // Draw ASCII on 2D canvas
+        this.canvas.width = W(); this.canvas.height = H();
+        const ctx = this.ctx;
+        ctx.clearRect(0,0,this.canvas.width,this.canvas.height);
+        const fontSize = this.cellSize;
+        ctx.font = `bold ${fontSize}px monospace`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        for (let y=0; y<this.rows; y++) {
+            for (let x=0; x<this.cols; x++) {
+                // WebGL is bottom-up, flip Y
+                const i = ((this.rows-1-y)*this.cols+x)*4;
+                const r=this.pixels[i], g=this.pixels[i+1], b=this.pixels[i+2], a=this.pixels[i+3];
+                if (a<15) continue; // skip transparent
+                const brightness = (r*0.299+g*0.587+b*0.114)/255;
+                const ci = Math.min(this.chars.length-1, Math.floor(brightness*this.chars.length));
+                // Tint green for VHS horror feel
+                const gr = Math.min(255, g+60);
+                ctx.fillStyle = `rgba(${Math.floor(r*0.6)},${Math.floor(gr)},${Math.floor(b*0.5)},${a/255})`;
+                ctx.fillText(this.chars[ci], x*this.cellSize+this.cellSize/2, y*this.cellSize+this.cellSize/2);
+            }
         }
     }
-    update(dt) {
-        for (let i = this.particles.length - 1; i >= 0; i--) {
-            const p = this.particles[i];
-            p.vy -= 0.3 * dt; // slow gravity
-            p.mesh.position.x += p.vx * dt;
-            p.mesh.position.y += p.vy * dt;
-            p.mesh.position.z += p.vz * dt;
-            if (p.mesh.position.y < 0) {
-                p.mesh.position.y = 0;
-                p.vx *= 0.85; p.vz *= 0.85; p.vy = 0;
+}
+
+// ===== Tentacle System =====
+class TentacleSystem {
+    constructor() {
+        this.allTentacles = []; // persists across deaths, carried on character
+    }
+    spawnOnDeath(characterRoot) {
+        const count = 3 + Math.floor(Math.random()*3); // 3-5 tentacles
+        for (let i=0; i<count; i++) {
+            const t = this._createTentacle();
+            // Attach at random body position
+            t.position.set(
+                (Math.random()-0.5)*0.015,
+                Math.random()*0.025 + 0.005,
+                (Math.random()-0.5)*0.008
+            );
+            t.rotation.set(
+                (Math.random()-0.5)*Math.PI*0.7,
+                Math.random()*Math.PI*2,
+                (Math.random()-0.5)*0.5
+            );
+            characterRoot.add(t);
+            this.allTentacles.push(t);
+        }
+    }
+    _createTentacle() {
+        const len = 0.015+Math.random()*0.035;
+        const segs = 10;
+        const pts = [];
+        let cx=0, cy=0, cz=0;
+        for (let i=0; i<=segs; i++) {
+            const t = i/segs;
+            cx += (Math.random()-0.5)*0.005;
+            cy += len/segs;
+            cz += (Math.random()-0.5)*0.004;
+            pts.push(new THREE.Vector3(cx,cy,cz));
+        }
+        const curve = new THREE.CatmullRomCurve3(pts);
+        const tubSegs=12, radSegs=5;
+        const baseR = 0.001+Math.random()*0.0015;
+        const geo = new THREE.TubeGeometry(curve, tubSegs, baseR, radSegs, false);
+        // Taper toward tip
+        const pos = geo.attributes.position;
+        const vpr = radSegs+1;
+        for (let ring=0; ring<=tubSegs; ring++) {
+            const t = ring/tubSegs;
+            const taper = 1 - t*0.9;
+            const center = curve.getPointAt(Math.min(t,1));
+            for (let r=0; r<=radSegs; r++) {
+                const idx = ring*vpr+r;
+                if (idx>=pos.count) break;
+                const vx=pos.getX(idx), vy=pos.getY(idx), vz=pos.getZ(idx);
+                pos.setX(idx, center.x+(vx-center.x)*taper);
+                pos.setY(idx, center.y+(vy-center.y)*taper);
+                pos.setZ(idx, center.z+(vz-center.z)*taper);
             }
-            p.life -= dt;
-            p.mesh.material.opacity = Math.max(0, Math.min(1, p.life / 1.5));
-            if (p.life <= 0) {
-                this.group.remove(p.mesh);
-                p.mesh.geometry.dispose(); p.mesh.material.dispose();
-                this.particles.splice(i, 1);
-            }
+        }
+        pos.needsUpdate = true;
+        const mat = new THREE.MeshBasicMaterial({
+            color: new THREE.Color(
+                0.12+Math.random()*0.15,
+                0.02+Math.random()*0.05,
+                0.05+Math.random()*0.1
+            ),
+            side: THREE.DoubleSide
+        });
+        return new THREE.Mesh(geo, mat);
+    }
+    // Animate tentacles (subtle wiggle)
+    update(t) {
+        for (const tentacle of this.allTentacles) {
+            tentacle.rotation.x += Math.sin(t*3+tentacle.id)*0.002;
+            tentacle.rotation.z += Math.cos(t*2.5+tentacle.id*0.7)*0.0015;
         }
     }
 }
@@ -275,317 +320,240 @@ class GameCharacter {
         this.scene = scene;
         this.root = new THREE.Group();
         scene.add(this.root);
-        this.mixer = null;
-        this.anims = {};
-        this.curAction = null;
-        this.curState = 'IDLE';
+        this.mixer=null; this.anims={}; this.curAction=null; this.curState='IDLE';
         this.root.rotation.y = Math.PI;
-        this.charHeight = 0.033; // ~1/30 of screen height
+        this.charHeight = 0.033;
     }
     async load() {
         const gl = new GLTFLoader();
         const dr = new DRACOLoader();
         dr.setDecoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/draco/');
         gl.setDRACOLoader(dr);
-
         const texLoader = new THREE.TextureLoader();
         let skinTex = null;
         try {
-            skinTex = await new Promise((r,j) =>
-                texLoader.load('./playermodel/tripo_model_basecolor.JPEG', r, undefined, j));
-            skinTex.flipY = false;
-            skinTex.colorSpace = THREE.SRGBColorSpace;
-        } catch(e) {}
-
-        const load = (url) => new Promise((r,j) =>
-            gl.load(url, g=>r(g), undefined, e=>j(e)));
-
+            skinTex = await new Promise((r,j)=>
+                texLoader.load('./playermodel/tripo_model_basecolor.JPEG',r,undefined,j));
+            skinTex.flipY=false; skinTex.colorSpace=THREE.SRGBColorSpace;
+        } catch(e){}
+        const load = url => new Promise((r,j)=>gl.load(url,g=>r(g),undefined,e=>j(e)));
         try {
-            $status.textContent = '載入模型...';
+            $status.textContent='載入模型...';
             const idleG = await load('./playermodel/idle.glb');
-            prog.model = 100; updateBar();
-
+            prog.model=100; updateBar();
             const model = idleG.scene;
             const box = new THREE.Box3().setFromObject(model);
             const origH = box.getSize(new THREE.Vector3()).y;
-            const sc = this.charHeight / origH;
-            model.scale.setScalar(sc);
-            this.scaleFactor = sc;
-
+            const sc = this.charHeight/origH;
+            model.scale.setScalar(sc); this.scaleFactor=sc;
             const box2 = new THREE.Box3().setFromObject(model);
             model.position.y = -box2.min.y;
-
-            model.traverse(c => {
-                if (c.isMesh) {
+            model.traverse(c=>{
+                if(c.isMesh){
                     c.material = new THREE.MeshStandardMaterial({
-                        map: skinTex, roughness: 0.8, metalness: 0.1, side: THREE.DoubleSide
+                        map:skinTex, roughness:0.8, metalness:0.1, side:THREE.DoubleSide
                     });
-                    c.frustumCulled = false;
+                    c.frustumCulled=false;
                 }
             });
-
-            this.model3D = model;
-            this.root.add(model);
+            this.model3D=model; this.root.add(model);
             this.mixer = new THREE.AnimationMixer(model);
-
             const strip = clip => {
-                clip.tracks = clip.tracks.filter(t =>
+                clip.tracks = clip.tracks.filter(t=>
                     !/(Hips|RootNode)\.(position|quaternion)/i.test(t.name));
             };
-
-            if (idleG.animations.length) {
+            if(idleG.animations.length){
                 strip(idleG.animations[0]);
-                this.anims['IDLE'] = this.mixer.clipAction(idleG.animations[0]);
-                this.anims['IDLE'].play();
-                this.curAction = this.anims['IDLE'];
+                this.anims['IDLE']=this.mixer.clipAction(idleG.animations[0]);
+                this.anims['IDLE'].play(); this.curAction=this.anims['IDLE'];
             }
-
-            $status.textContent = '載入動畫...';
-            const [cR, jR, dR] = await Promise.allSettled([
+            $status.textContent='載入動畫...';
+            const [cR,jR,dR] = await Promise.allSettled([
                 load('./playermodel/climb.glb'),
                 load('./playermodel/jump.glb'),
                 load('./playermodel/death.glb')
             ]);
-            prog.anim = 100; prog.death = 100; updateBar();
-
-            if (cR.status==='fulfilled' && cR.value.animations.length) {
+            prog.anim=100; prog.death=100; updateBar();
+            if(cR.status==='fulfilled'&&cR.value.animations.length){
                 strip(cR.value.animations[0]);
-                this.anims['CLIMB'] = this.mixer.clipAction(cR.value.animations[0]);
+                this.anims['CLIMB']=this.mixer.clipAction(cR.value.animations[0]);
             }
-            if (jR.status==='fulfilled' && jR.value.animations.length) {
+            if(jR.status==='fulfilled'&&jR.value.animations.length){
                 strip(jR.value.animations[0]);
-                this.anims['JUMP'] = this.mixer.clipAction(jR.value.animations[0]);
+                this.anims['JUMP']=this.mixer.clipAction(jR.value.animations[0]);
                 this.anims['JUMP'].setLoop(THREE.LoopOnce);
-                this.anims['JUMP'].clampWhenFinished = true;
+                this.anims['JUMP'].clampWhenFinished=true;
             }
-            if (dR.status==='fulfilled' && dR.value.animations.length) {
+            if(dR.status==='fulfilled'&&dR.value.animations.length){
                 strip(dR.value.animations[0]);
-                this.anims['DEATH'] = this.mixer.clipAction(dR.value.animations[0]);
+                this.anims['DEATH']=this.mixer.clipAction(dR.value.animations[0]);
                 this.anims['DEATH'].setLoop(THREE.LoopOnce);
-                this.anims['DEATH'].clampWhenFinished = true;
+                this.anims['DEATH'].clampWhenFinished=true;
             }
-
-            this.loaded = true;
-        } catch(e) {
-            console.error('Load fail:', e);
-            $status.textContent = '載入失敗';
+            this.loaded=true;
+        } catch(e){
+            console.error('Load fail:',e);
+            $status.textContent='載入失敗';
             prog.model=prog.anim=prog.death=100; updateBar();
         }
     }
     setState(s) {
-        if (this.curState === s) return;
-        this.curState = s;
-        if (!this.mixer) return;
-        const next = this.anims[s];
-        if (!next) return;
-        // Reset outgoing action's timeScale so crossFade works properly
-        if (this.curAction) this.curAction.timeScale = 1;
-        if (this.curAction && this.curAction !== next) {
+        if(this.curState===s) return;
+        this.curState=s;
+        if(!this.mixer) return;
+        const next=this.anims[s]; if(!next) return;
+        if(this.curAction) this.curAction.timeScale=1;
+        if(this.curAction&&this.curAction!==next){
             next.reset().play();
-            next.crossFadeFrom(this.curAction, 0.2, true);
-        } else {
-            next.reset().play();
-        }
-        this.curAction = next;
+            next.crossFadeFrom(this.curAction,0.2,true);
+        } else next.reset().play();
+        this.curAction=next;
     }
     update(dt, moveY) {
-        if (!this.mixer) return;
-        if (this.curState==='CLIMB' && this.anims['CLIMB']) {
-            const spd = moveY>0 ? 1.5 : (moveY<0 ? -1.5 : 0);
-            this.anims['CLIMB'].timeScale = spd;
-            // If timeScale is 0, still tick mixer so crossFade to IDLE can work
-        }
+        if(!this.mixer) return;
+        if(this.curState==='CLIMB'&&this.anims['CLIMB'])
+            this.anims['CLIMB'].timeScale = moveY>0?1.5:(moveY<0?-1.5:0);
         this.mixer.update(dt);
     }
 }
 
 // ===== Main =====
 async function main() {
-    $status.textContent = '載入中...';
-    prog.camera = 100; updateBar();
+    $status.textContent='載入中...';
+    prog.camera=100; updateBar();
 
-    // ---- Scene setup ----
-    // Coordinate system: 1 scene unit = 1 screen height at default view
-    // The "world" extends from y=0 (ground) upward infinitely
-    // Camera is a window into this world — panning up/down reveals more
     const scene = new THREE.Scene();
-    const VFOV = 60;
+    const VFOV=60;
     const camera = new THREE.PerspectiveCamera(VFOV, W()/H(), 0.001, 100);
-    // camZ: distance so that visible height at z=0 = 1 scene unit
-    const camZ = 1.0 / (2 * Math.tan(THREE.MathUtils.degToRad(VFOV/2)));
-    camera.position.set(0, 0.5, camZ);
-    camera.lookAt(0, 0.5, 0);
+    const camZ = 1.0/(2*Math.tan(THREE.MathUtils.degToRad(VFOV/2)));
+    camera.position.set(0,0.5,camZ);
+    camera.lookAt(0,0.5,0);
 
-    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setSize(W(), H());
-    renderer.setClearColor(0x000000, 0);
+    const renderer = new THREE.WebGLRenderer({alpha:true, antialias:false});
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+    renderer.setSize(W(),H());
+    renderer.setClearColor(0x000000,0);
+    // WebGL canvas hidden — ASCII canvas replaces it
     const canvas3d = renderer.domElement;
-    canvas3d.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;z-index:2;pointer-events:none';
-    document.getElementById('camera-video').after(canvas3d);
+    canvas3d.style.cssText='position:absolute;top:0;left:0;width:0;height:0;opacity:0;pointer-events:none';
+    document.body.appendChild(canvas3d);
 
-    // Lighting
-    scene.add(new THREE.DirectionalLight(0xffffff, 2).translateX(2).translateY(3).translateZ(2));
+    scene.add(new THREE.DirectionalLight(0xffffff,2).translateX(2).translateY(3).translateZ(2));
     scene.add(new THREE.AmbientLight(0xaaaaaa));
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 0.5));
+    scene.add(new THREE.HemisphereLight(0xffffff,0x444444,0.5));
 
-    // Character
     const character = new GameCharacter(scene);
     await character.load();
 
-    // Blood
-    const blood = new BloodEffect(scene);
-
-    // Gyro
+    const tentacles = new TentacleSystem();
     const gyro = new GyroTracker();
+    const vhs = new VHSEffect();
+    const ascii = new AsciiRenderer(renderer, camera);
 
-    // Analyzer
-    const analyzer = new SceneAnalyzer(document.getElementById('camera-video'));
+    $status.textContent='準備完成！';
+    $start.style.display='block';
 
-    // Ready
-    $status.textContent = '準備完成！';
-    $start.style.display = 'block';
-
-    await new Promise(r => $start.addEventListener('click', async () => {
-        $status.textContent = '啟動中...';
-        $start.style.display = 'none';
+    await new Promise(r => $start.addEventListener('click', async ()=>{
+        $status.textContent='啟動中...';
+        $start.style.display='none';
         try {
-            // IMPORTANT: gyro permission MUST be called first, synchronously
-            // in the user gesture. Any await before this will break iOS permission.
             await gyro.init();
             const hasCam = await startCamera();
             window._hasCam = hasCam;
-        } catch(e) { console.warn('Init error:', e); }
-        $loading.style.display = 'none';
+        } catch(e){ console.warn('Init error:',e); }
+        $loading.style.display='none';
         r();
-    }, { once: true }));
+    },{once:true}));
 
     const hasCamera = window._hasCam;
 
-    // ===== Camera Pan State =====
-    // viewX/viewY = which part of the 3D world the screen shows.
-    // Gyro and touch drag both modify these.
-    let viewX = 0;     // horizontal pan
-    let viewY = 0.5;   // vertical pan (center of viewport)
-
-    // ===== Touch Camera Pan (on pan-zone, the screen background) =====
+    let viewX=0, viewY=0.5;
     const panZone = document.getElementById('pan-zone');
-    let panTouchId = null, panLastY = 0;
+    let panTouchId=null, panLastX=0, panLastY=0;
 
-    panZone.addEventListener('pointerdown', e => {
-        // Only start pan if not on joystick or jump button area
-        const ex = e.clientX, ey = e.clientY;
-        const jz = document.getElementById('joystick-zone').getBoundingClientRect();
-        const jb = document.getElementById('jump-btn').getBoundingClientRect();
-        // Check if touch is inside joystick or jump button (with some padding)
-        const pad = 20;
-        if (ex >= jz.left-pad && ex <= jz.right+pad && ey >= jz.top-pad && ey <= jz.bottom+pad) return;
-        if (ex >= jb.left-pad && ex <= jb.right+pad && ey >= jb.top-pad && ey <= jb.bottom+pad) return;
-
-        panTouchId = e.pointerId;
-        panLastX = e.clientX;
-        panLastY = e.clientY;
-        panZone.setPointerCapture(e.pointerId);
+    panZone.addEventListener('pointerdown', e=>{
+        const ex=e.clientX, ey=e.clientY;
+        const jz=document.getElementById('joystick-zone').getBoundingClientRect();
+        const jb=document.getElementById('jump-btn').getBoundingClientRect();
+        const pad=20;
+        if(ex>=jz.left-pad&&ex<=jz.right+pad&&ey>=jz.top-pad&&ey<=jz.bottom+pad) return;
+        if(ex>=jb.left-pad&&ex<=jb.right+pad&&ey>=jb.top-pad&&ey<=jb.bottom+pad) return;
+        panTouchId=e.pointerId; panLastX=e.clientX; panLastY=e.clientY;
+        panZone.setPointerCapture(e.pointerId); e.preventDefault();
+    },{passive:false});
+    panZone.addEventListener('pointermove', e=>{
+        if(e.pointerId!==panTouchId) return;
+        const dx=e.clientX-panLastX, dy=e.clientY-panLastY;
+        panLastX=e.clientX; panLastY=e.clientY;
+        viewY -= dy/H()*2.0;
+        viewX += dx/W()*1.5;
         e.preventDefault();
-    }, {passive: false});
+    },{passive:false});
+    panZone.addEventListener('pointerup', e=>{ if(e.pointerId===panTouchId) panTouchId=null; });
+    panZone.addEventListener('pointercancel', e=>{ if(e.pointerId===panTouchId) panTouchId=null; });
 
-    let panLastX = 0;
-    panZone.addEventListener('pointermove', e => {
-        if (e.pointerId !== panTouchId) return;
-        const dx = e.clientX - panLastX;
-        const dy = e.clientY - panLastY;
-        panLastX = e.clientX;
-        panLastY = e.clientY;
-        // Drag up (dy<0) = look higher = increase viewY
-        viewY -= dy / H() * 2.0;
-        // Drag right (dx>0) = look right = increase viewX
-        viewX += dx / W() * 1.5;
-        e.preventDefault();
-    }, {passive: false});
-
-    panZone.addEventListener('pointerup', e => {
-        if (e.pointerId !== panTouchId) return;
-        panTouchId = null;
-    });
-    panZone.addEventListener('pointercancel', e => {
-        if (e.pointerId !== panTouchId) return;
-        panTouchId = null;
-    });
-
-    // ===== Joystick (character movement) =====
-    const input = { x: 0, y: 0, jump: false };
-    const jZone = document.getElementById('joystick-zone');
-    const jKnob = document.getElementById('joystick-knob');
-    let joyTouchId = null, joyX0 = 0, joyY0 = 0;
-
-    jZone.addEventListener('pointerdown', e => {
-        joyTouchId = e.pointerId;
-        joyX0 = e.clientX; joyY0 = e.clientY;
-        jKnob.style.background='rgba(255,255,255,.8)';
+    const input={x:0,y:0,jump:false};
+    const jZone=document.getElementById('joystick-zone');
+    const jKnob=document.getElementById('joystick-knob');
+    let joyTouchId=null, joyX0=0, joyY0=0;
+    jZone.addEventListener('pointerdown', e=>{
+        joyTouchId=e.pointerId; joyX0=e.clientX; joyY0=e.clientY;
+        jKnob.style.background='rgba(255,255,255,.7)';
         jZone.setPointerCapture(e.pointerId);
         e.preventDefault(); e.stopPropagation();
-    }, {passive:false});
-    jZone.addEventListener('pointermove', e => {
-        if (e.pointerId !== joyTouchId) return;
+    },{passive:false});
+    jZone.addEventListener('pointermove', e=>{
+        if(e.pointerId!==joyTouchId) return;
         const dx=Math.max(-45,Math.min(45,e.clientX-joyX0));
         const dy=Math.max(-45,Math.min(45,e.clientY-joyY0));
         jKnob.style.transform=`translate(${dx}px,${dy}px)`;
-        input.x=dx/45;
-        input.y=-dy/45; // up = positive
+        input.x=dx/45; input.y=-dy/45;
         e.stopPropagation();
     });
-    jZone.addEventListener('pointerup', e => {
-        if (e.pointerId !== joyTouchId) return;
-        joyTouchId = null;
+    jZone.addEventListener('pointerup', e=>{
+        if(e.pointerId!==joyTouchId) return;
+        joyTouchId=null;
         jKnob.style.transform='translate(0,0)';
-        jKnob.style.background='rgba(255,255,255,.5)';
-        input.x=0; input.y=0;
-        e.stopPropagation();
+        jKnob.style.background='rgba(255,255,255,.4)';
+        input.x=0; input.y=0; e.stopPropagation();
     });
-    jZone.addEventListener('pointercancel', e => {
-        if (e.pointerId !== joyTouchId) return;
-        joyTouchId = null;
+    jZone.addEventListener('pointercancel', e=>{
+        if(e.pointerId!==joyTouchId) return;
+        joyTouchId=null;
         jKnob.style.transform='translate(0,0)';
-        jKnob.style.background='rgba(255,255,255,.5)';
+        jKnob.style.background='rgba(255,255,255,.4)';
         input.x=0; input.y=0;
     });
 
-    // ===== Jump Button =====
-    const jBtn = document.getElementById('jump-btn');
+    const jBtn=document.getElementById('jump-btn');
     jBtn.addEventListener('pointerdown', e=>{
         input.jump=true; jBtn.classList.add('pressed');
         e.preventDefault(); e.stopPropagation();
     },{passive:false});
     jBtn.addEventListener('pointerup', e=>{ jBtn.classList.remove('pressed'); e.stopPropagation(); });
-    jBtn.addEventListener('pointercancel', e=>{ jBtn.classList.remove('pressed'); });
+    jBtn.addEventListener('pointercancel', ()=>jBtn.classList.remove('pressed'));
 
-    // ===== Keyboard =====
     window.addEventListener('keydown', e=>{
         if(e.key==='ArrowUp'||e.key==='w')input.y=1;
         if(e.key==='ArrowDown'||e.key==='s')input.y=-1;
         if(e.key==='ArrowLeft'||e.key==='a')input.x=-1;
         if(e.key==='ArrowRight'||e.key==='d')input.x=1;
         if(e.key===' ')input.jump=true;
-        // Mouse wheel for camera pan on desktop
     });
     window.addEventListener('keyup', e=>{
         if(['ArrowUp','w','ArrowDown','s'].includes(e.key))input.y=0;
         if(['ArrowLeft','a','ArrowRight','d'].includes(e.key))input.x=0;
     });
-    // Mouse wheel for desktop camera pan
     window.addEventListener('wheel', e=>{
-        viewY += e.deltaY * 0.002;
-        e.preventDefault();
-    }, {passive:false});
+        viewY+=e.deltaY*0.002; e.preventDefault();
+    },{passive:false});
 
     // ===== Game State =====
     const clock = new THREE.Clock();
-    let state = 'CLIMB', fallVY = 0, deaths = 0;
-    let deathTimer = 0;
+    let state='CLIMB', fallVY=0, deaths=0, deathTimer=0;
     const dbg = document.getElementById('debug-info');
-    const halfVisW = camZ * Math.tan(THREE.MathUtils.degToRad(VFOV/2)) * (W()/H());
+    const halfVisW = camZ*Math.tan(THREE.MathUtils.degToRad(VFOV/2))*(W()/H());
 
-    // Character starts at screen center (viewY=0.5 means screen shows y=0..1, center=0.5)
     character.root.position.set(0, 0.5, 0);
 
     function tick() {
@@ -594,118 +562,100 @@ async function main() {
         const t = clock.getElapsedTime();
         const pos = character.root.position;
 
-        analyzer.analyze(t * 1000);
-
-        // ===== Game Logic =====
-        switch (state) {
+        // Game Logic
+        switch(state) {
             case 'CLIMB':
-                if (Math.abs(input.y) > 0.1 || Math.abs(input.x) > 0.1) {
+                if(Math.abs(input.y)>0.1||Math.abs(input.x)>0.1){
                     character.setState('CLIMB');
-                    pos.y += input.y * 0.04 * dt;
-                    if (pos.y < 0.02) pos.y = 0.02;
-                    pos.x += input.x * 0.03 * dt;
-                    pos.x = Math.max(-halfVisW + 0.02, Math.min(halfVisW - 0.02, pos.x));
+                    pos.y += input.y*0.04*dt;
+                    if(pos.y<0.02) pos.y=0.02;
+                    pos.x += input.x*0.03*dt;
+                    pos.x = Math.max(-halfVisW+0.02, Math.min(halfVisW-0.02, pos.x));
                 } else {
                     character.setState('IDLE');
                 }
-                if (input.jump) {
-                    input.jump = false;
-                    state = 'JUMPING';
+                if(input.jump){
+                    input.jump=false;
+                    state='JUMPING';
                     character.setState('JUMP');
-                    character.root.rotation.y = 0;
-                    fallVY = 0.4;
+                    character.root.rotation.y=0;
+                    fallVY=0.4;
                     deaths++;
                 }
                 break;
-
             case 'JUMPING':
-                fallVY -= 1.8 * dt; // gravity
-                pos.y += fallVY * dt;
-                pos.z += 0.2 * dt; // slightly toward camera
-                if (pos.y <= 0.01) {
-                    pos.y = 0.01;
-                    fallVY = 0;
-                    state = 'DEAD';
+                fallVY -= 1.8*dt;
+                pos.y += fallVY*dt;
+                pos.z += 0.2*dt;
+                if(pos.y<=0.01){
+                    pos.y=0.01; fallVY=0;
+                    state='DEAD';
                     character.setState('DEATH');
-                    deathTimer = 4.0;
-                    blood.spawn(pos.clone());
-                    blood.spawn(pos.clone().add(new THREE.Vector3(0, 0.02, 0)));
-                    blood.spawn(pos.clone().add(new THREE.Vector3(0.01, 0.005, 0)));
+                    deathTimer=4.0;
+                    // Spawn tentacles on the character — they persist!
+                    tentacles.spawnOnDeath(character.root);
                 }
                 break;
-
             case 'DEAD':
                 deathTimer -= dt;
-                if (deathTimer <= 0) {
-                    state = 'CLIMB';
-                    pos.set(0, 0.5, 0);
-                    character.root.rotation.y = Math.PI;
+                if(deathTimer<=0){
+                    state='CLIMB';
+                    pos.set(0,0.5,0);
+                    character.root.rotation.y=Math.PI;
                     character.setState('IDLE');
-                    viewY = 0.5; // reset camera to center
+                    viewY=0.5;
                 }
                 break;
         }
-        input.jump = false;
+        input.jump=false;
+        if(state==='CLIMB') character.root.rotation.y=Math.PI;
 
-        if (state === 'CLIMB') character.root.rotation.y = Math.PI;
-
-        // ===== Camera =====
-        if (state === 'JUMPING' || state === 'DEAD') {
-            // During jump/death: camera smoothly tracks the character
-            // so the falling body / corpse is always visible
-            // Target: character at screen center
-            const targetY = pos.y + 0.1; // slightly above character so corpse is centered
-            viewY += (targetY - viewY) * 0.04; // slow smooth pan down
-            if (gyro.enabled) {
-                viewX = gyro.smoothX;
-            }
+        // Camera
+        if(state==='JUMPING'||state==='DEAD'){
+            const targetY=pos.y+0.1;
+            viewY+=(targetY-viewY)*0.04;
+            if(gyro.enabled) viewX=gyro.smoothX;
         } else {
-            // Normal climb: gyro or touch controls camera
-            if (gyro.enabled) {
-                viewY = gyro.smoothY;
-                viewX = gyro.smoothX;
+            if(gyro.enabled){
+                viewY=gyro.smoothY; viewX=gyro.smoothX;
             }
         }
-
-        // Clamp
-        viewY = Math.max(-0.2, viewY);
-
-        // Smooth camera to target position
-        camera.position.x += (viewX - camera.position.x) * 0.08;
-        camera.position.y += (viewY - camera.position.y) * 0.08;
+        viewY=Math.max(-0.2, viewY);
+        camera.position.x += (viewX-camera.position.x)*0.08;
+        camera.position.y += (viewY-camera.position.y)*0.08;
         camera.lookAt(camera.position.x, camera.position.y, 0);
 
         // Update systems
         character.update(dt, input.y);
-        blood.update(dt);
+        tentacles.update(t);
+        vhs.update();
 
-        // ===== Debug =====
-        const screenBottom = camera.position.y - 0.5;
-        const screenTop = camera.position.y + 0.5;
-        const charVisible = pos.y >= screenBottom && pos.y <= screenTop;
+        // ASCII render (replaces normal WebGL display)
+        ascii.render(scene);
 
+        // Debug
+        const sb=camera.position.y-0.5, st=camera.position.y+0.5;
+        const vis = pos.y>=sb&&pos.y<=st;
         dbg.innerHTML = [
-            `角色: y${pos.y.toFixed(2)} | ${state}`,
-            `鏡頭: ${camera.position.y.toFixed(2)} (見 ${screenBottom.toFixed(1)}~${screenTop.toFixed(1)})`,
-            `角色${charVisible ? '在螢幕內' : '在螢幕外'}`,
+            `POS:${pos.x.toFixed(2)},${pos.y.toFixed(2)} ${state}`,
+            `CAM:${camera.position.y.toFixed(2)} [${sb.toFixed(1)}~${st.toFixed(1)}]`,
+            vis?'ON-SCREEN':'OFF-SCREEN',
             gyro.enabled
-                ? `陀螺儀: β${gyro.rawBeta.toFixed(0)}° γ${gyro.rawGamma.toFixed(0)}° → ${viewX.toFixed(1)},${viewY.toFixed(1)}`
-                : `陀螺儀: OFF [${gyro.status}] (用手指拖曳)`,
-            `Blood: ${blood.particles.length} | Deaths: ${deaths}`,
+                ?`GYRO:β${gyro.rawBeta.toFixed(0)}° γ${gyro.rawGamma.toFixed(0)}°`
+                :`GYRO:OFF[${gyro.status}]`,
+            `TENTACLES:${tentacles.allTentacles.length} DEATHS:${deaths}`,
         ].join('<br>');
-
-        renderer.render(scene, camera);
     }
 
     function onResize() {
-        camera.aspect = W()/H();
+        camera.aspect=W()/H();
         camera.updateProjectionMatrix();
-        renderer.setSize(W(), H());
+        renderer.setSize(W(),H());
         layoutUI();
     }
     window.addEventListener('resize', onResize);
     window.addEventListener('orientationchange', ()=>setTimeout(onResize,300));
-    if(window.visualViewport) window.visualViewport.addEventListener('resize', onResize);
+    if(window.visualViewport) window.visualViewport.addEventListener('resize',onResize);
 
     tick();
 }
