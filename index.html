@@ -18,6 +18,8 @@
             z-index:2;pointer-events:none}
         #seg-overlay{position:absolute;top:0;left:0;width:100%;height:100%;
             z-index:5;pointer-events:none}
+        #marker-canvas{position:absolute;top:0;left:0;width:100%;height:100%;
+            z-index:6;pointer-events:none}
         /* VHS scanlines */
         #vhs-scanlines{position:absolute;top:0;left:0;width:100%;height:100%;
             z-index:3;pointer-events:none;
@@ -102,6 +104,7 @@
     <video id="camera-video" autoplay playsinline muted></video>
     <canvas id="blood-canvas"></canvas>
     <canvas id="seg-overlay"></canvas>
+    <canvas id="marker-canvas"></canvas>
     <!-- 3D canvas inserted by JS -->
     <canvas id="tentacle-canvas" style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:2;pointer-events:none;image-rendering:auto"></canvas>
     <div id="vhs-scanlines"></div>
@@ -126,6 +129,7 @@
 import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
 import { GLTFLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/DRACOLoader.js';
+import { FBXLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/FBXLoader.js';
 
 const W = () => window.innerWidth, H = () => window.innerHeight;
 function layoutUI() {
@@ -148,11 +152,15 @@ const climbHeat = Array.from({ length: SEG_H }, () => new Uint8Array(SEG_W));
 const obstacleHeat = Array.from({ length: SEG_H }, () => new Uint8Array(SEG_W));
 const segOverlay = document.getElementById('seg-overlay');
 const segOverlayCtx = segOverlay.getContext('2d');
+const markerCanvas = document.getElementById('marker-canvas');
+const markerCtx = markerCanvas.getContext('2d');
 let segActive = false;
 let segFrame = 0;
 let segStableFrames = 0;
 const SAT_CLIMB = 0.12;
 const SAT_OBS = 0.55;
+let glowActive = false;
+let glowTarget = { x: 0, y: 0, valid: false };
 
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
@@ -173,6 +181,7 @@ function updateSegmentation(video) {
     segCtx.drawImage(video, 0, 0, SEG_W, SEG_H);
     const data = segCtx.getImageData(0, 0, SEG_W, SEG_H).data;
     let climbCount = 0;
+    let glowSumX = 0, glowSumY = 0, glowCount = 0;
     for (let y = 0; y < SEG_H; y++) {
         for (let x = 0; x < SEG_W; x++) {
             const i = (y * SEG_W + x) * 4;
@@ -182,6 +191,7 @@ function updateSegmentation(video) {
             const sat = max === 0 ? 0 : (max - min) / max;
             const climb = (sat > SAT_CLIMB && luma > 0.08 && luma < 0.95) ? 1 : 0;
             const obstacle = (sat > SAT_OBS && luma > 0.08 && luma < 0.95) ? 1 : 0;
+            const glow = (luma > 0.92);
 
             let ch = climbHeat[y][x];
             ch = climb ? Math.min(5, ch + 2) : Math.max(0, ch - 1);
@@ -194,10 +204,27 @@ function updateSegmentation(video) {
             obstacleMap[y][x] = oh >= 3 ? 1 : 0;
 
             if (climbMap[y][x]) climbCount++;
+            if (glow) { glowSumX += x; glowSumY += y; glowCount++; }
         }
     }
     segActive = climbCount > 6;
     segStableFrames = segActive ? segStableFrames + 1 : 0;
+    glowActive = glowCount > 6;
+    if (glowActive) {
+        const gx = glowSumX / glowCount;
+        const gy = glowSumY / glowCount;
+        const sx = (gx + 0.5) / SEG_W * W();
+        const sy = (gy + 0.5) / SEG_H * H();
+        if (!glowTarget.valid) {
+            glowTarget.x = sx; glowTarget.y = sy;
+        } else {
+            glowTarget.x += (sx - glowTarget.x) * 0.25;
+            glowTarget.y += (sy - glowTarget.y) * 0.25;
+        }
+        glowTarget.valid = true;
+    } else {
+        glowTarget.valid = false;
+    }
     drawSegOverlay();
 }
 
@@ -292,6 +319,41 @@ function drawSegOverlay() {
             }
         }
     }
+}
+
+let markerPhase = 0;
+function drawGlowMarker(active, sx, sy, near, dt) {
+    if (!markerCtx) return;
+    if (markerCanvas.width !== W() || markerCanvas.height !== H()) {
+        markerCanvas.width = W();
+        markerCanvas.height = H();
+    }
+    const ctx = markerCtx;
+    ctx.clearRect(0, 0, markerCanvas.width, markerCanvas.height);
+    if (!active) return;
+    markerPhase += dt * 2.2;
+    const size = near ? 26 : 20;
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(markerPhase);
+    const stroke = near ? 'rgba(0,255,200,0.95)' : 'rgba(0,220,160,0.75)';
+    const fill = near ? 'rgba(0,255,200,0.18)' : 'rgba(0,220,160,0.12)';
+    ctx.strokeStyle = stroke;
+    ctx.fillStyle = fill;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, -size);
+    ctx.lineTo(size * 0.9, size * 0.8);
+    ctx.lineTo(-size * 0.9, size * 0.8);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    // inner ridge for pyramid feel
+    ctx.beginPath();
+    ctx.moveTo(0, -size);
+    ctx.lineTo(0, size * 0.5);
+    ctx.stroke();
+    ctx.restore();
 }
 
 // ===== Loading =====
@@ -770,12 +832,14 @@ class GameCharacter {
         this.mixer=null; this.anims={}; this.curAction=null; this.curState='IDLE';
         this.root.rotation.y = Math.PI;
         this.charHeight = 0.066;
+        this.climbDownDuration = 0.8;
     }
     async load() {
         const gl = new GLTFLoader();
         const dr = new DRACOLoader();
         dr.setDecoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/draco/');
         gl.setDRACOLoader(dr);
+        const fbxLoader = new FBXLoader();
         const texLoader = new THREE.TextureLoader();
         let skinTex = null;
         try {
@@ -837,6 +901,20 @@ class GameCharacter {
                 this.anims['DEATH'].setLoop(THREE.LoopOnce);
                 this.anims['DEATH'].clampWhenFinished=true;
             }
+            // Optional: Climbing Down animation (FBX)
+            try {
+                const downFbx = await new Promise((r,j)=>fbxLoader.load(
+                    './playermodel/Climbing Down.fbx', r, undefined, j));
+                if (downFbx.animations && downFbx.animations.length) {
+                    strip(downFbx.animations[0]);
+                    this.anims['CLIMB_DOWN'] = this.mixer.clipAction(downFbx.animations[0]);
+                    this.anims['CLIMB_DOWN'].setLoop(THREE.LoopOnce);
+                    this.anims['CLIMB_DOWN'].clampWhenFinished = true;
+                    this.climbDownDuration = downFbx.animations[0].duration || this.climbDownDuration;
+                }
+            } catch(e) {
+                // If missing, fall back to normal climb/idle
+            }
             this.loaded=true;
         } catch(e){
             console.error('Load fail:',e);
@@ -883,8 +961,10 @@ async function main() {
     const scene = new THREE.Scene();
     const VFOV=60;
     const camera = new THREE.PerspectiveCamera(VFOV, W()/H(), 0.001, 100);
-    const camZ = 1.0/(2*Math.tan(THREE.MathUtils.degToRad(VFOV/2)));
-    camera.position.set(0,0.5,camZ);
+    const camZBase = 1.0/(2*Math.tan(THREE.MathUtils.degToRad(VFOV/2)));
+    let camZoom = 1.0;
+    let camRoll = 0;
+    camera.position.set(0,0.5,camZBase*camZoom);
     camera.lookAt(0,0.5,0);
 
     const renderer = new THREE.WebGLRenderer({alpha:true, antialias:true});
@@ -905,10 +985,7 @@ async function main() {
 
     const tentacles = new TentacleSystem2D();
     const blood = new BloodSystem2D();
-    const gyro = new GyroTracker();
     const vhs = new VHSEffect();
-    const USE_GYRO = true;
-    const USE_GYRO_SCROLL = true;
 
     $status.textContent='ready.';
     $start.style.display='block';
@@ -917,7 +994,6 @@ async function main() {
         $status.textContent='launching...';
         $start.style.display='none';
         try {
-            if (USE_GYRO || USE_GYRO_SCROLL) await gyro.init();
             const hasCam = await startCamera();
             window._hasCam = hasCam;
         } catch(e){ console.warn('Init error:',e); }
@@ -930,28 +1006,71 @@ async function main() {
 
     let viewX=0, viewY=0.5;
     const panZone = document.getElementById('pan-zone');
-    let panTouchId=null, panLastX=0, panLastY=0;
+    const panPointers = new Map();
+    let panStart = { x:0, y:0, viewX:0, viewY:0 };
+    let pinchStartDist = 0;
+    let pinchStartAngle = 0;
+    let pinchStartZoom = 1.0;
+    let pinchStartRoll = 0;
 
-    panZone.addEventListener('pointerdown', e=>{
-        const ex=e.clientX, ey=e.clientY;
+    const inUi = (ex, ey) => {
         const jz=document.getElementById('joystick-zone').getBoundingClientRect();
         const jb=document.getElementById('jump-btn').getBoundingClientRect();
         const pad=20;
-        if(ex>=jz.left-pad&&ex<=jz.right+pad&&ey>=jz.top-pad&&ey<=jz.bottom+pad) return;
-        if(ex>=jb.left-pad&&ex<=jb.right+pad&&ey>=jb.top-pad&&ey<=jb.bottom+pad) return;
-        panTouchId=e.pointerId; panLastX=e.clientX; panLastY=e.clientY;
-        panZone.setPointerCapture(e.pointerId); e.preventDefault();
-    },{passive:false});
-    panZone.addEventListener('pointermove', e=>{
-        if(e.pointerId!==panTouchId) return;
-        const dx=e.clientX-panLastX, dy=e.clientY-panLastY;
-        panLastX=e.clientX; panLastY=e.clientY;
-        viewY -= dy/H()*2.0;
-        viewX += dx/W()*1.5;
+        if(ex>=jz.left-pad&&ex<=jz.right+pad&&ey>=jz.top-pad&&ey<=jz.bottom+pad) return true;
+        if(ex>=jb.left-pad&&ex<=jb.right+pad&&ey>=jb.top-pad&&ey<=jb.bottom+pad) return true;
+        return false;
+    };
+    const dist = (a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+    const angle = (a,b)=>Math.atan2(b.y-a.y,b.x-a.x);
+
+    panZone.addEventListener('pointerdown', e=>{
+        const ex=e.clientX, ey=e.clientY;
+        if(inUi(ex,ey)) return;
+        panPointers.set(e.pointerId,{x:ex,y:ey});
+        panZone.setPointerCapture(e.pointerId);
+        if (panPointers.size===1) {
+            panStart = { x:ex, y:ey, viewX, viewY };
+        } else if (panPointers.size===2) {
+            const pts=[...panPointers.values()];
+            pinchStartDist = dist(pts[0], pts[1]);
+            pinchStartAngle = angle(pts[0], pts[1]);
+            pinchStartZoom = camZoom;
+            pinchStartRoll = camRoll;
+        }
         e.preventDefault();
     },{passive:false});
-    panZone.addEventListener('pointerup', e=>{ if(e.pointerId===panTouchId) panTouchId=null; });
-    panZone.addEventListener('pointercancel', e=>{ if(e.pointerId===panTouchId) panTouchId=null; });
+    panZone.addEventListener('pointermove', e=>{
+        if(!panPointers.has(e.pointerId)) return;
+        panPointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+        if (panPointers.size===1) {
+            const dx = e.clientX - panStart.x;
+            const dy = e.clientY - panStart.y;
+            viewX = panStart.viewX + dx/W()*1.8;
+            viewY = panStart.viewY - dy/H()*2.2;
+        } else if (panPointers.size>=2) {
+            const pts=[...panPointers.values()];
+            const d = dist(pts[0], pts[1]);
+            const ang = angle(pts[0], pts[1]);
+            if (pinchStartDist>0) {
+                camZoom = clamp(pinchStartZoom * (pinchStartDist / d), 0.65, 1.8);
+            }
+            camRoll = clamp(pinchStartRoll + (ang - pinchStartAngle), -0.7, 0.7);
+        }
+        e.preventDefault();
+    },{passive:false});
+    const clearPointer = id => {
+        panPointers.delete(id);
+        if (panPointers.size===1) {
+            const only=[...panPointers.values()][0];
+            panStart = { x:only.x, y:only.y, viewX, viewY };
+        }
+        if (panPointers.size<2) {
+            pinchStartDist = 0;
+        }
+    };
+    panZone.addEventListener('pointerup', e=>{ clearPointer(e.pointerId); });
+    panZone.addEventListener('pointercancel', e=>{ clearPointer(e.pointerId); });
 
     const input={x:0,y:0,jump:false};
     const jZone=document.getElementById('joystick-zone');
@@ -1006,7 +1125,8 @@ async function main() {
         if(['ArrowLeft','a','ArrowRight','d'].includes(e.key))input.x=0;
     });
     window.addEventListener('wheel', e=>{
-        viewY+=e.deltaY*0.002; e.preventDefault();
+        camZoom = clamp(camZoom + e.deltaY*0.001, 0.65, 1.8);
+        e.preventDefault();
     },{passive:false});
 
     // ===== Game State =====
@@ -1025,28 +1145,16 @@ async function main() {
     let landedFrames = 0;
     let deathStartTime = 0;
     let tentacleBurstCount = 0;
-    let lastTilt = 0.5;
     let deadViewX = 0;
     let deadViewY = 0.5;
-    let deathBeta = 90;
-    let deathRevealPx = 0;
-    let deathRevealTargetPx = 0;
-    let deathCenterY = 0;
-    let gyroNeutralX = 0;
-    let gyroNeutralY = 0.5;
-    let gyroNeutralBeta = 90;
-    let gyroNeutralGamma = 0;
-    let gyroOffsetX = 0;
-    let gyroOffsetY = 0;
-    let gyroOffsetPrevX = 0;
-    let gyroOffsetPrevY = 0;
-    let gyroIdleReady = false;
+    let preJumpTimer = 0;
+    let preJumpStage = 0;
     let tentacleTargetCount = 0;
     let deathWorld = new THREE.Vector3(0,0,0);
     let deathWorldValid = false;
     const dbg = document.getElementById('debug-info');
-    const halfVisW = camZ*Math.tan(THREE.MathUtils.degToRad(VFOV/2))*(W()/H());
-    const halfVisH = camZ*Math.tan(THREE.MathUtils.degToRad(VFOV/2));
+    const halfVisW = () => camera.position.z*Math.tan(THREE.MathUtils.degToRad(VFOV/2))*(W()/H());
+    const halfVisH = () => camera.position.z*Math.tan(THREE.MathUtils.degToRad(VFOV/2));
     const tmpVec = new THREE.Vector3();
     const tmpVec2 = new THREE.Vector3();
     const BODY_OFFSET_SCALE = 0.55;
@@ -1097,35 +1205,6 @@ async function main() {
         }
         const useObstacles = !!hasCamera && startAnchorSet;
         const holdClimbPose = useObstacles && climbEngaged && !moving;
-        const idleGyro = useObstacles && !moving && gyro.enabled && state==='CLIMB';
-        if (idleGyro) {
-            if (!gyroIdleReady) {
-                gyroNeutralX = gyro.smoothX;
-                gyroNeutralY = gyro.smoothY;
-                gyroNeutralBeta = gyro.rawBeta || 90;
-                gyroNeutralGamma = gyro.rawGamma || 0;
-                gyroOffsetX = 0;
-                gyroOffsetY = 0;
-                gyroOffsetPrevX = 0;
-                gyroOffsetPrevY = 0;
-                gyroIdleReady = true;
-            }
-            // Slow neutral drift to prevent jitter
-            gyroNeutralBeta += ((gyro.rawBeta || 90) - gyroNeutralBeta) * 0.02;
-            gyroNeutralGamma += ((gyro.rawGamma || 0) - gyroNeutralGamma) * 0.02;
-            const dBeta = (gyro.rawBeta || 90) - gyroNeutralBeta;   // tilt down => positive
-            const dGamma = (gyro.rawGamma || 0) - gyroNeutralGamma; // tilt right => positive
-            const rawOffX = clamp(-dGamma * W() * 0.075, -W()*0.45, W()*0.45);
-            const rawOffY = clamp(-dBeta * H() * 0.06, -H()*0.55, H()*0.55);
-            gyroOffsetX += (rawOffX - gyroOffsetX) * 0.12;
-            gyroOffsetY += (rawOffY - gyroOffsetY) * 0.12;
-        } else {
-            gyroIdleReady = false;
-            gyroOffsetX += (0 - gyroOffsetX) * 0.2;
-            gyroOffsetY += (0 - gyroOffsetY) * 0.2;
-            gyroOffsetPrevX = gyroOffsetX;
-            gyroOffsetPrevY = gyroOffsetY;
-        }
 
         // Game Logic
         switch(state) {
@@ -1147,14 +1226,6 @@ async function main() {
                     const prevTX = targetScreen.x;
                     const prevTY = targetScreen.y;
                     const maxStep = 14;
-                    const gdx = gyroOffsetX - gyroOffsetPrevX;
-                    const gdy = gyroOffsetY - gyroOffsetPrevY;
-                    if (idleGyro && (Math.abs(gdx) > 0.01 || Math.abs(gdy) > 0.01)) {
-                        targetScreen.x += gdx;
-                        targetScreen.y += gdy;
-                    }
-                    gyroOffsetPrevX = gyroOffsetX;
-                    gyroOffsetPrevY = gyroOffsetY;
                     if (!lockLand) {
                         let nextX = targetScreen.x + input.x*speedX*dt;
                         let nextY = targetScreen.y - input.y*speedY*dt;
@@ -1222,35 +1293,74 @@ async function main() {
                         pos.y += input.y*0.04*dt;
                         if(pos.y<0.02) pos.y=0.02;
                         pos.x += input.x*0.03*dt;
-                        pos.x = Math.max(-halfVisW+0.02, Math.min(halfVisW-0.02, pos.x));
+                        pos.x = Math.max(-halfVisW()+0.02, Math.min(halfVisW()-0.02, pos.x));
                     }
                     const screenPos = worldToScreen(pos);
                     charScreen.x = screenPos.x; charScreen.y = screenPos.y;
                 }
                 if(input.jump){
                     input.jump=false;
-                    state='JUMPING';
-                    character.setState('JUMP');
-                    character.root.rotation.y=0;
-                    fallVY=0.4;
-                    deaths++;
-                    climbEngaged = false;
-                    deathScreen.valid = false;
-                    landedFrames = 0;
-                    deathStartTime = 0;
-                    tentacleBurstCount = 0;
-                    tentacleTargetCount = 0;
                     if (useObstacles) {
-                        if (climbBaseGridY === null) {
-                            const g = screenToGrid(charScreen.x, charScreen.y);
-                            climbBaseGridY = g.y;
+                        const jumpUnlocked = climbHeightMax > 1;
+                        const canShowGlow = jumpUnlocked && glowTarget.valid;
+                        const dx = glowTarget.x - charScreen.x;
+                        const dy = glowTarget.y - charScreen.y;
+                        const nearGlow = canShowGlow && (dx*dx + dy*dy) < (48*48);
+                        if (canShowGlow && nearGlow) {
+                            state='PREJUMP';
+                            preJumpTimer=0; preJumpStage=0;
+                            climbEngaged = true;
+                            character.setState(character.anims['CLIMB_DOWN'] ? 'CLIMB_DOWN' : 'CLIMB');
+                            if (climbBaseGridY === null) {
+                                const g = screenToGrid(charScreen.x, charScreen.y);
+                                climbBaseGridY = g.y;
+                            }
+                            jumpHeight = climbHeightMax;
                         }
-                        jumpHeight = climbHeightMax;
                     } else {
+                        state='JUMPING';
+                        character.setState('JUMP');
+                        character.root.rotation.y=0;
+                        fallVY=0.4;
+                        deaths++;
+                        climbEngaged = false;
+                        deathScreen.valid = false;
+                        landedFrames = 0;
+                        deathStartTime = 0;
+                        tentacleBurstCount = 0;
+                        tentacleTargetCount = 0;
                         jumpHeight = 0;
                     }
                 }
                 break;
+            case 'PREJUMP': {
+                preJumpTimer += dt;
+                // Hold position while playing the sequence
+                const wpos = screenToWorld(charScreen.x, charScreen.y);
+                pos.x = wpos.x; pos.y = wpos.y; pos.z = 0;
+                if (preJumpStage === 0) {
+                    if (preJumpTimer >= Math.max(0.4, character.climbDownDuration)) {
+                        preJumpStage = 1;
+                        preJumpTimer = 0;
+                        character.setState('IDLE');
+                    }
+                } else {
+                    if (preJumpTimer >= 0.25) {
+                        state='JUMPING';
+                        character.setState('JUMP');
+                        character.root.rotation.y=0;
+                        fallVY=0.4;
+                        deaths++;
+                        climbEngaged = false;
+                        deathScreen.valid = false;
+                        landedFrames = 0;
+                        deathStartTime = 0;
+                        tentacleBurstCount = 0;
+                        tentacleTargetCount = 0;
+                    }
+                }
+                break;
+            }
             case 'JUMPING':
                 fallVY -= 1.8*dt;
                 pos.y += fallVY*dt;
@@ -1274,16 +1384,12 @@ async function main() {
                         deathBurst.x = (tmpVec.x*0.5+0.5)*W();
                         deathBurst.y = (-tmpVec.y*0.5+0.5)*H();
                         deathBurst.valid = true;
-                        deathCenterY = deathBurst.y;
                         blood.edgeBurstBottom(deathScreen.x);
                         blood.burst(deathBurst.x, deathBurst.y);
                         deathStartTime = t;
                         tentacleBurstCount = 0;
                         tentacleTargetCount = 3 + Math.floor(Math.random()*3);
                         deadViewX = viewX; deadViewY = viewY;
-                        deathBeta = gyro.rawBeta || 90;
-                        deathRevealPx = 0;
-                        deathRevealTargetPx = 0;
                     } else {
                         state='CLIMB';
                         character.setState('IDLE');
@@ -1329,36 +1435,17 @@ async function main() {
                 break;
         }
         input.jump=false;
-        if (USE_GYRO_SCROLL && gyro.enabled) lastTilt = gyro.smoothY;
         if (landedFrames > 0) landedFrames--;
         if(state==='CLIMB') character.root.rotation.y=Math.PI;
         jBtn.textContent = state==='DEAD'?'REVIVE':'JUMP';
 
-        // Camera
-        const gyroAllowed = USE_GYRO && gyro.enabled && !moving && state==='JUMPING';
-        if(state==='JUMPING'){
-            const targetY=pos.y+0.1;
-            viewY+=(targetY-viewY)*0.04;
-            if(gyroAllowed) viewX=gyro.smoothX;
-        } else if (state==='DEAD') {
-            // Gyro camera OFF after death; only reveal corpse via tilt mapping
-            viewX += (deadViewX-viewX)*0.08;
-            viewY += (deadViewY-viewY)*0.08;
-        } else {
-            if(gyroAllowed){
-                viewY=gyro.smoothY; viewX=gyro.smoothX;
-            }
-        }
+        // Camera (touch-driven pan/zoom/roll)
         viewY=Math.max(-0.2, viewY);
-        if(USE_GYRO && gyro.enabled) {
-            // Gyro already smoothed — apply directly to avoid double-smoothing lag
-            camera.position.x = viewX;
-            camera.position.y = viewY;
-        } else {
-            camera.position.x += (viewX-camera.position.x)*0.08;
-            camera.position.y += (viewY-camera.position.y)*0.08;
-        }
+        camera.position.x = viewX;
+        camera.position.y = viewY;
+        camera.position.z = camZBase * camZoom;
         camera.lookAt(camera.position.x, camera.position.y, 0);
+        camera.rotation.z = camRoll;
 
         // Update systems
         character.update(dt, input.y, holdClimbPose);
@@ -1386,25 +1473,16 @@ async function main() {
         tentacles.update(t);
         blood.update(dt);
         vhs.update();
+        const jumpUnlocked = climbHeightMax > 1;
+        const showGlow = jumpUnlocked && glowTarget.valid;
+        const dxg = glowTarget.x - charScreen.x;
+        const dyg = glowTarget.y - charScreen.y;
+        const nearGlow = showGlow && (dxg*dxg + dyg*dyg) < (48*48);
+        drawGlowMarker(showGlow, glowTarget.x, glowTarget.y, nearGlow, dt);
 
-        // Death reveal: slide overlays + character up from bottom when tilting down 45°
-        let revealPx = 0;
-        if (state === 'DEAD' && gyro.enabled) {
-            const tiltDelta = (gyro.rawBeta || 90) - (deathBeta || 90);
-            const revealNorm = Math.max(0, Math.min(1, tiltDelta / 45));
-            const desiredShift = clamp((H()/2 - effectSY) - H()*0.08, -H()*0.9, H()*0.9);
-            deathRevealTargetPx = revealNorm * desiredShift;
-            deathRevealPx += (deathRevealTargetPx - deathRevealPx) * 0.08;
-            revealPx = deathRevealPx;
-        } else {
-            deathRevealTargetPx = 0;
-            deathRevealPx += (deathRevealTargetPx - deathRevealPx) * 0.08;
-            revealPx = deathRevealPx;
-        }
-        const dy = revealPx;
-        renderer.domElement.style.transform = `translateY(${dy}px)`;
-        document.getElementById('blood-canvas').style.transform = `translateY(${dy}px)`;
-        document.getElementById('tentacle-canvas').style.transform = `translateY(${dy}px)`;
+        renderer.domElement.style.transform = '';
+        document.getElementById('blood-canvas').style.transform = '';
+        document.getElementById('tentacle-canvas').style.transform = '';
 
         // Render 3D scene directly
         renderer.render(scene, camera);
@@ -1440,11 +1518,9 @@ async function main() {
             `POS:${pos.x.toFixed(2)},${pos.y.toFixed(2)} ${state}`,
             `CAM:${camera.position.y.toFixed(2)} [${sb.toFixed(1)}~${st.toFixed(1)}]`,
             vis?'ON-SCREEN':'OFF-SCREEN',
-            gyro.enabled
-                ?`GYRO:β${gyro.rawBeta.toFixed(0)}° γ${gyro.rawGamma.toFixed(0)}°`
-                :`GYRO:OFF[${gyro.status}]`,
+            `GYRO:OFF`,
             `TENTACLES:${tentacles.tentacles.length} DEATHS:${deaths}`,
-            `SEG:${segActive?'ON':'OFF'} S:${segStableFrames} CLB>${SAT_CLIMB.toFixed(2)} OBS>${SAT_OBS.toFixed(2)}`,
+            `SEG:${segActive?'ON':'OFF'} GLOW:${glowActive?'ON':'OFF'} S:${segStableFrames} CLB>${SAT_CLIMB.toFixed(2)} OBS>${SAT_OBS.toFixed(2)}`,
         ].join('<br>');
     }
 
