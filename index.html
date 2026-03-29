@@ -11,7 +11,7 @@
         #camera-video{position:absolute;top:0;left:0;width:100%;height:100%;
             object-fit:cover;z-index:0;
             background:linear-gradient(180deg,#87CEEB 0%,#4a90d9 40%,#2c3e50 40.5%,#1a1a2e 100%)}
-        #ascii-canvas{position:absolute;top:0;left:0;width:100%;height:100%;
+        #canvas3d{position:absolute;top:0;left:0;width:100%;height:100%;
             z-index:2;pointer-events:none}
         /* VHS scanlines */
         #vhs-scanlines{position:absolute;top:0;left:0;width:100%;height:100%;
@@ -56,7 +56,7 @@
 </head>
 <body>
     <video id="camera-video" autoplay playsinline muted></video>
-    <canvas id="ascii-canvas"></canvas>
+    <!-- 3D canvas inserted by JS -->
     <div id="vhs-scanlines"></div>
     <canvas id="vhs-noise"></canvas>
     <div id="vhs-tracking"></div>
@@ -179,64 +179,7 @@ class VHSEffect {
     }
 }
 
-// ===== ASCII Renderer =====
-class AsciiRenderer {
-    constructor(renderer, camera) {
-        this.renderer = renderer;
-        this.camera = camera;
-        this.chars = ' .,:;+*?%S#@';
-        this.cellSize = 8;
-        this.canvas = document.getElementById('ascii-canvas');
-        this.ctx = this.canvas.getContext('2d');
-        this.cols = 1; this.rows = 1;
-        this.target = null; this.pixels = null;
-        this._resize();
-    }
-    _resize() {
-        this.cols = Math.ceil(W()/this.cellSize);
-        this.rows = Math.ceil(H()/this.cellSize);
-        if (this.target) this.target.dispose();
-        this.target = new THREE.WebGLRenderTarget(this.cols, this.rows, {
-            minFilter:THREE.NearestFilter, magFilter:THREE.NearestFilter
-        });
-        this.pixels = new Uint8Array(this.cols*this.rows*4);
-    }
-    render(scene) {
-        const cols = Math.ceil(W()/this.cellSize);
-        const rows = Math.ceil(H()/this.cellSize);
-        if (cols!==this.cols||rows!==this.rows) this._resize();
-
-        // Render 3D scene to low-res offscreen target
-        this.renderer.setRenderTarget(this.target);
-        this.renderer.render(scene, this.camera);
-        this.renderer.setRenderTarget(null);
-        this.renderer.readRenderTargetPixels(this.target,0,0,this.cols,this.rows,this.pixels);
-
-        // Draw ASCII on 2D canvas
-        this.canvas.width = W(); this.canvas.height = H();
-        const ctx = this.ctx;
-        ctx.clearRect(0,0,this.canvas.width,this.canvas.height);
-        const fontSize = this.cellSize;
-        ctx.font = `bold ${fontSize}px monospace`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-
-        for (let y=0; y<this.rows; y++) {
-            for (let x=0; x<this.cols; x++) {
-                // WebGL is bottom-up, flip Y
-                const i = ((this.rows-1-y)*this.cols+x)*4;
-                const r=this.pixels[i], g=this.pixels[i+1], b=this.pixels[i+2], a=this.pixels[i+3];
-                if (a<15) continue; // skip transparent
-                const brightness = (r*0.299+g*0.587+b*0.114)/255;
-                const ci = Math.min(this.chars.length-1, Math.floor(brightness*this.chars.length));
-                // Tint green for VHS horror feel
-                const gr = Math.min(255, g+60);
-                ctx.fillStyle = `rgba(${Math.floor(r*0.6)},${Math.floor(gr)},${Math.floor(b*0.5)},${a/255})`;
-                ctx.fillText(this.chars[ci], x*this.cellSize+this.cellSize/2, y*this.cellSize+this.cellSize/2);
-            }
-        }
-    }
-}
+// (ASCII renderer removed — using 3D model directly)
 
 // ===== Tentacle System =====
 class TentacleSystem {
@@ -429,14 +372,14 @@ async function main() {
     camera.position.set(0,0.5,camZ);
     camera.lookAt(0,0.5,0);
 
-    const renderer = new THREE.WebGLRenderer({alpha:true, antialias:false});
+    const renderer = new THREE.WebGLRenderer({alpha:true, antialias:true});
     renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
     renderer.setSize(W(),H());
     renderer.setClearColor(0x000000,0);
-    // WebGL canvas hidden — ASCII canvas replaces it
     const canvas3d = renderer.domElement;
-    canvas3d.style.cssText='position:absolute;top:0;left:0;width:0;height:0;opacity:0;pointer-events:none';
-    document.body.appendChild(canvas3d);
+    canvas3d.id='canvas3d';
+    canvas3d.style.cssText='position:absolute;top:0;left:0;width:100%;height:100%;z-index:2;pointer-events:none';
+    document.getElementById('camera-video').after(canvas3d);
 
     scene.add(new THREE.DirectionalLight(0xffffff,2).translateX(2).translateY(3).translateZ(2));
     scene.add(new THREE.AmbientLight(0xaaaaaa));
@@ -448,7 +391,6 @@ async function main() {
     const tentacles = new TentacleSystem();
     const gyro = new GyroTracker();
     const vhs = new VHSEffect();
-    const ascii = new AsciiRenderer(renderer, camera);
 
     $status.textContent='準備完成！';
     $start.style.display='block';
@@ -630,8 +572,8 @@ async function main() {
         tentacles.update(t);
         vhs.update();
 
-        // ASCII render (replaces normal WebGL display)
-        ascii.render(scene);
+        // Render 3D scene directly
+        renderer.render(scene, camera);
 
         // Debug
         const sb=camera.position.y-0.5, st=camera.position.y+0.5;
