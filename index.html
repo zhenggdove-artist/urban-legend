@@ -144,6 +144,7 @@ const obstacleMapTmp = Array.from({ length: SEG_H }, () => new Uint8Array(SEG_W)
 let segActive = false;
 let segFrame = 0;
 const SAT_THRESHOLD = 0.35;
+let segCentroid = { x: 0, y: 0, valid: false };
 
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
@@ -151,6 +152,7 @@ function updateSegmentation(video) {
     if (!video || video.readyState < 2) {
         segActive = false;
         for (let y = 0; y < SEG_H; y++) obstacleMap[y].fill(0);
+        segCentroid.valid = false;
         return;
     }
     segFrame++;
@@ -158,6 +160,7 @@ function updateSegmentation(video) {
     segCtx.drawImage(video, 0, 0, SEG_W, SEG_H);
     const data = segCtx.getImageData(0, 0, SEG_W, SEG_H).data;
     let obstacleCount = 0;
+    let sumX = 0, sumY = 0;
     for (let y = 0; y < SEG_H; y++) {
         for (let x = 0; x < SEG_W; x++) {
             const i = (y * SEG_W + x) * 4;
@@ -167,7 +170,7 @@ function updateSegmentation(video) {
             const sat = max === 0 ? 0 : (max - min) / max;
             const obstacle = (sat > SAT_THRESHOLD && luma > 0.08 && luma < 0.95) ? 1 : 0;
             obstacleMapTmp[y][x] = obstacle;
-            obstacleCount += obstacle;
+            if (obstacle) { obstacleCount++; sumX += x; sumY += y; }
         }
     }
     for (let y = 0; y < SEG_H; y++) {
@@ -186,12 +189,46 @@ function updateSegmentation(video) {
     }
     const ratio = obstacleCount / (SEG_W * SEG_H);
     segActive = obstacleCount > 6 && ratio < 0.95;
+    if (obstacleCount > 0) {
+        segCentroid.x = sumX / obstacleCount;
+        segCentroid.y = sumY / obstacleCount;
+        segCentroid.valid = true;
+    } else {
+        segCentroid.valid = false;
+    }
 }
 
 function isObstacleAt(sx, sy) {
     const gx = clamp(Math.floor(sx / W() * SEG_W), 0, SEG_W - 1);
     const gy = clamp(Math.floor(sy / H() * SEG_H), 0, SEG_H - 1);
     return obstacleMap[gy][gx] === 1;
+}
+
+function getSegCentroidScreen() {
+    if (!segCentroid.valid) return null;
+    return {
+        x: (segCentroid.x + 0.5) / SEG_W * W(),
+        y: (segCentroid.y + 0.5) / SEG_H * H()
+    };
+}
+
+function findNearestSolid(sx, sy, maxR) {
+    const gx0 = clamp(Math.floor(sx / W() * SEG_W), 0, SEG_W - 1);
+    const gy0 = clamp(Math.floor(sy / H() * SEG_H), 0, SEG_H - 1);
+    for (let r = 0; r <= maxR; r++) {
+        for (let y = -r; y <= r; y++) {
+            for (let x = -r; x <= r; x++) {
+                if (Math.abs(x) !== r && Math.abs(y) !== r) continue;
+                const gx = gx0 + x;
+                const gy = gy0 + y;
+                if (gx < 0 || gy < 0 || gx >= SEG_W || gy >= SEG_H) continue;
+                if (obstacleMap[gy][gx]) {
+                    return { x: (gx + 0.5) / SEG_W * W(), y: (gy + 0.5) / SEG_H * H() };
+                }
+            }
+        }
+    }
+    return null;
 }
 
 // ===== Loading =====
@@ -299,10 +336,10 @@ class TentacleSystem2D {
         this.canvas = document.getElementById('tentacle-canvas');
         this.ctx = this.canvas.getContext('2d');
         this.tentacles = []; // persists across deaths
-        this.RINGS = 18;
-        this.PTS_PER_RING = 5;
+        this.RINGS = 24;
+        this.PTS_PER_RING = 7;
         this.GLYPHS = ['.', '\u00B7', '\u2022', '\u2219', '\u25E6', '\u2218', 'o', '\u00B0', '*', '+'];
-        this.PALETTES = [[0,255,220],[255,50,200],[50,255,120],[220,180,255],[255,100,100]];
+        this.PALETTES = [[0,255,220],[255,80,220],[80,255,160],[220,200,255],[255,140,140]];
     }
     // Build interpolated spine from control points
     _buildSpine(ctrls, numSeg) {
@@ -370,7 +407,7 @@ class TentacleSystem2D {
     }
     // Spawn 3-5 tentacles from a screen position (character's projected position)
     spawnAtScreen(sx, sy) {
-        const count = 2+Math.floor(Math.random()*2);
+        const count = 4+Math.floor(Math.random()*3);
         for (let i=0; i<count; i++) {
             const baseAngle = Math.random()*Math.PI*2;
             const totalLen = 30+Math.random()*50;
@@ -389,7 +426,7 @@ class TentacleSystem2D {
                 ctrls.push({x:cx, y:cy});
             }
             const spine = this._buildSpine(ctrls, this.RINGS);
-            const baseR = 2+Math.random()*3;
+            const baseR = 3.5+Math.random()*4.5;
             const rings = this._generateRings(spine, baseR, 0.85);
             const pal = this.PALETTES[Math.floor(Math.random()*this.PALETTES.length)];
             const gd = 200+Math.random()*500;
@@ -496,8 +533,8 @@ class TentacleSystem2D {
                 const ring=ten.rings[r];
                 for (let j=0; j<ring.length; j++) {
                     const p=ring[j];
-                    ctx.globalAlpha = Math.min(1,p.alpha*ringAlpha*1.3);
-                    ctx.font = `bold ${Math.max(3,p.size*ringAlpha*1.4)}px "Courier New",monospace`;
+                    ctx.globalAlpha = Math.min(1,p.alpha*ringAlpha*1.95);
+                    ctx.font = `bold ${Math.max(4,p.size*ringAlpha*2.2)}px "Courier New",monospace`;
                     ctx.fillText(p.glyph, p.x, p.y);
                 }
             }
@@ -512,71 +549,59 @@ class BloodSystem2D {
         this.canvas = document.getElementById('blood-canvas');
         this.ctx = this.canvas.getContext('2d');
         this.particles = [];
-        this.stains = [];
-        this.GLYPHS = ['.', '\u00B7', '\u2022', '\u2219', '\u25E6', '\u2218', 'o', '\u00B0', '*', '+'];
+        this.staticDots = [];
+        this.rings = [];
         this.COLORS = ['#ff1a2a', '#d1001b', '#b00018', '#ff3040', '#aa0015'];
         this.bleedTimer = 0;
-        this.maxParticles = 900;
-        this.maxStains = 1400;
+        this.maxParticles = 800;
+        this.maxDots = 2200;
+        this.maxRings = 120;
     }
-    _spawnParticle(sx, sy, speedMin, speedMax, spread) {
+    _spawnRadialParticle(cx, cy, speedMin, speedMax) {
         if (this.particles.length >= this.maxParticles) return;
-        const angle = (Math.random()-0.5)*spread + (-Math.PI/2);
+        const angle = Math.random() * Math.PI * 2;
         const speed = speedMin + Math.random()*(speedMax-speedMin);
         this.particles.push({
-            x:sx, y:sy,
-            vx: Math.cos(angle)*speed,
-            vy: Math.sin(angle)*speed,
-            gravity: 520+Math.random()*220,
+            cx, cy,
+            angle,
+            radius: 0,
+            speed,
             age: 0,
-            size: 4+Math.random()*6,
-            glyph: this.GLYPHS[Math.floor(Math.random()*this.GLYPHS.length)],
+            size: 1.8+Math.random()*2.8,
             color: this.COLORS[Math.floor(Math.random()*this.COLORS.length)]
         });
     }
-    _addStain(x, y, size, color) {
-        if (this.stains.length >= this.maxStains) return;
-        const spots = [];
-        const spotCount = 3 + Math.floor(Math.random()*4);
-        for (let i=0; i<spotCount; i++) {
-            spots.push({
-                dx: (Math.random()-0.5)*0.9,
-                dy: (Math.random()-0.5)*0.9,
-                glyph: this.GLYPHS[Math.floor(Math.random()*this.GLYPHS.length)]
-            });
-        }
-        this.stains.push({
-            x, y,
-            r: size,
-            grow: 6+Math.random()*10,
-            alpha: 0.6+Math.random()*0.3,
-            color,
-            spots
-        });
+    _addStaticDot(x, y, size, color) {
+        if (this.staticDots.length >= this.maxDots) return;
+        this.staticDots.push({ x, y, size, color });
+    }
+    _addRing(cx, cy, startR, speed, dotCount, color) {
+        if (this.rings.length >= this.maxRings) return;
+        this.rings.push({ cx, cy, r: startR, speed, dotCount, color, alpha: 0.5+Math.random()*0.3 });
     }
     burst(sx, sy) {
-        for (let i=0; i<80; i++) {
-            this._spawnParticle(sx, sy, 140, 420, Math.PI/2);
+        for (let i=0; i<120; i++) {
+            this._spawnRadialParticle(sx, sy, 160, 520);
         }
-        for (let i=0; i<10; i++) {
-            this._addStain(sx+(Math.random()-0.5)*18, sy+(Math.random()-0.5)*18, 6+Math.random()*10,
+        for (let i=0; i<8; i++) {
+            this._addRing(sx, sy, 6+Math.random()*6, 60+Math.random()*40, 18+Math.floor(Math.random()*10),
                 this.COLORS[Math.floor(Math.random()*this.COLORS.length)]);
         }
     }
     bleed(sx, sy, dt) {
         this.bleedTimer += dt;
-        while (this.bleedTimer > 0.05) {
-            this.bleedTimer -= 0.05;
-            this._spawnParticle(sx+(Math.random()-0.5)*6, sy+(Math.random()-0.5)*6, 15, 80, Math.PI/3);
-            if (Math.random() < 0.4) {
-                this._addStain(sx+(Math.random()-0.5)*10, sy+(Math.random()-0.5)*10, 3+Math.random()*4,
-                    this.COLORS[Math.floor(Math.random()*this.COLORS.length)]);
-            }
+        while (this.bleedTimer > 0.08) {
+            this.bleedTimer -= 0.08;
+            const ox = (Math.random()-0.5)*6;
+            const oy = (Math.random()-0.5)*6;
+            this._addRing(sx+ox, sy+oy, 2+Math.random()*2, 18+Math.random()*14, 14+Math.floor(Math.random()*6),
+                this.COLORS[Math.floor(Math.random()*this.COLORS.length)]);
         }
     }
     reset() {
         this.particles.length = 0;
-        this.stains.length = 0;
+        this.staticDots.length = 0;
+        this.rings.length = 0;
         this.bleedTimer = 0;
     }
     update(dt) {
@@ -586,33 +611,43 @@ class BloodSystem2D {
             this.canvas.height = H();
         }
         ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        ctx.textAlign='center'; ctx.textBaseline='middle';
         ctx.save();
-        for (const s of this.stains) {
-            s.r += s.grow*dt;
-            ctx.globalAlpha = s.alpha*0.9;
-            ctx.fillStyle = s.color;
-            for (const sp of s.spots) {
-                const px = s.x + sp.dx * s.r;
-                const py = s.y + sp.dy * s.r;
-                ctx.font = `bold ${Math.max(4, s.r*0.7)}px "Courier New",monospace`;
-                ctx.fillText(sp.glyph, px, py);
+        // Rings (concentric expansion)
+        for (const r of this.rings) {
+            r.r += r.speed*dt;
+            ctx.globalAlpha = r.alpha;
+            ctx.fillStyle = r.color;
+            for (let i=0; i<r.dotCount; i++) {
+                const a = (i / r.dotCount) * Math.PI * 2;
+                const x = r.cx + Math.cos(a) * r.r;
+                const y = r.cy + Math.sin(a) * r.r;
+                ctx.beginPath();
+                ctx.arc(x, y, 1.6, 0, Math.PI*2);
+                ctx.fill();
             }
         }
+        // Static dots
+        ctx.globalAlpha = 0.9;
+        for (const d of this.staticDots) {
+            ctx.fillStyle = d.color;
+            ctx.beginPath();
+            ctx.arc(d.x, d.y, d.size, 0, Math.PI*2);
+            ctx.fill();
+        }
+        // Radial particles (fountain burst)
         for (let i=this.particles.length-1; i>=0; i--) {
             const p = this.particles[i];
             p.age += dt;
-            p.vy += p.gravity*dt;
-            p.x += p.vx*dt;
-            p.y += p.vy*dt;
-            p.vx *= 0.98;
-            p.vy *= 0.98;
-            ctx.globalAlpha = 0.9;
+            p.radius += p.speed*dt;
+            const x = p.cx + Math.cos(p.angle) * p.radius;
+            const y = p.cy + Math.sin(p.angle) * p.radius;
+            ctx.globalAlpha = 0.95;
             ctx.fillStyle = p.color;
-            ctx.font = `bold ${Math.max(4, p.size)}px "Courier New",monospace`;
-            ctx.fillText(p.glyph, p.x, p.y);
-            if (p.age > 0.7 || (Math.abs(p.vx)+Math.abs(p.vy)) < 30) {
-                this._addStain(p.x, p.y, 4+Math.random()*5, p.color);
+            ctx.beginPath();
+            ctx.arc(x, y, p.size, 0, Math.PI*2);
+            ctx.fill();
+            if (p.age > 0.45 || p.radius > 80) {
+                this._addStaticDot(x, y, 1.6+Math.random()*1.6, p.color);
                 this.particles.splice(i,1);
             }
         }
@@ -921,17 +956,30 @@ async function main() {
                 if (useObstacles) {
                     const speedX = 170;
                     const speedY = 160;
+                    const centroid = getSegCentroidScreen();
+                    if (!climbEngaged && !moving && centroid) {
+                        charScreen.x = centroid.x;
+                        charScreen.y = centroid.y;
+                    }
+                    if (!isObstacleAt(charScreen.x, charScreen.y)) {
+                        const near = findNearestSolid(charScreen.x, charScreen.y, 6);
+                        if (near) {
+                            charScreen.x = near.x; charScreen.y = near.y;
+                        } else if (centroid) {
+                            charScreen.x = centroid.x; charScreen.y = centroid.y;
+                        }
+                    }
                     let nextX = charScreen.x + input.x*speedX*dt;
                     let nextY = charScreen.y - input.y*speedY*dt;
                     nextX = clamp(nextX, 10, W()-10);
                     nextY = clamp(nextY, 10, H()-10);
 
-                    if (!isObstacleAt(nextX, nextY)) {
+                    if (isObstacleAt(nextX, nextY)) {
                         charScreen.x = nextX;
                         charScreen.y = nextY;
                     } else {
-                        if (!isObstacleAt(nextX, charScreen.y)) charScreen.x = nextX;
-                        if (!isObstacleAt(charScreen.x, nextY)) charScreen.y = nextY;
+                        if (isObstacleAt(nextX, charScreen.y)) charScreen.x = nextX;
+                        if (isObstacleAt(charScreen.x, nextY)) charScreen.y = nextY;
                     }
                     const wpos = screenToWorld(charScreen.x, charScreen.y);
                     pos.x = wpos.x; pos.y = wpos.y; pos.z = 0;
