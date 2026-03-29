@@ -959,6 +959,10 @@ async function main() {
     let startAnchorSet = false;
     let offClimbFrames = 0;
     let anchorLost = 0;
+    let climbBaseGridY = null;
+    let jumpHeight = 0;
+    let lastClimbScreen = { x: W()/2, y: H()*0.6 };
+    let deathScreen = { x: 0, y: 0, valid: false };
     const dbg = document.getElementById('debug-info');
     const halfVisW = camZ*Math.tan(THREE.MathUtils.degToRad(VFOV/2))*(W()/H());
 
@@ -993,13 +997,17 @@ async function main() {
         const moving = Math.abs(input.y)>0.1||Math.abs(input.x)>0.1;
         const segReady = segStableFrames > 8;
         if (!startAnchorSet && hasCamera && segReady) {
-            const start = pickRandomClimbable();
+            const nearCenter = findNearestClimbable(W()/2, H()/2, 8);
+            const start = nearCenter || pickRandomClimbable();
             if (start) {
                 charScreen.x = start.x; charScreen.y = start.y;
                 targetScreen.x = start.x; targetScreen.y = start.y;
                 startAnchorSet = true;
-                climbEngaged = true;
+                climbEngaged = false;
                 offClimbFrames = 0;
+                const g = screenToGrid(start.x, start.y);
+                climbBaseGridY = g.y;
+                lastClimbScreen.x = start.x; lastClimbScreen.y = start.y;
             }
         }
         const useObstacles = !!hasCamera && startAnchorSet;
@@ -1073,6 +1081,10 @@ async function main() {
                     const follow = moving ? 0.32 : 0.14;
                     charScreen.x += (targetScreen.x - charScreen.x) * follow;
                     charScreen.y += (targetScreen.y - charScreen.y) * follow;
+                    if (isClimbableAt(charScreen.x, charScreen.y)) {
+                        lastClimbScreen.x = charScreen.x;
+                        lastClimbScreen.y = charScreen.y;
+                    }
                     const wpos = screenToWorld(charScreen.x, charScreen.y);
                     pos.x = wpos.x; pos.y = wpos.y; pos.z = 0;
                 } else {
@@ -1093,6 +1105,14 @@ async function main() {
                     fallVY=0.4;
                     deaths++;
                     climbEngaged = false;
+                    deathScreen.valid = false;
+                    if (useObstacles) {
+                        const g = screenToGrid(charScreen.x, charScreen.y);
+                        if (climbBaseGridY === null) climbBaseGridY = g.y;
+                        jumpHeight = Math.max(0, (climbBaseGridY - g.y));
+                    } else {
+                        jumpHeight = 0;
+                    }
                 }
                 break;
             case 'JUMPING':
@@ -1104,15 +1124,29 @@ async function main() {
                     charScreen.x = screenPos.x; charScreen.y = screenPos.y;
                 }
                 if(pos.y<=0.01){
-                    pos.y=0.01; fallVY=0;
-                    state='DEAD';
-                    character.setState('DEATH');
-                    // Project character to screen coords and spawn 2D tentacles + blood
-                    const pv = new THREE.Vector3().copy(pos).project(camera);
-                    const sx = (pv.x*0.5+0.5)*W();
-                    const sy = (-pv.y*0.5+0.5)*H();
-                    tentacles.spawnAtScreen(sx, sy);
-                    blood.burst(sx, sy);
+                    pos.y=0.01; fallVY=0; pos.z=0;
+                    if (jumpHeight >= 10) {
+                        state='DEAD';
+                        character.setState('DEATH');
+                        // Project character to screen coords and spawn 2D tentacles + blood
+                        const pv = new THREE.Vector3().copy(pos).project(camera);
+                        const sx = (pv.x*0.5+0.5)*W();
+                        const sy = (-pv.y*0.5+0.5)*H();
+                        deathScreen.x = sx; deathScreen.y = sy; deathScreen.valid = true;
+                        tentacles.spawnAtScreen(sx, sy);
+                        blood.burst(sx, sy);
+                    } else {
+                        state='CLIMB';
+                        character.setState('IDLE');
+                        pos.z = 0;
+                        if (useObstacles) {
+                            charScreen.x = lastClimbScreen.x;
+                            charScreen.y = lastClimbScreen.y;
+                            targetScreen.x = charScreen.x; targetScreen.y = charScreen.y;
+                            const wpos = screenToWorld(charScreen.x, charScreen.y);
+                            pos.x = wpos.x; pos.y = wpos.y;
+                        }
+                    }
                 }
                 break;
             case 'DEAD':
@@ -1131,6 +1165,9 @@ async function main() {
                     startAnchorSet = false;
                     offClimbFrames = 0;
                     anchorLost = 0;
+                    climbBaseGridY = null;
+                    jumpHeight = 0;
+                    deathScreen.valid = false;
                 }
                 break;
         }
@@ -1163,8 +1200,12 @@ async function main() {
         character.update(dt, input.y, holdClimbPose);
         // Move tentacle anchors to follow character's screen position
         const proj = new THREE.Vector3().copy(pos).project(camera);
-        const charSX = (proj.x*0.5+0.5)*W();
-        const charSY = (-proj.y*0.5+0.5)*H();
+        let charSX = (proj.x*0.5+0.5)*W();
+        let charSY = (-proj.y*0.5+0.5)*H();
+        if (state === 'DEAD' && deathScreen.valid) {
+            charSX = deathScreen.x;
+            charSY = deathScreen.y;
+        }
         charScreen.x = charSX; charScreen.y = charSY;
         if (state === 'DEAD') blood.bleed(charSX, charSY, dt);
         tentacles.moveAnchors(charSX, charSY);
