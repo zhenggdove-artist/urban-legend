@@ -207,6 +207,33 @@ function isClimbableAt(sx, sy) {
     return climbMap[gy][gx] === 1 && obstacleMap[gy][gx] === 0;
 }
 
+function screenToGrid(sx, sy) {
+    return {
+        x: clamp(Math.floor(sx / W() * SEG_W), 0, SEG_W - 1),
+        y: clamp(Math.floor(sy / H() * SEG_H), 0, SEG_H - 1)
+    };
+}
+
+function gridToScreen(gx, gy) {
+    return { x: (gx + 0.5) / SEG_W * W(), y: (gy + 0.5) / SEG_H * H() };
+}
+
+function findLocalCentroid(gx, gy, radius) {
+    let sumX = 0, sumY = 0, count = 0;
+    for (let y = -radius; y <= radius; y++) {
+        for (let x = -radius; x <= radius; x++) {
+            const ix = gx + x;
+            const iy = gy + y;
+            if (ix < 0 || iy < 0 || ix >= SEG_W || iy >= SEG_H) continue;
+            if (climbMap[iy][ix] && !obstacleMap[iy][ix]) {
+                sumX += ix; sumY += iy; count++;
+            }
+        }
+    }
+    if (count < 3) return null;
+    return { x: sumX / count, y: sumY / count };
+}
+
 function pickRandomClimbable() {
     for (let i = 0; i < 200; i++) {
         const gx = Math.floor(Math.random() * SEG_W);
@@ -920,6 +947,7 @@ async function main() {
 
     character.root.position.set(0, 0.5, 0);
     let charScreen = { x: W()/2, y: H()*0.6 };
+    let targetScreen = { x: W()/2, y: H()*0.6 };
 
     function worldToScreen(p) {
         const pv = new THREE.Vector3().copy(p).project(camera);
@@ -936,6 +964,7 @@ async function main() {
         return camera.position.clone().add(dir.multiplyScalar(t));
     }
     charScreen = worldToScreen(character.root.position);
+    targetScreen.x = charScreen.x; targetScreen.y = charScreen.y;
 
     function tick() {
         requestAnimationFrame(tick);
@@ -950,6 +979,7 @@ async function main() {
             const start = pickRandomClimbable();
             if (start) {
                 charScreen.x = start.x; charScreen.y = start.y;
+                targetScreen.x = start.x; targetScreen.y = start.y;
                 startAnchorSet = true;
                 climbEngaged = true;
                 offClimbFrames = 0;
@@ -974,30 +1004,45 @@ async function main() {
                 if (useObstacles) {
                     const speedX = 170;
                     const speedY = 160;
-                    let nextX = charScreen.x + input.x*speedX*dt;
-                    let nextY = charScreen.y - input.y*speedY*dt;
+                    const prevTX = targetScreen.x;
+                    const prevTY = targetScreen.y;
+                    let nextX = targetScreen.x + input.x*speedX*dt;
+                    let nextY = targetScreen.y - input.y*speedY*dt;
                     nextX = clamp(nextX, 10, W()-10);
                     nextY = clamp(nextY, 10, H()-10);
 
                     if (isClimbableAt(nextX, nextY)) {
-                        charScreen.x = nextX;
-                        charScreen.y = nextY;
+                        targetScreen.x = nextX;
+                        targetScreen.y = nextY;
                     } else {
-                        if (isClimbableAt(nextX, charScreen.y)) charScreen.x = nextX;
-                        if (isClimbableAt(charScreen.x, nextY)) charScreen.y = nextY;
+                        if (isClimbableAt(nextX, targetScreen.y)) targetScreen.x = nextX;
+                        if (isClimbableAt(targetScreen.x, nextY)) targetScreen.y = nextY;
                     }
-                    if (!isClimbableAt(charScreen.x, charScreen.y)) {
+                    const g = screenToGrid(targetScreen.x, targetScreen.y);
+                    const local = findLocalCentroid(g.x, g.y, 2);
+                    if (local) {
+                        const localScreen = gridToScreen(local.x, local.y);
+                        targetScreen.x += (localScreen.x - targetScreen.x) * 0.25;
+                        targetScreen.y += (localScreen.y - targetScreen.y) * 0.25;
+                    }
+                    if (!isClimbableAt(targetScreen.x, targetScreen.y)) {
                         offClimbFrames++;
                         if (offClimbFrames > 6) {
-                            const near = findNearestClimbable(charScreen.x, charScreen.y, 8);
+                            const near = findNearestClimbable(targetScreen.x, targetScreen.y, 6);
                             if (near) {
-                                charScreen.x = near.x; charScreen.y = near.y;
+                                targetScreen.x = near.x; targetScreen.y = near.y;
                             }
                             offClimbFrames = 0;
                         }
                     } else {
                         offClimbFrames = 0;
                     }
+                    if (!moving && !local && !isClimbableAt(targetScreen.x, targetScreen.y)) {
+                        targetScreen.x = prevTX; targetScreen.y = prevTY;
+                    }
+                    const follow = moving ? 0.35 : 0.18;
+                    charScreen.x += (targetScreen.x - charScreen.x) * follow;
+                    charScreen.y += (targetScreen.y - charScreen.y) * follow;
                     const wpos = screenToWorld(charScreen.x, charScreen.y);
                     pos.x = wpos.x; pos.y = wpos.y; pos.z = 0;
                 } else {
@@ -1050,6 +1095,7 @@ async function main() {
                     character.setState('IDLE');
                     viewY=0.5; viewX=0;
                     charScreen = worldToScreen(pos);
+                    targetScreen.x = charScreen.x; targetScreen.y = charScreen.y;
                     blood.reset();
                     climbEngaged = false;
                     startAnchorSet = false;
