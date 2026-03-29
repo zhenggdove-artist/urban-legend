@@ -16,6 +16,8 @@
             z-index:2;pointer-events:none}
         #blood-canvas{position:absolute;top:0;left:0;width:100%;height:100%;
             z-index:1;pointer-events:none}
+        #seg-overlay{position:absolute;top:0;left:0;width:100%;height:100%;
+            z-index:1;pointer-events:none}
         /* VHS scanlines */
         #vhs-scanlines{position:absolute;top:0;left:0;width:100%;height:100%;
             z-index:3;pointer-events:none;
@@ -99,6 +101,7 @@
 <body>
     <video id="camera-video" autoplay playsinline muted></video>
     <canvas id="blood-canvas"></canvas>
+    <canvas id="seg-overlay"></canvas>
     <!-- 3D canvas inserted by JS -->
     <canvas id="tentacle-canvas" style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:2;pointer-events:none;image-rendering:auto"></canvas>
     <div id="vhs-scanlines"></div>
@@ -143,11 +146,13 @@ const climbMap = Array.from({ length: SEG_H }, () => new Uint8Array(SEG_W));
 const obstacleMap = Array.from({ length: SEG_H }, () => new Uint8Array(SEG_W));
 const climbHeat = Array.from({ length: SEG_H }, () => new Uint8Array(SEG_W));
 const obstacleHeat = Array.from({ length: SEG_H }, () => new Uint8Array(SEG_W));
+const segOverlay = document.getElementById('seg-overlay');
+const segOverlayCtx = segOverlay.getContext('2d');
 let segActive = false;
 let segFrame = 0;
 let segStableFrames = 0;
-const SAT_CLIMB = 0.15;
-const SAT_OBS = 0.45;
+const SAT_CLIMB = 0.12;
+const SAT_OBS = 0.55;
 
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
@@ -181,7 +186,7 @@ function updateSegmentation(video) {
             let ch = climbHeat[y][x];
             ch = climb ? Math.min(5, ch + 2) : Math.max(0, ch - 1);
             climbHeat[y][x] = ch;
-            climbMap[y][x] = ch >= 3 ? 1 : 0;
+            climbMap[y][x] = ch >= 2 ? 1 : 0;
 
             let oh = obstacleHeat[y][x];
             oh = obstacle ? Math.min(5, oh + 2) : Math.max(0, oh - 1);
@@ -191,8 +196,9 @@ function updateSegmentation(video) {
             if (climbMap[y][x]) climbCount++;
         }
     }
-    segActive = climbCount > 8;
+    segActive = climbCount > 6;
     segStableFrames = segActive ? segStableFrames + 1 : 0;
+    drawSegOverlay();
 }
 
 function isObstacleAt(sx, sy) {
@@ -262,6 +268,30 @@ function findNearestClimbable(sx, sy, maxR) {
         }
     }
     return null;
+}
+
+function drawSegOverlay() {
+    if (!segOverlayCtx) return;
+    if (segOverlay.width !== W() || segOverlay.height !== H()) {
+        segOverlay.width = W();
+        segOverlay.height = H();
+    }
+    const ctx = segOverlayCtx;
+    ctx.clearRect(0, 0, segOverlay.width, segOverlay.height);
+    if (!segActive) return;
+    const cellW = W() / SEG_W;
+    const cellH = H() / SEG_H;
+    for (let y = 0; y < SEG_H; y++) {
+        for (let x = 0; x < SEG_W; x++) {
+            if (obstacleMap[y][x]) {
+                ctx.fillStyle = 'rgba(255,0,0,0.18)';
+                ctx.fillRect(x*cellW, y*cellH, cellW, cellH);
+            } else if (climbMap[y][x]) {
+                ctx.fillStyle = 'rgba(0,255,120,0.10)';
+                ctx.fillRect(x*cellW, y*cellH, cellW, cellH);
+            }
+        }
+    }
 }
 
 // ===== Loading =====
@@ -964,6 +994,9 @@ async function main() {
     let jumpHeight = 0;
     let lastClimbScreen = { x: W()/2, y: H()*0.6 };
     let deathScreen = { x: 0, y: 0, valid: false };
+    let landedFrames = 0;
+    let deathStartTime = 0;
+    let tentacleBurstCount = 0;
     const dbg = document.getElementById('debug-info');
     const halfVisW = camZ*Math.tan(THREE.MathUtils.degToRad(VFOV/2))*(W()/H());
 
@@ -1028,58 +1061,61 @@ async function main() {
                 }
 
                 if (useObstacles) {
+                    const lockLand = landedFrames > 0 && !moving && !climbEngaged;
                     const speedX = 170;
                     const speedY = 160;
                     const prevTX = targetScreen.x;
                     const prevTY = targetScreen.y;
                     const maxStep = 14;
-                    let nextX = targetScreen.x + input.x*speedX*dt;
-                    let nextY = targetScreen.y - input.y*speedY*dt;
-                    nextX = clamp(nextX, 10, W()-10);
-                    nextY = clamp(nextY, 10, H()-10);
+                    if (!lockLand) {
+                        let nextX = targetScreen.x + input.x*speedX*dt;
+                        let nextY = targetScreen.y - input.y*speedY*dt;
+                        nextX = clamp(nextX, 10, W()-10);
+                        nextY = clamp(nextY, 10, H()-10);
 
-                    if (isClimbableAt(nextX, nextY)) {
-                        targetScreen.x = nextX;
-                        targetScreen.y = nextY;
-                    } else {
-                        if (isClimbableAt(nextX, targetScreen.y)) targetScreen.x = nextX;
-                        if (isClimbableAt(targetScreen.x, nextY)) targetScreen.y = nextY;
-                    }
-                    const g = screenToGrid(targetScreen.x, targetScreen.y);
-                    const local = findLocalCentroid(g.x, g.y, 3);
-                    if (local) {
-                        const localScreen = gridToScreen(local.x, local.y);
-                        const lockLerp = moving ? 0.28 : 0.18;
-                        targetScreen.x += (localScreen.x - targetScreen.x) * lockLerp;
-                        targetScreen.y += (localScreen.y - targetScreen.y) * lockLerp;
-                        anchorLost = 0;
-                    } else {
-                        anchorLost++;
-                    }
-                    if (!isClimbableAt(targetScreen.x, targetScreen.y)) {
-                        offClimbFrames++;
-                        if (offClimbFrames > 6) {
-                            const near = findNearestClimbable(targetScreen.x, targetScreen.y, 6);
-                            if (near) {
-                                targetScreen.x = near.x; targetScreen.y = near.y;
+                        if (isClimbableAt(nextX, nextY)) {
+                            targetScreen.x = nextX;
+                            targetScreen.y = nextY;
+                        } else {
+                            if (isClimbableAt(nextX, targetScreen.y)) targetScreen.x = nextX;
+                            if (isClimbableAt(targetScreen.x, nextY)) targetScreen.y = nextY;
+                        }
+                        const g = screenToGrid(targetScreen.x, targetScreen.y);
+                        const local = findLocalCentroid(g.x, g.y, 3);
+                        if (local) {
+                            const localScreen = gridToScreen(local.x, local.y);
+                            const lockLerp = moving ? 0.28 : 0.18;
+                            targetScreen.x += (localScreen.x - targetScreen.x) * lockLerp;
+                            targetScreen.y += (localScreen.y - targetScreen.y) * lockLerp;
+                            anchorLost = 0;
+                        } else {
+                            anchorLost++;
+                        }
+                        if (!isClimbableAt(targetScreen.x, targetScreen.y)) {
+                            offClimbFrames++;
+                            if (offClimbFrames > 6) {
+                                const near = findNearestClimbable(targetScreen.x, targetScreen.y, 6);
+                                if (near) {
+                                    targetScreen.x = near.x; targetScreen.y = near.y;
+                                }
+                                offClimbFrames = 0;
                             }
+                        } else {
                             offClimbFrames = 0;
                         }
-                    } else {
-                        offClimbFrames = 0;
+                        if (anchorLost > 10) {
+                            targetScreen.x = prevTX; targetScreen.y = prevTY;
+                            anchorLost = 8;
+                        }
+                        const dtx = targetScreen.x - prevTX;
+                        const dty = targetScreen.y - prevTY;
+                        if (Math.abs(dtx) > maxStep) targetScreen.x = prevTX + Math.sign(dtx)*maxStep;
+                        if (Math.abs(dty) > maxStep) targetScreen.y = prevTY + Math.sign(dty)*maxStep;
+                        if (!moving && !local && !isClimbableAt(targetScreen.x, targetScreen.y)) {
+                            targetScreen.x = prevTX; targetScreen.y = prevTY;
+                        }
                     }
-                    if (anchorLost > 10) {
-                        targetScreen.x = prevTX; targetScreen.y = prevTY;
-                        anchorLost = 8;
-                    }
-                    const dtx = targetScreen.x - prevTX;
-                    const dty = targetScreen.y - prevTY;
-                    if (Math.abs(dtx) > maxStep) targetScreen.x = prevTX + Math.sign(dtx)*maxStep;
-                    if (Math.abs(dty) > maxStep) targetScreen.y = prevTY + Math.sign(dty)*maxStep;
-                    if (!moving && !local && !isClimbableAt(targetScreen.x, targetScreen.y)) {
-                        targetScreen.x = prevTX; targetScreen.y = prevTY;
-                    }
-                    const follow = moving ? 0.32 : 0.14;
+                    const follow = moving ? 0.32 : (landedFrames > 0 ? 0.05 : 0.14);
                     charScreen.x += (targetScreen.x - charScreen.x) * follow;
                     charScreen.y += (targetScreen.y - charScreen.y) * follow;
                     if (isClimbableAt(charScreen.x, charScreen.y)) {
@@ -1112,6 +1148,9 @@ async function main() {
                     deaths++;
                     climbEngaged = false;
                     deathScreen.valid = false;
+                    landedFrames = 0;
+                    deathStartTime = 0;
+                    tentacleBurstCount = 0;
                     if (useObstacles) {
                         if (climbBaseGridY === null) {
                             const g = screenToGrid(charScreen.x, charScreen.y);
@@ -1136,17 +1175,16 @@ async function main() {
                     if (jumpHeight >= 10) {
                         state='DEAD';
                         character.setState('DEATH');
-                        // Project character to screen coords and spawn 2D tentacles + blood
-                        const pv = new THREE.Vector3().copy(pos).project(camera);
-                        const sx = (pv.x*0.5+0.5)*W();
-                        const sy = (-pv.y*0.5+0.5)*H();
-                        deathScreen.x = sx; deathScreen.y = sy; deathScreen.valid = true;
-                        tentacles.spawnAtScreen(sx, sy);
-                        blood.burst(sx, sy);
+                        // Freeze at current screen position for blood/tentacles
+                        deathScreen.x = charScreen.x; deathScreen.y = charScreen.y; deathScreen.valid = true;
+                        blood.burst(deathScreen.x, deathScreen.y);
+                        deathStartTime = t;
+                        tentacleBurstCount = 0;
                     } else {
                         state='CLIMB';
                         character.setState('IDLE');
                         pos.z = 0;
+                        landedFrames = 20;
                         if (useObstacles) {
                             // stay at landing position
                             const screenPos = worldToScreen(pos);
@@ -1159,6 +1197,15 @@ async function main() {
                 break;
             case 'DEAD':
                 // Stay dead until player presses jump to respawn
+                if (deathStartTime && (t - deathStartTime) > 0.6) {
+                    const interval = 0.7;
+                    const want = Math.min(6, Math.floor((t - deathStartTime - 0.6) / interval) + 1);
+                    while (tentacleBurstCount < want) {
+                        tentacles.spawnAtScreen(deathScreen.valid ? deathScreen.x : charScreen.x,
+                            deathScreen.valid ? deathScreen.y : charScreen.y);
+                        tentacleBurstCount++;
+                    }
+                }
                 if(input.jump){
                     state='CLIMB';
                     pos.set(0,0.5,0);
@@ -1177,10 +1224,14 @@ async function main() {
                     climbHeightMax = 0;
                     jumpHeight = 0;
                     deathScreen.valid = false;
+                    landedFrames = 0;
+                    deathStartTime = 0;
+                    tentacleBurstCount = 0;
                 }
                 break;
         }
         input.jump=false;
+        if (landedFrames > 0) landedFrames--;
         if(state==='CLIMB') character.root.rotation.y=Math.PI;
         jBtn.textContent = state==='DEAD'?'REVIVE':'JUMP';
 
