@@ -134,33 +134,40 @@ function layoutUI() {
 }
 layoutUI(); window.addEventListener('resize', layoutUI);
 
-// ===== Scene Segmentation (high-saturation obstacles) =====
+// ===== Scene Segmentation (climbable blocks + high-sat obstacles) =====
 const SEG_W = 80, SEG_H = 60;
 const segCanvas = document.createElement('canvas');
 segCanvas.width = SEG_W; segCanvas.height = SEG_H;
 const segCtx = segCanvas.getContext('2d', { willReadFrequently: true });
+const climbMap = Array.from({ length: SEG_H }, () => new Uint8Array(SEG_W));
 const obstacleMap = Array.from({ length: SEG_H }, () => new Uint8Array(SEG_W));
-const obstacleMapTmp = Array.from({ length: SEG_H }, () => new Uint8Array(SEG_W));
+const climbHeat = Array.from({ length: SEG_H }, () => new Uint8Array(SEG_W));
+const obstacleHeat = Array.from({ length: SEG_H }, () => new Uint8Array(SEG_W));
 let segActive = false;
 let segFrame = 0;
-const SAT_THRESHOLD = 0.35;
-let segCentroid = { x: 0, y: 0, valid: false };
+let segStableFrames = 0;
+const SAT_CLIMB = 0.18;
+const SAT_OBS = 0.45;
 
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
 function updateSegmentation(video) {
     if (!video || video.readyState < 2) {
         segActive = false;
-        for (let y = 0; y < SEG_H; y++) obstacleMap[y].fill(0);
-        segCentroid.valid = false;
+        segStableFrames = 0;
+        for (let y = 0; y < SEG_H; y++) {
+            climbMap[y].fill(0);
+            obstacleMap[y].fill(0);
+            climbHeat[y].fill(0);
+            obstacleHeat[y].fill(0);
+        }
         return;
     }
     segFrame++;
     if (segFrame % 2 !== 0) return;
     segCtx.drawImage(video, 0, 0, SEG_W, SEG_H);
     const data = segCtx.getImageData(0, 0, SEG_W, SEG_H).data;
-    let obstacleCount = 0;
-    let sumX = 0, sumY = 0;
+    let climbCount = 0;
     for (let y = 0; y < SEG_H; y++) {
         for (let x = 0; x < SEG_W; x++) {
             const i = (y * SEG_W + x) * 4;
@@ -168,34 +175,24 @@ function updateSegmentation(video) {
             const max = Math.max(r, g, b), min = Math.min(r, g, b);
             const luma = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
             const sat = max === 0 ? 0 : (max - min) / max;
-            const obstacle = (sat > SAT_THRESHOLD && luma > 0.08 && luma < 0.95) ? 1 : 0;
-            obstacleMapTmp[y][x] = obstacle;
-            if (obstacle) { obstacleCount++; sumX += x; sumY += y; }
+            const climb = (sat > SAT_CLIMB && luma > 0.08 && luma < 0.95) ? 1 : 0;
+            const obstacle = (sat > SAT_OBS && luma > 0.08 && luma < 0.95) ? 1 : 0;
+
+            let ch = climbHeat[y][x];
+            ch = climb ? Math.min(5, ch + 2) : Math.max(0, ch - 1);
+            climbHeat[y][x] = ch;
+            climbMap[y][x] = ch >= 3 ? 1 : 0;
+
+            let oh = obstacleHeat[y][x];
+            oh = obstacle ? Math.min(5, oh + 2) : Math.max(0, oh - 1);
+            obstacleHeat[y][x] = oh;
+            obstacleMap[y][x] = oh >= 3 ? 1 : 0;
+
+            if (climbMap[y][x]) climbCount++;
         }
     }
-    for (let y = 0; y < SEG_H; y++) {
-        for (let x = 0; x < SEG_W; x++) {
-            const c = obstacleMapTmp[y][x];
-            let n = 0;
-            if (x > 0) n += obstacleMapTmp[y][x - 1];
-            if (x < SEG_W - 1) n += obstacleMapTmp[y][x + 1];
-            if (y > 0) n += obstacleMapTmp[y - 1][x];
-            if (y < SEG_H - 1) n += obstacleMapTmp[y + 1][x];
-            let out = c;
-            if (c) out = n >= 1 ? 1 : 0;
-            else out = n >= 3 ? 1 : 0;
-            obstacleMap[y][x] = out;
-        }
-    }
-    const ratio = obstacleCount / (SEG_W * SEG_H);
-    segActive = obstacleCount > 6 && ratio < 0.95;
-    if (obstacleCount > 0) {
-        segCentroid.x = sumX / obstacleCount;
-        segCentroid.y = sumY / obstacleCount;
-        segCentroid.valid = true;
-    } else {
-        segCentroid.valid = false;
-    }
+    segActive = climbCount > 15;
+    segStableFrames = segActive ? segStableFrames + 1 : 0;
 }
 
 function isObstacleAt(sx, sy) {
@@ -204,15 +201,24 @@ function isObstacleAt(sx, sy) {
     return obstacleMap[gy][gx] === 1;
 }
 
-function getSegCentroidScreen() {
-    if (!segCentroid.valid) return null;
-    return {
-        x: (segCentroid.x + 0.5) / SEG_W * W(),
-        y: (segCentroid.y + 0.5) / SEG_H * H()
-    };
+function isClimbableAt(sx, sy) {
+    const gx = clamp(Math.floor(sx / W() * SEG_W), 0, SEG_W - 1);
+    const gy = clamp(Math.floor(sy / H() * SEG_H), 0, SEG_H - 1);
+    return climbMap[gy][gx] === 1 && obstacleMap[gy][gx] === 0;
 }
 
-function findNearestSolid(sx, sy, maxR) {
+function pickRandomClimbable() {
+    for (let i = 0; i < 200; i++) {
+        const gx = Math.floor(Math.random() * SEG_W);
+        const gy = Math.floor(Math.random() * SEG_H);
+        if (climbMap[gy][gx] && !obstacleMap[gy][gx]) {
+            return { x: (gx + 0.5) / SEG_W * W(), y: (gy + 0.5) / SEG_H * H() };
+        }
+    }
+    return null;
+}
+
+function findNearestClimbable(sx, sy, maxR) {
     const gx0 = clamp(Math.floor(sx / W() * SEG_W), 0, SEG_W - 1);
     const gy0 = clamp(Math.floor(sy / H() * SEG_H), 0, SEG_H - 1);
     for (let r = 0; r <= maxR; r++) {
@@ -222,7 +228,7 @@ function findNearestSolid(sx, sy, maxR) {
                 const gx = gx0 + x;
                 const gy = gy0 + y;
                 if (gx < 0 || gy < 0 || gx >= SEG_W || gy >= SEG_H) continue;
-                if (obstacleMap[gy][gx]) {
+                if (climbMap[gy][gx] && !obstacleMap[gy][gx]) {
                     return { x: (gx + 0.5) / SEG_W * W(), y: (gy + 0.5) / SEG_H * H() };
                 }
             }
@@ -907,6 +913,8 @@ async function main() {
     const clock = new THREE.Clock();
     let state='CLIMB', fallVY=0, deaths=0;
     let climbEngaged = false;
+    let startAnchorSet = false;
+    let offClimbFrames = 0;
     const dbg = document.getElementById('debug-info');
     const halfVisW = camZ*Math.tan(THREE.MathUtils.degToRad(VFOV/2))*(W()/H());
 
@@ -937,7 +945,17 @@ async function main() {
         updateSegmentation(videoEl);
 
         const moving = Math.abs(input.y)>0.1||Math.abs(input.x)>0.1;
-        const useObstacles = !!hasCamera;
+        const segReady = segStableFrames > 8;
+        if (!startAnchorSet && hasCamera && segReady) {
+            const start = pickRandomClimbable();
+            if (start) {
+                charScreen.x = start.x; charScreen.y = start.y;
+                startAnchorSet = true;
+                climbEngaged = true;
+                offClimbFrames = 0;
+            }
+        }
+        const useObstacles = !!hasCamera && startAnchorSet;
         const holdClimbPose = useObstacles && climbEngaged && !moving;
 
         // Game Logic
@@ -956,30 +974,29 @@ async function main() {
                 if (useObstacles) {
                     const speedX = 170;
                     const speedY = 160;
-                    const centroid = getSegCentroidScreen();
-                    if (!climbEngaged && !moving && centroid) {
-                        charScreen.x = centroid.x;
-                        charScreen.y = centroid.y;
-                    }
-                    if (!isObstacleAt(charScreen.x, charScreen.y)) {
-                        const near = findNearestSolid(charScreen.x, charScreen.y, 6);
-                        if (near) {
-                            charScreen.x = near.x; charScreen.y = near.y;
-                        } else if (centroid) {
-                            charScreen.x = centroid.x; charScreen.y = centroid.y;
-                        }
-                    }
                     let nextX = charScreen.x + input.x*speedX*dt;
                     let nextY = charScreen.y - input.y*speedY*dt;
                     nextX = clamp(nextX, 10, W()-10);
                     nextY = clamp(nextY, 10, H()-10);
 
-                    if (isObstacleAt(nextX, nextY)) {
+                    if (isClimbableAt(nextX, nextY)) {
                         charScreen.x = nextX;
                         charScreen.y = nextY;
                     } else {
-                        if (isObstacleAt(nextX, charScreen.y)) charScreen.x = nextX;
-                        if (isObstacleAt(charScreen.x, nextY)) charScreen.y = nextY;
+                        if (isClimbableAt(nextX, charScreen.y)) charScreen.x = nextX;
+                        if (isClimbableAt(charScreen.x, nextY)) charScreen.y = nextY;
+                    }
+                    if (!isClimbableAt(charScreen.x, charScreen.y)) {
+                        offClimbFrames++;
+                        if (offClimbFrames > 6) {
+                            const near = findNearestClimbable(charScreen.x, charScreen.y, 8);
+                            if (near) {
+                                charScreen.x = near.x; charScreen.y = near.y;
+                            }
+                            offClimbFrames = 0;
+                        }
+                    } else {
+                        offClimbFrames = 0;
                     }
                     const wpos = screenToWorld(charScreen.x, charScreen.y);
                     pos.x = wpos.x; pos.y = wpos.y; pos.z = 0;
@@ -1035,6 +1052,8 @@ async function main() {
                     charScreen = worldToScreen(pos);
                     blood.reset();
                     climbEngaged = false;
+                    startAnchorSet = false;
+                    offClimbFrames = 0;
                 }
                 break;
         }
@@ -1114,7 +1133,7 @@ async function main() {
                 ?`GYRO:β${gyro.rawBeta.toFixed(0)}° γ${gyro.rawGamma.toFixed(0)}°`
                 :`GYRO:OFF[${gyro.status}]`,
             `TENTACLES:${tentacles.tentacles.length} DEATHS:${deaths}`,
-            `SEG:${segActive?'ON':'OFF'} SAT>${SAT_THRESHOLD.toFixed(2)}`,
+            `SEG:${segActive?'ON':'OFF'} S:${segStableFrames} CLB>${SAT_CLIMB.toFixed(2)} OBS>${SAT_OBS.toFixed(2)}`,
         ].join('<br>');
     }
 
