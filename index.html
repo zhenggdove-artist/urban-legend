@@ -620,13 +620,14 @@ class BloodSystem2D {
         this.maxDots = 3600;
         this.maxPools = 180;
     }
-    _spawnRadialParticle(cx, cy, speedMin, speedMax) {
+    _spawnRadialParticle(cx, cy, speedMin, speedMax, angle=null, spread=Math.PI*2) {
         if (this.particles.length >= this.maxParticles) return;
-        const angle = Math.random() * Math.PI * 2;
+        const ang = angle === null ? (Math.random() * Math.PI * 2)
+            : (angle + (Math.random()-0.5)*spread);
         const speed = speedMin + Math.random()*(speedMax-speedMin);
         this.particles.push({
             cx, cy,
-            angle,
+            angle: ang,
             radius: 0,
             speed,
             age: 0,
@@ -662,6 +663,12 @@ class BloodSystem2D {
                 120+Math.random()*80,
                 this.COLORS[Math.floor(Math.random()*this.COLORS.length)]
             );
+        }
+    }
+    edgeBurstBottom(sx) {
+        const y = H() + 8;
+        for (let i=0; i<220; i++) {
+            this._spawnRadialParticle(sx, y, 260, 820, -Math.PI/2, 1.0);
         }
     }
     bleed(sx, sy, dt) {
@@ -999,6 +1006,9 @@ async function main() {
     let deathStartTime = 0;
     let tentacleBurstCount = 0;
     let lastTilt = 0.5;
+    let deadViewX = 0;
+    let deadViewY = 0.5;
+    let tentacleTargetCount = 0;
     const dbg = document.getElementById('debug-info');
     const halfVisW = camZ*Math.tan(THREE.MathUtils.degToRad(VFOV/2))*(W()/H());
 
@@ -1161,6 +1171,7 @@ async function main() {
                     landedFrames = 0;
                     deathStartTime = 0;
                     tentacleBurstCount = 0;
+                    tentacleTargetCount = 0;
                     if (useObstacles) {
                         if (climbBaseGridY === null) {
                             const g = screenToGrid(charScreen.x, charScreen.y);
@@ -1185,11 +1196,16 @@ async function main() {
                     if (jumpHeight >= 10) {
                         state='DEAD';
                         character.setState('DEATH');
-                        // Freeze at current screen position for blood/tentacles
-                        deathScreen.x = charScreen.x; deathScreen.y = charScreen.y; deathScreen.valid = true;
+                        // Place death slightly below screen; only visible when looking down
+                        deathScreen.x = charScreen.x; deathScreen.y = H() + 40; deathScreen.valid = true;
+                        const wpos = screenToWorld(deathScreen.x, deathScreen.y);
+                        pos.x = wpos.x; pos.y = wpos.y; pos.z = 0;
+                        blood.edgeBurstBottom(deathScreen.x);
                         blood.burst(deathScreen.x, deathScreen.y);
                         deathStartTime = t;
                         tentacleBurstCount = 0;
+                        tentacleTargetCount = 3 + Math.floor(Math.random()*3);
+                        deadViewX = viewX; deadViewY = viewY;
                     } else {
                         state='CLIMB';
                         character.setState('IDLE');
@@ -1207,9 +1223,11 @@ async function main() {
                 break;
             case 'DEAD':
                 // Stay dead until player presses jump to respawn
-                if (deathStartTime && (t - deathStartTime) > 0.6) {
-                    const interval = 1.4;
-                    const want = Math.min(5, Math.floor((t - deathStartTime - 0.6) / interval) + 1);
+                if (deathStartTime) {
+                    const delay = 1.0;
+                    const duration = 5.0;
+                    const p = Math.max(0, Math.min(1, (t - deathStartTime - delay) / duration));
+                    const want = Math.floor(p * tentacleTargetCount);
                     while (tentacleBurstCount < want) {
                         tentacles.spawnAtScreen(deathScreen.valid ? deathScreen.x : charScreen.x,
                             deathScreen.valid ? deathScreen.y : charScreen.y);
@@ -1237,6 +1255,7 @@ async function main() {
                     landedFrames = 0;
                     deathStartTime = 0;
                     tentacleBurstCount = 0;
+                    tentacleTargetCount = 0;
                 }
                 break;
         }
