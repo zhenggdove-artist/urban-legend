@@ -13,11 +13,11 @@
             object-fit:cover;z-index:0;
             background:linear-gradient(180deg,#87CEEB 0%,#4a90d9 40%,#2c3e50 40.5%,#1a1a2e 100%)}
         #canvas3d{position:absolute;top:0;left:0;width:100%;height:100%;
-            z-index:2;pointer-events:none}
+            z-index:3;pointer-events:none}
         #blood-canvas{position:absolute;top:0;left:0;width:100%;height:100%;
-            z-index:1;pointer-events:none}
+            z-index:2;pointer-events:none}
         #seg-overlay{position:absolute;top:0;left:0;width:100%;height:100%;
-            z-index:1;pointer-events:none}
+            z-index:5;pointer-events:none}
         /* VHS scanlines */
         #vhs-scanlines{position:absolute;top:0;left:0;width:100%;height:100%;
             z-index:3;pointer-events:none;
@@ -103,7 +103,7 @@
     <canvas id="blood-canvas"></canvas>
     <canvas id="seg-overlay"></canvas>
     <!-- 3D canvas inserted by JS -->
-    <canvas id="tentacle-canvas" style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:2;pointer-events:none;image-rendering:auto"></canvas>
+    <canvas id="tentacle-canvas" style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:4;pointer-events:none;image-rendering:auto"></canvas>
     <div id="vhs-scanlines"></div>
     <canvas id="vhs-noise"></canvas>
     <div id="vhs-tracking"></div>
@@ -596,8 +596,8 @@ class TentacleSystem2D {
                 const ring=ten.rings[r];
                 for (let j=0; j<ring.length; j++) {
                     const p=ring[j];
-                    ctx.globalAlpha = Math.min(1,p.alpha*ringAlpha*1.95);
-                    ctx.font = `bold ${Math.max(4,p.size*ringAlpha*2.2)}px "Courier New",monospace`;
+                    ctx.globalAlpha = Math.min(1,p.alpha*ringAlpha*2.6);
+                    ctx.font = `bold ${Math.max(5,p.size*ringAlpha*2.8)}px "Courier New",monospace`;
                     ctx.fillText(p.glyph, p.x, p.y);
                 }
             }
@@ -704,11 +704,11 @@ class BloodSystem2D {
                 const rr = Math.sqrt(Math.random()) * p.r;
                 const x = p.cx + Math.cos(a) * rr;
                 const y = p.cy + Math.sin(a) * rr;
-                this._addStaticDot(x, y, 1.2+Math.random()*0.9, p.color);
+                this._addStaticDot(x, y, 1.4+Math.random()*1.0, p.color);
             }
         }
         // Static dots
-        ctx.globalAlpha = 0.85;
+        ctx.globalAlpha = 0.95;
         for (const d of this.staticDots) {
             ctx.fillStyle = d.color;
             const s = d.size;
@@ -726,7 +726,7 @@ class BloodSystem2D {
             const s = p.size;
             ctx.fillRect(x - s*0.5, y - s*0.5, s, s);
             if (p.age > 0.35 || p.radius > 90) {
-                this._addStaticDot(x, y, 1.1+Math.random()*0.8, p.color);
+                this._addStaticDot(x, y, 1.3+Math.random()*0.9, p.color);
                 this.particles.splice(i,1);
             }
         }
@@ -867,7 +867,7 @@ async function main() {
     renderer.setClearColor(0x000000,0);
     const canvas3d = renderer.domElement;
     canvas3d.id='canvas3d';
-    canvas3d.style.cssText='position:absolute;top:0;left:0;width:100%;height:100%;z-index:2;pointer-events:none';
+    canvas3d.style.cssText='position:absolute;top:0;left:0;width:100%;height:100%;z-index:3;pointer-events:none';
     document.getElementById('camera-video').after(canvas3d);
 
     scene.add(new THREE.DirectionalLight(0xffffff,2).translateX(2).translateY(3).translateZ(2));
@@ -881,7 +881,7 @@ async function main() {
     const blood = new BloodSystem2D();
     const gyro = new GyroTracker();
     const vhs = new VHSEffect();
-    const USE_GYRO = false;
+    const USE_GYRO = true;
     const USE_GYRO_SCROLL = true;
 
     $status.textContent='ready.';
