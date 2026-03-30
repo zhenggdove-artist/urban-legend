@@ -1,1546 +1,768 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>URBAN LEGEND</title>
-    <style>
-        *{margin:0;padding:0;box-sizing:border-box}
-        html,body{width:100%;height:100%;overflow:hidden;background:#000;
-            touch-action:none;-webkit-user-select:none;user-select:none;
-            font-family:'Courier New',monospace}
-        #camera-video{position:absolute;top:0;left:0;width:100%;height:100%;
-            object-fit:cover;z-index:0;
-            background:linear-gradient(180deg,#87CEEB 0%,#4a90d9 40%,#2c3e50 40.5%,#1a1a2e 100%)}
-        #canvas3d{position:absolute;top:0;left:0;width:100%;height:100%;
-            z-index:3;pointer-events:none}
-        #blood-canvas{position:absolute;top:0;left:0;width:100%;height:100%;
-            z-index:2;pointer-events:none}
-        #seg-overlay{position:absolute;top:0;left:0;width:100%;height:100%;
-            z-index:5;pointer-events:none}
-        #marker-canvas{position:absolute;top:0;left:0;width:100%;height:100%;
-            z-index:6;pointer-events:none}
-        /* VHS scanlines */
-        #vhs-scanlines{position:absolute;top:0;left:0;width:100%;height:100%;
-            z-index:3;pointer-events:none;
-            background:repeating-linear-gradient(0deg,
-                transparent 0px,transparent 2px,
-                rgba(0,0,0,0.07) 2px,rgba(0,0,0,0.07) 5px)}
-        #vhs-noise{position:absolute;top:0;left:0;width:100%;height:100%;
-            z-index:4;pointer-events:none;opacity:0.20}
-        #vhs-tracking{position:absolute;left:0;width:100%;height:0;
-            z-index:4;pointer-events:none;background:rgba(255,255,255,0.08)}
-        #pan-zone{position:absolute;top:0;left:0;width:100%;height:100%;z-index:5;touch-action:none}
-        #debug-info{position:absolute;top:40px;left:10px;z-index:30;
-            color:#0f0;font:11px/1.4 'Courier New',monospace;
-            background:rgba(0,0,0,.5);padding:5px 8px;border-radius:0;
-            pointer-events:none;max-width:260px;letter-spacing:1px;
-            text-shadow:0 0 6px #0f0}
-        #joystick-zone{position:absolute;z-index:31;width:120px;height:120px;
-            background:rgba(0,255,0,.06);border:1px solid rgba(0,255,0,.2);
-            border-radius:50%;touch-action:none}
-        #joystick-knob{position:absolute;top:30px;left:30px;width:60px;height:60px;
-            background:rgba(0,255,0,.15);border-radius:50%;
-            border:1px solid rgba(0,255,0,.25)}
-        #jump-btn{position:absolute;z-index:31;width:80px;height:80px;
-            background:rgba(0,255,0,.1);border:1px solid rgba(0,255,0,.25);
-            border-radius:50%;display:flex;justify-content:center;align-items:center;
-            color:#0f0;font:bold 12px 'Courier New',monospace;
-            letter-spacing:2px;touch-action:none;text-transform:uppercase;
-            text-shadow:0 0 6px #0f0}
-        #jump-btn.pressed{transform:scale(.9);background:rgba(0,255,0,.2);
-            color:#0f0;text-shadow:0 0 12px #0f0}
-        /* Off-screen arrow indicator */
-        #offscreen-arrow{position:absolute;z-index:25;pointer-events:none;
-            font-size:28px;color:#0f0;
-            text-shadow:0 0 12px rgba(0,255,0,0.6),0 0 24px rgba(0,255,0,0.3);
-            font-family:'Courier New',monospace;display:none;
-            animation:arrowPulse 1s ease-in-out infinite}
-        @keyframes arrowPulse{
-            0%,100%{opacity:0.6;transform:translate(-50%,-50%) scale(1)}
-            50%{opacity:1;transform:translate(-50%,-50%) scale(1.2)}
-        }
-        /* Loading screen — reference site style */
-        #loading-screen{position:absolute;top:0;left:0;width:100%;height:100%;
-            background:#000;z-index:100;display:flex;flex-direction:column;
-            justify-content:center;align-items:center;color:#0f0}
-        .loading-scanlines{position:absolute;inset:0;pointer-events:none;
-            background:repeating-linear-gradient(to bottom,
-                transparent 0px,transparent 3px,
-                rgba(0,0,0,0.03) 3px,rgba(0,0,0,0.03) 6px)}
-        .loading-deco{font-family:'Courier New',monospace;font-size:0.8rem;
-            color:rgba(0,255,0,0.3);letter-spacing:3px;margin-bottom:1.5rem;
-            text-shadow:0 0 4px rgba(0,255,0,0.2)}
-        #loading-screen h2{margin-bottom:8px;font-family:'Courier New',monospace;
-            font-size:1.6rem;letter-spacing:0.4em;color:#0f0;
-            font-weight:normal;text-transform:uppercase;
-            text-shadow:0 0 10px rgba(0,255,0,0.5)}
-        .loading-sub{font-size:0.7rem;color:rgba(0,255,0,0.4);
-            letter-spacing:2px;font-style:italic;margin-bottom:2rem}
-        #loading-bar-bg{width:200px;height:1px;background:rgba(0,255,0,.15);overflow:hidden}
-        #loading-bar{width:0%;height:100%;background:#0f0;transition:width .3s;
-            box-shadow:0 0 6px #0f0}
-        #loading-status{margin-top:12px;font-size:0.7rem;color:rgba(0,255,0,0.4);
-            letter-spacing:2px;font-family:'Courier New',monospace}
-        #start-btn{display:none;margin-top:2rem;padding:10px 40px;
-            background:transparent;color:#0f0;
-            border:1px solid rgba(0,255,0,0.3);font-size:0.8rem;
-            font-family:'Courier New',monospace;letter-spacing:4px;
-            text-transform:uppercase;cursor:pointer;transition:all 0.3s;
-            text-shadow:0 0 6px rgba(0,255,0,0.4)}
-        #start-btn:hover,#start-btn:active{color:#0f0;
-            border-color:rgba(0,255,0,0.6);
-            text-shadow:0 0 12px rgba(0,255,0,0.6)}
-        .loading-ornament{margin-top:2rem;font-size:0.7rem;
-            color:rgba(0,255,0,0.2);letter-spacing:2px}
-    </style>
-    <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
-    <script type="importmap">{"imports":{
-        "three":"https://unpkg.com/three@0.160.0/build/three.module.js",
-        "three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"
-    }}</script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>URBAN LEGEND</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:"Courier New",monospace}
+    #camera-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;background:#000}
+    #canvas3d{position:absolute;inset:0;width:100%;height:100%;z-index:2;pointer-events:auto}
+    #vhs-scanlines{position:absolute;inset:0;z-index:3;pointer-events:none;
+      background:repeating-linear-gradient(0deg,transparent 0px,transparent 2px,rgba(0,0,0,0.06) 2px,rgba(0,0,0,0.06) 5px)}
+    #vhs-noise{position:absolute;inset:0;z-index:4;pointer-events:none;opacity:0.18}
+
+    #ui-panel{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+      width:min(80vw,520px);background:rgba(0,0,0,0.45);border:1px solid rgba(0,255,180,0.25);
+      padding:24px;z-index:10;color:#dff;backdrop-filter:blur(6px);transition:transform 0.6s ease, opacity 0.6s ease;}
+    #ui-panel.hidden{opacity:0;pointer-events:none}
+    #ui-panel.leaving{opacity:0;transform:translate(calc(-50% + var(--to-x)), calc(-50% + var(--to-y))) scale(0.08)}
+    #ui-panel h2{font-size:14px;letter-spacing:6px;color:#9ff;margin-bottom:10px}
+    #ui-panel textarea{width:100%;height:120px;background:rgba(0,0,0,0.6);border:1px solid rgba(0,255,180,0.25);
+      color:#e8ffff;padding:12px;font-size:14px;resize:none;outline:none}
+    #leave-btn{margin-top:14px;width:100%;height:44px;background:rgba(0,255,180,0.12);
+      border:1px solid rgba(0,255,180,0.4);color:#bff;text-transform:uppercase;letter-spacing:6px;cursor:pointer}
+    #leave-btn:disabled{opacity:0.4;cursor:not-allowed}
+
+    #text-popup{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);
+      max-width:min(90vw,600px);background:rgba(0,0,0,0.6);color:#e8ffff;border:1px solid rgba(0,255,180,0.25);
+      padding:12px 16px;z-index:12;display:none}
+    #text-popup.show{display:block}
+
+    #loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+      color:#9ff;letter-spacing:4px;font-size:12px;z-index:20;background:#000}
+  </style>
+  <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+  <script type="importmap">{"imports":{
+    "three":"https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"
+  }}</script>
 </head>
 <body>
-    <video id="camera-video" autoplay playsinline muted></video>
-    <canvas id="blood-canvas"></canvas>
-    <canvas id="seg-overlay"></canvas>
-    <canvas id="marker-canvas"></canvas>
-    <!-- 3D canvas inserted by JS -->
-    <canvas id="tentacle-canvas" style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:2;pointer-events:none;image-rendering:auto"></canvas>
-    <div id="vhs-scanlines"></div>
-    <canvas id="vhs-noise"></canvas>
-    <div id="vhs-tracking"></div>
-    <div id="pan-zone"></div>
-    <div id="debug-info">Loading...</div>
-    <div id="joystick-zone"><div id="joystick-knob"></div></div>
-    <div id="jump-btn">JUMP</div>
-    <div id="offscreen-arrow"></div>
-    <div id="loading-screen">
-        <div class="loading-scanlines"></div>
-        <div class="loading-deco">o()xxxx[{:::::::::::::::::::&gt;</div>
-        <h2>URBAN LEGEND</h2>
-        <div class="loading-sub">&middot; climb &middot; fall &middot; repeat &middot;</div>
-        <div id="loading-bar-bg"><div id="loading-bar"></div></div>
-        <div id="loading-status">initializing...</div>
-        <button id="start-btn">&#x2727; START &#x2727;</button>
-        <div class="loading-ornament">&lt;:::::::::::::::::::}]xxxx()o</div>
-    </div>
+  <video id="camera-video" autoplay playsinline muted></video>
+  <canvas id="vhs-noise"></canvas>
+  <div id="vhs-scanlines"></div>
+
+  <div id="ui-panel">
+    <h2>WRITE</h2>
+    <textarea id="text-input" placeholder="Type your words..."></textarea>
+    <button id="leave-btn">LEAVE</button>
+  </div>
+
+  <div id="text-popup"></div>
+  <div id="loading">LOADING</div>
+
 <script type="module">
 import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
 import { GLTFLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/DRACOLoader.js';
 import { FBXLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/FBXLoader.js';
+import { OBJLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/OBJLoader.js';
+import { MTLLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/MTLLoader.js';
 
-const W = () => window.innerWidth, H = () => window.innerHeight;
-function layoutUI() {
-    const w = W(), h = H();
-    document.getElementById('joystick-zone').style.cssText +=
-        `;left:20px;top:${h-160}px`;
-    document.getElementById('jump-btn').style.cssText +=
-        `;left:${w-104}px;top:${h-120}px`;
-}
-layoutUI(); window.addEventListener('resize', layoutUI);
+const W = () => window.innerWidth;
+const H = () => window.innerHeight;
+const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
 
-// ===== Scene Segmentation (climbable blocks + high-sat obstacles) =====
-const SEG_W = 80, SEG_H = 60;
-const segCanvas = document.createElement('canvas');
-segCanvas.width = SEG_W; segCanvas.height = SEG_H;
-const segCtx = segCanvas.getContext('2d', { willReadFrequently: true });
-const climbMap = Array.from({ length: SEG_H }, () => new Uint8Array(SEG_W));
-const obstacleMap = Array.from({ length: SEG_H }, () => new Uint8Array(SEG_W));
-const climbHeat = Array.from({ length: SEG_H }, () => new Uint8Array(SEG_W));
-const obstacleHeat = Array.from({ length: SEG_H }, () => new Uint8Array(SEG_W));
-const segOverlay = document.getElementById('seg-overlay');
-const segOverlayCtx = segOverlay.getContext('2d');
-const markerCanvas = document.getElementById('marker-canvas');
-const markerCtx = markerCanvas.getContext('2d');
-let segActive = false;
-let segFrame = 0;
-let segStableFrames = 0;
-const SAT_CLIMB = 0.12;
-const SAT_OBS = 0.55;
-let glowActive = false;
-let glowTarget = { x: 0, y: 0, valid: false };
-
-function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
-
-function updateSegmentation(video) {
-    if (!video || video.readyState < 2) {
-        segActive = false;
-        segStableFrames = 0;
-        for (let y = 0; y < SEG_H; y++) {
-            climbMap[y].fill(0);
-            obstacleMap[y].fill(0);
-            climbHeat[y].fill(0);
-            obstacleHeat[y].fill(0);
-        }
-        return;
-    }
-    segFrame++;
-    if (segFrame % 2 !== 0) return;
-    segCtx.drawImage(video, 0, 0, SEG_W, SEG_H);
-    const data = segCtx.getImageData(0, 0, SEG_W, SEG_H).data;
-    let climbCount = 0;
-    let glowSumX = 0, glowSumY = 0, glowCount = 0;
-    for (let y = 0; y < SEG_H; y++) {
-        for (let x = 0; x < SEG_W; x++) {
-            const i = (y * SEG_W + x) * 4;
-            const r = data[i], g = data[i + 1], b = data[i + 2];
-            const max = Math.max(r, g, b), min = Math.min(r, g, b);
-            const luma = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-            const sat = max === 0 ? 0 : (max - min) / max;
-            const climb = (sat > SAT_CLIMB && luma > 0.08 && luma < 0.95) ? 1 : 0;
-            const obstacle = (sat > SAT_OBS && luma > 0.08 && luma < 0.95) ? 1 : 0;
-            const glow = (luma > 0.92);
-
-            let ch = climbHeat[y][x];
-            ch = climb ? Math.min(5, ch + 2) : Math.max(0, ch - 1);
-            climbHeat[y][x] = ch;
-            climbMap[y][x] = ch >= 2 ? 1 : 0;
-
-            let oh = obstacleHeat[y][x];
-            oh = obstacle ? Math.min(5, oh + 2) : Math.max(0, oh - 1);
-            obstacleHeat[y][x] = oh;
-            obstacleMap[y][x] = oh >= 3 ? 1 : 0;
-
-            if (climbMap[y][x]) climbCount++;
-            if (glow) { glowSumX += x; glowSumY += y; glowCount++; }
-        }
-    }
-    segActive = climbCount > 6;
-    segStableFrames = segActive ? segStableFrames + 1 : 0;
-    glowActive = glowCount > 6;
-    if (glowActive) {
-        const gx = glowSumX / glowCount;
-        const gy = glowSumY / glowCount;
-        const sx = (gx + 0.5) / SEG_W * W();
-        const sy = (gy + 0.5) / SEG_H * H();
-        if (!glowTarget.valid) {
-            glowTarget.x = sx; glowTarget.y = sy;
-        } else {
-            glowTarget.x += (sx - glowTarget.x) * 0.25;
-            glowTarget.y += (sy - glowTarget.y) * 0.25;
-        }
-        glowTarget.valid = true;
-    } else {
-        glowTarget.valid = false;
-    }
-    drawSegOverlay();
+// ===== VHS noise =====
+const noiseCanvas = document.getElementById('vhs-noise');
+const noiseCtx = noiseCanvas.getContext('2d');
+let noiseFrame = 0;
+function updateNoise() {
+  noiseFrame++;
+  if (noiseFrame % 3 !== 0) return;
+  const w = 64, h = 64;
+  noiseCanvas.width = w; noiseCanvas.height = h;
+  const img = noiseCtx.createImageData(w, h);
+  const d = img.data;
+  for (let i=0; i<d.length; i+=4) {
+    const v = Math.random()*255;
+    d[i]=d[i+1]=d[i+2]=v; d[i+3]=50;
+  }
+  noiseCtx.putImageData(img, 0, 0);
 }
 
-function isObstacleAt(sx, sy) {
-    const gx = clamp(Math.floor(sx / W() * SEG_W), 0, SEG_W - 1);
-    const gy = clamp(Math.floor(sy / H() * SEG_H), 0, SEG_H - 1);
-    return obstacleMap[gy][gx] === 1;
-}
-
-function isClimbableAt(sx, sy) {
-    const gx = clamp(Math.floor(sx / W() * SEG_W), 0, SEG_W - 1);
-    const gy = clamp(Math.floor(sy / H() * SEG_H), 0, SEG_H - 1);
-    return climbMap[gy][gx] === 1 && obstacleMap[gy][gx] === 0;
-}
-
-function screenToGrid(sx, sy) {
-    return {
-        x: clamp(Math.floor(sx / W() * SEG_W), 0, SEG_W - 1),
-        y: clamp(Math.floor(sy / H() * SEG_H), 0, SEG_H - 1)
-    };
-}
-
-function gridToScreen(gx, gy) {
-    return { x: (gx + 0.5) / SEG_W * W(), y: (gy + 0.5) / SEG_H * H() };
-}
-
-function findLocalCentroid(gx, gy, radius) {
-    let sumX = 0, sumY = 0, count = 0;
-    for (let y = -radius; y <= radius; y++) {
-        for (let x = -radius; x <= radius; x++) {
-            const ix = gx + x;
-            const iy = gy + y;
-            if (ix < 0 || iy < 0 || ix >= SEG_W || iy >= SEG_H) continue;
-            if (climbMap[iy][ix] && !obstacleMap[iy][ix]) {
-                sumX += ix; sumY += iy; count++;
-            }
-        }
-    }
-    if (count < 3) return null;
-    return { x: sumX / count, y: sumY / count };
-}
-
-function pickRandomClimbable() {
-    for (let i = 0; i < 200; i++) {
-        const gx = Math.floor(Math.random() * SEG_W);
-        const gy = Math.floor(Math.random() * SEG_H);
-        if (climbMap[gy][gx] && !obstacleMap[gy][gx]) {
-            return { x: (gx + 0.5) / SEG_W * W(), y: (gy + 0.5) / SEG_H * H() };
-        }
-    }
-    return null;
-}
-
-function findNearestClimbable(sx, sy, maxR) {
-    const gx0 = clamp(Math.floor(sx / W() * SEG_W), 0, SEG_W - 1);
-    const gy0 = clamp(Math.floor(sy / H() * SEG_H), 0, SEG_H - 1);
-    for (let r = 0; r <= maxR; r++) {
-        for (let y = -r; y <= r; y++) {
-            for (let x = -r; x <= r; x++) {
-                if (Math.abs(x) !== r && Math.abs(y) !== r) continue;
-                const gx = gx0 + x;
-                const gy = gy0 + y;
-                if (gx < 0 || gy < 0 || gx >= SEG_W || gy >= SEG_H) continue;
-                if (climbMap[gy][gx] && !obstacleMap[gy][gx]) {
-                    return { x: (gx + 0.5) / SEG_W * W(), y: (gy + 0.5) / SEG_H * H() };
-                }
-            }
-        }
-    }
-    return null;
-}
-
-function drawSegOverlay() {
-    if (!segOverlayCtx) return;
-    if (segOverlay.width !== W() || segOverlay.height !== H()) {
-        segOverlay.width = W();
-        segOverlay.height = H();
-    }
-    const ctx = segOverlayCtx;
-    ctx.clearRect(0, 0, segOverlay.width, segOverlay.height);
-    if (!segActive) return;
-    const cellW = W() / SEG_W;
-    const cellH = H() / SEG_H;
-    for (let y = 0; y < SEG_H; y++) {
-        for (let x = 0; x < SEG_W; x++) {
-            if (obstacleMap[y][x]) {
-                ctx.fillStyle = 'rgba(255,0,0,0.18)';
-                ctx.fillRect(x*cellW, y*cellH, cellW, cellH);
-            } else if (climbMap[y][x]) {
-                ctx.fillStyle = 'rgba(0,255,120,0.22)';
-                ctx.fillRect(x*cellW, y*cellH, cellW, cellH);
-            }
-        }
-    }
-}
-
-let markerPhase = 0;
-function drawGlowMarker(active, sx, sy, near, dt) {
-    if (!markerCtx) return;
-    if (markerCanvas.width !== W() || markerCanvas.height !== H()) {
-        markerCanvas.width = W();
-        markerCanvas.height = H();
-    }
-    const ctx = markerCtx;
-    ctx.clearRect(0, 0, markerCanvas.width, markerCanvas.height);
-    if (!active) return;
-    markerPhase += dt * 2.2;
-    const size = near ? 26 : 20;
-    ctx.save();
-    ctx.translate(sx, sy);
-    ctx.rotate(markerPhase);
-    const stroke = near ? 'rgba(0,255,200,0.95)' : 'rgba(0,220,160,0.75)';
-    const fill = near ? 'rgba(0,255,200,0.18)' : 'rgba(0,220,160,0.12)';
-    ctx.strokeStyle = stroke;
-    ctx.fillStyle = fill;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(0, -size);
-    ctx.lineTo(size * 0.9, size * 0.8);
-    ctx.lineTo(-size * 0.9, size * 0.8);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    // inner ridge for pyramid feel
-    ctx.beginPath();
-    ctx.moveTo(0, -size);
-    ctx.lineTo(0, size * 0.5);
-    ctx.stroke();
-    ctx.restore();
-}
-
-// ===== Loading =====
-const $bar = document.getElementById('loading-bar');
-const $status = document.getElementById('loading-status');
-const $loading = document.getElementById('loading-screen');
-const $start = document.getElementById('start-btn');
-let prog = { camera:0, model:0, anim:0, death:0 };
-function updateBar() {
-    $bar.style.width = Math.round((prog.camera+prog.model+prog.anim+prog.death)/4)+'%';
-}
-
-// ===== Camera =====
-async function startCamera() {
-    const v = document.getElementById('camera-video');
+// ===== Persistence / API =====
+const API_BASE = localStorage.getItem('PLANT_API_URL') || '';
+const STORAGE_KEY = 'urban_legend_plants_v1';
+async function loadEntries() {
+  if (API_BASE) {
     try {
-        v.srcObject = await navigator.mediaDevices.getUserMedia({
-            video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},
-            audio:false
-        });
-        await v.play();
-        prog.camera=100; updateBar();
-        return true;
-    } catch(e) { console.warn('Camera:',e); prog.camera=100; updateBar(); return false; }
+      const res = await fetch(API_BASE + '/api/entries');
+      if (res.ok) return await res.json();
+    } catch (e) {}
+  }
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) return [];
+  try { return JSON.parse(raw); } catch { return []; }
+}
+async function saveEntry(entry) {
+  if (API_BASE) {
+    try {
+      await fetch(API_BASE + '/api/entries', {
+        method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(entry)
+      });
+    } catch (e) {}
+  }
+  const list = await loadEntries();
+  list.push(entry);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
 }
 
-// ===== Gyroscope =====
-class GyroTracker {
-    constructor() {
-        this.viewX=0; this.viewY=0.5;
-        this.smoothX=0; this.smoothY=0.5;
-        this.rawBeta=90; this.rawGamma=0;
-        this.enabled=false; this.status='init';
-    }
-    _onOrientation(e) {
-        if (e.beta===null) { this.status='beta-null'; return; }
-        this.rawBeta=e.beta;
-        // Clamp gamma to avoid gimbal lock flicker near +-90
-        this.rawGamma=Math.max(-60, Math.min(60, e.gamma||0));
-        this.viewY = 0.5 + (e.beta-90)*0.025;
-        this.viewX = this.rawGamma*0.002;
-        // Heavier smoothing to prevent jitter/flicker
-        const sf = 0.04;
-        this.smoothX += (this.viewX-this.smoothX)*sf;
-        this.smoothY += (this.viewY-this.smoothY)*sf;
-        this.enabled=true; this.status='active';
-    }
-    async init() {
-        const h = e => this._onOrientation(e);
-        if (typeof DeviceOrientationEvent!=='undefined' &&
-            typeof DeviceOrientationEvent.requestPermission==='function') {
-            try {
-                const p = await DeviceOrientationEvent.requestPermission();
-                this.status='ios-'+p;
-                if (p==='granted') window.addEventListener('deviceorientation',h);
-            } catch(e) { this.status='ios-err:'+e.message; }
-            return;
-        }
-        this.status='listening';
-        window.addEventListener('deviceorientation',h);
-        window.addEventListener('deviceorientationabsolute',h);
-        setTimeout(()=>{ if(!this.enabled) this.status='no-events'; },2000);
-    }
+// ===== Text -> DNA (deterministic) =====
+function hashString(str) {
+  let h = 2166136261;
+  for (let i=0;i<str.length;i++) {
+    h ^= str.charCodeAt(i);
+    h += (h<<1)+(h<<4)+(h<<7)+(h<<8)+(h<<24);
+  }
+  return h >>> 0;
+}
+function seededRandom(seed) {
+  let s = seed >>> 0;
+  return () => {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return (s & 0xffffffff) / 0x100000000;
+  };
+}
+function pick(arr, r) { return arr[Math.floor(r()*arr.length)]; }
+function randColor(r) {
+  const h = Math.floor(r()*360);
+  const s = 60 + Math.floor(r()*30);
+  const l = 40 + Math.floor(r()*30);
+  return `hsl(${h},${s}%,${l}%)`;
 }
 
-// ===== VHS Effect =====
-class VHSEffect {
-    constructor() {
-        this.noiseCanvas = document.getElementById('vhs-noise');
-        this.noiseCtx = this.noiseCanvas.getContext('2d');
-        this.tracking = document.getElementById('vhs-tracking');
-        this.frame = 0;
-    }
-    update() {
-        this.frame++;
-        // Update noise every 3 frames
-        if (this.frame % 3 === 0) {
-            const w = 64, h = 64;
-            this.noiseCanvas.width = w; this.noiseCanvas.height = h;
-            const ctx = this.noiseCtx;
-            const img = ctx.createImageData(w, h);
-            const d = img.data;
-            for (let i = 0; i < d.length; i += 4) {
-                const v = Math.random()*255;
-                d[i]=d[i+1]=d[i+2]=v; d[i+3]=40;
-            }
-            ctx.putImageData(img, 0, 0);
-        }
-        // Random tracking line
-        if (Math.random() > 0.96) {
-            const y = Math.random()*100;
-            const h = 2+Math.random()*6;
-            this.tracking.style.cssText =
-                `position:absolute;left:0;width:100%;z-index:4;pointer-events:none;`+
-                `top:${y}%;height:${h}px;background:rgba(255,255,255,${0.04+Math.random()*0.08})`;
-            setTimeout(()=>{ this.tracking.style.height='0'; }, 80+Math.random()*120);
-        }
-    }
+function generateDNAFromText(text) {
+  const seed = hashString(text);
+  const r = seededRandom(seed);
+  const plantType = pick(['vine','fern','fungus','flower_stalk','bush'], r);
+  const complexity = 2 + Math.floor(r()*8);
+  const growthDirection = { x: r()*2-1, y: r()*0.8+0.2, z: r()*2-1 };
+  const stemColor = randColor(r);
+  const leafColor = randColor(r);
+  const fruitColor = randColor(r);
+  const hasLeaves = r() > 0.3;
+  const hasFruits = r() > 0.45;
+  const fruitType = pick(['eyeball','mouth','glowing_orb','generic','fungus_cap','giant_flower'], r);
+  const leafType = pick(['fern','broad','needle'], r);
+  return { name:'Mutation', description:'', plantType, complexity, growthDirection, stemColor, leafColor, fruitColor, hasLeaves, hasFruits, fruitType, leafType };
 }
 
-// ===== 2D Tentacle System (matching reference site style) =====
-// Donut-ring tentacles with spine, growth→recoil→relax, wriggle, floating glyphs
-class TentacleSystem2D {
-    constructor() {
-        this.canvas = document.getElementById('tentacle-canvas');
-        this.ctx = this.canvas.getContext('2d');
-        this.tentacles = []; // persists across deaths
-        this.RINGS = 30;
-        this.PTS_PER_RING = 16;
-        this.SCALE = 2.0;
-        this.GLYPHS = ['.', '\u00B7', '\u2022', '\u2219', '\u25E6', '\u2218', 'o', '\u00B0', '*', '+'];
-        this.PALETTES = [[235,170,150]];
-    }
-    // Build interpolated spine from control points
-    _buildSpine(ctrls, numSeg) {
-        const spine = [];
-        for (let i=0; i<numSeg; i++) {
-            const u = i/(numSeg-1);
-            const ci = u*(ctrls.length-1);
-            const i0 = Math.floor(ci), i1 = Math.min(i0+1, ctrls.length-1);
-            const f = ci-i0;
-            spine.push({
-                x: ctrls[i0].x+(ctrls[i1].x-ctrls[i0].x)*f,
-                y: ctrls[i0].y+(ctrls[i1].y-ctrls[i0].y)*f
-            });
-        }
-        return spine;
-    }
-    // Generate donut rings along spine
-    _generateRings(spine, baseR, taperEnd) {
-        const rings = [];
-        for (let r=0; r<spine.length; r++) {
-            const u = r/(spine.length-1);
-            const ringR = baseR*(1.0-u*taperEnd);
-            const ringPts = [];
-            let tx,ty;
-            if (r<spine.length-1) { tx=spine[r+1].x-spine[r].x; ty=spine[r+1].y-spine[r].y; }
-            else { tx=spine[r].x-spine[r-1].x; ty=spine[r].y-spine[r-1].y; }
-            const tLen = Math.sqrt(tx*tx+ty*ty)||1;
-            const nx=-ty/tLen, ny=tx/tLen;
-            const tiltC = 0.3+Math.abs(ny)*0.5;
-            for (let j=0; j<this.PTS_PER_RING; j++) {
-                const theta = (j/this.PTS_PER_RING)*Math.PI*2;
-                ringPts.push({
-                    baseX: spine[r].x + Math.cos(theta)*ringR*nx - Math.sin(theta)*ringR*tiltC*tx/tLen,
-                    baseY: spine[r].y + Math.cos(theta)*ringR*ny - Math.sin(theta)*ringR*tiltC*ty/tLen,
-                    x:0, y:0,
-                    phase: Math.random()*Math.PI*2,
-                    speed: 0.3+Math.random()*1.0,
-                    amp: 0.3+Math.random()*1.5*(1-u*0.5),
-                    glyph: this.GLYPHS[Math.floor(Math.random()*this.GLYPHS.length)],
-                    size: 0.45*(1-u*0.35),
-                    alpha: 0.6*(1-u*0.25)
-                });
-            }
-            rings.push(ringPts);
-        }
-        return rings;
-    }
-    _rebuildRings(rings, spine, baseR, taperEnd) {
-        for (let r=0; r<spine.length&&r<rings.length; r++) {
-            const u = r/(spine.length-1);
-            const ringR = baseR*(1.0-u*taperEnd);
-            let tx,ty;
-            if (r<spine.length-1) { tx=spine[r+1].x-spine[r].x; ty=spine[r+1].y-spine[r].y; }
-            else { tx=spine[r].x-spine[r-1].x; ty=spine[r].y-spine[r-1].y; }
-            const tLen = Math.sqrt(tx*tx+ty*ty)||1;
-            const nx=-ty/tLen, ny=tx/tLen;
-            const tiltC = 0.3+Math.abs(ny)*0.5;
-            const ring = rings[r];
-            for (let j=0; j<ring.length; j++) {
-                const theta = (j/ring.length)*Math.PI*2;
-                ring[j].baseX = spine[r].x + Math.cos(theta)*ringR*nx - Math.sin(theta)*ringR*tiltC*tx/tLen;
-                ring[j].baseY = spine[r].y + Math.cos(theta)*ringR*ny - Math.sin(theta)*ringR*tiltC*ty/tLen;
-            }
-        }
-    }
-    // Spawn 3-5 tentacles from a screen position (character's projected position)
-    spawnAtScreen(sx, sy) {
-        const count = 4+Math.floor(Math.random()*3);
-        for (let i=0; i<count; i++) {
-            let offsetX = (Math.random()-0.5)*24;
-            let offsetY = (Math.random()-0.7)*22; // bias upward/back
-            if (Math.random() < 0.55) {
-                offsetY -= 16;
-                offsetX += (Math.random()<0.5?-10:10);
-            }
-            const baseX = sx + offsetX;
-            const baseY = sy + offsetY;
-            const baseAngle = Math.random()*Math.PI*2;
-            const totalLen = (30+Math.random()*50) * this.SCALE;
-            const spiralDir = Math.random()<0.5?1:-1;
-            const spiralStr = 0.5+Math.random()*1.2;
-            const wiggle = (2+Math.random()*4) * this.SCALE;
-            const ctrlCount = 10;
-            const ctrls = [{x:baseX, y:baseY}];
-            let cx=baseX, cy=baseY, angle=baseAngle;
-            for (let c=0; c<ctrlCount; c++) {
-                const seg = totalLen/ctrlCount;
-                angle += spiralDir*spiralStr*(Math.PI/ctrlCount);
-                angle += (Math.random()-0.5)*wiggle*(Math.PI/ctrlCount);
-                cx += Math.cos(angle)*seg;
-                cy += Math.sin(angle)*seg;
-                ctrls.push({x:cx, y:cy});
-            }
-            const spine = this._buildSpine(ctrls, this.RINGS);
-            const baseR = (5.0+Math.random()*6.0) * this.SCALE;
-            const rings = this._generateRings(spine, baseR, 0.85);
-            const pal = this.PALETTES[Math.floor(Math.random()*this.PALETTES.length)];
-            const gd = 200+Math.random()*500;
-            const recoilRand = Math.random();
-            const recoilTarget = 0.2+recoilRand*0.5;
-            const recoilSpeedMul = 1.0-recoilRand*0.7;
-            this.tentacles.push({
-                rings, spine,
-                spineBase: spine.map(p=>({x:p.x,y:p.y})),
-                birth: Date.now(), growDuration: gd,
-                totalRings: this.RINGS, color: pal, baseR,
-                wrigglePhase: Math.random()*Math.PI*2,
-                wriggleFreq: 1.5+Math.random()*2.5,
-                wriggleAmp: (2+Math.random()*4) * this.SCALE,
-                recoilTarget,
-                recoilDuration: gd*(1-recoilTarget)*recoilSpeedMul*(0.8+Math.random()*0.4)*4,
-                relaxDuration: gd*(1-recoilTarget)/(0.15+Math.random()*0.1),
-                anchorX: baseX, anchorY: baseY, // follows character
-                offsetX, offsetY
-            });
-        }
-    }
-    // Move all tentacle anchors to follow character screen position
-    moveAnchors(newSX, newSY) {
-        for (const ten of this.tentacles) {
-            const targetX = newSX + (ten.offsetX||0);
-            const targetY = newSY + (ten.offsetY||0);
-            const dx = targetX-ten.anchorX, dy = targetY-ten.anchorY;
-            ten.anchorX = targetX; ten.anchorY = targetY;
-            for (const p of ten.spineBase) { p.x+=dx; p.y+=dy; }
-        }
-    }
-    update(t) {
-        const cw = W(), ch = H();
-        this.canvas.width = cw; this.canvas.height = ch;
-        const ctx = this.ctx;
-        ctx.textAlign='center'; ctx.textBaseline='middle';
-        ctx.imageSmoothingEnabled = false;
-        const now = Date.now();
+// ===== Procedural plant =====
+function generateProceduralPlant(dna) {
+  const stems = [];
+  const fruits = [];
+  const leaves = [];
+  const startPt = new THREE.Vector3(0,0,0);
+  const dir = new THREE.Vector3(dna.growthDirection.x, dna.growthDirection.y, dna.growthDirection.z).normalize();
+  if (dir.lengthSq() === 0) dir.set(0,1,0);
+  const length = 10 + dna.complexity * 1.5;
+  let endPt = startPt.clone();
 
-        for (const ten of this.tentacles) {
-            const ms = now-ten.birth;
-            // Growth phases: grow → recoil → relax
-            let lengthFrac;
-            const p2Start = ten.growDuration;
-            const p3Start = p2Start+ten.recoilDuration;
-            const p3End = p3Start+ten.relaxDuration;
-            if (ms<p2Start) {
-                lengthFrac = ms/p2Start;
-            } else if (ms<p3Start) {
-                const rc = (ms-p2Start)/ten.recoilDuration;
-                lengthFrac = 1-(1-ten.recoilTarget)*rc;
-            } else if (ms<p3End) {
-                const rl = (ms-p3Start)/ten.relaxDuration;
-                lengthFrac = ten.recoilTarget+(1-ten.recoilTarget)*rl;
-            } else {
-                lengthFrac = 1;
-            }
-            lengthFrac = Math.max(0,Math.min(1,lengthFrac));
-            const growT = Math.min(1, ms/p2Start);
-
-            // Wriggle spine + contraction
-            const cutoff = lengthFrac*(ten.spine.length-1);
-            for (let i=0; i<ten.spine.length; i++) {
-                const u = i/ten.spine.length;
-                const wave = Math.sin(t*ten.wriggleFreq+u*Math.PI*5+ten.wrigglePhase);
-                const wave2 = Math.cos(t*ten.wriggleFreq*0.6+u*Math.PI*3+ten.wrigglePhase);
-                if (i<=cutoff) {
-                    ten.spine[i].x = ten.spineBase[i].x + wave*ten.wriggleAmp*u;
-                    ten.spine[i].y = ten.spineBase[i].y + wave2*ten.wriggleAmp*0.6*u;
-                } else {
-                    const ci = Math.floor(cutoff), cf = cutoff-ci;
-                    const ccx = ten.spineBase[ci].x + (ci<ten.spineBase.length-1?
-                        (ten.spineBase[ci+1].x-ten.spineBase[ci].x)*cf:0);
-                    const ccy = ten.spineBase[ci].y + (ci<ten.spineBase.length-1?
-                        (ten.spineBase[ci+1].y-ten.spineBase[ci].y)*cf:0);
-                    const collapse = (i-cutoff)/(ten.spine.length-1-cutoff+0.001);
-                    const bx = ten.spineBase[i].x*(1-collapse)+ccx*collapse;
-                    const by = ten.spineBase[i].y*(1-collapse)+ccy*collapse;
-                    const tw1 = Math.sin(t*ten.wriggleFreq*1.3+i*1.7+ten.wrigglePhase*2.1);
-                    const tw2 = Math.cos(t*ten.wriggleFreq*0.9+i*2.3+ten.wrigglePhase*1.4);
-                    ten.spine[i].x = bx+(wave+tw1*2.25)*ten.wriggleAmp*u;
-                    ten.spine[i].y = by+(wave2+tw2*2.25)*ten.wriggleAmp*0.6*u;
-                }
-            }
-            this._rebuildRings(ten.rings, ten.spine, ten.baseR, 0.85);
-
-            // Float each point
-            ten.rings.forEach(ring=>ring.forEach(p=>{
-                p.x = p.baseX+Math.sin(t*p.speed+p.phase)*p.amp;
-                p.y = p.baseY+Math.cos(t*p.speed*0.7+p.phase)*p.amp;
-            }));
-
-            // Draw — solid red squares for sharp, high-contrast silhouette
-            const visRings = Math.ceil(ten.totalRings*growT);
-            const cr0=ten.color[0], cg0=ten.color[1], cb0=ten.color[2];
-            for (let r=0; r<visRings&&r<ten.rings.length; r++) {
-                const u = r/ten.rings.length;
-                let ringAlpha = 1;
-                if (growT<1) {
-                    const fadeZone=0.15;
-                    ringAlpha = Math.max(0,Math.min(1,(growT-u+fadeZone)/fadeZone));
-                }
-                const shade = 0.85 - u*0.25;
-                const cr=Math.min(255,Math.floor(cr0*shade));
-                const cg=Math.min(255,Math.floor(cg0*shade));
-                const cb=Math.min(255,Math.floor(cb0*shade));
-                const dr=Math.floor(cr*0.7), dg=Math.floor(cg*0.7), db=Math.floor(cb*0.7);
-                const ring=ten.rings[r];
-                for (let j=0; j<ring.length; j++) {
-                    const p=ring[j];
-                    const s = Math.max(1.0, p.size*ringAlpha*1.6);
-                    ctx.globalAlpha = Math.min(1,p.alpha*ringAlpha*1.2);
-                    ctx.fillStyle=`rgb(${dr},${dg},${db})`;
-                    ctx.fillRect(p.x - s*0.5 + 0.6, p.y - s*0.5 + 0.6, s, s);
-                    ctx.globalAlpha = Math.min(1,p.alpha*ringAlpha*1.6);
-                    ctx.fillStyle=`rgb(${cr},${cg},${cb})`;
-                    ctx.fillRect(p.x - s*0.5, p.y - s*0.5, s, s);
-                }
-            }
-        }
-        ctx.globalAlpha=1;
+  const generateCurve = (start, direction, len, waviness, segments) => {
+    const curve = [];
+    let current = start.clone();
+    curve.push({ x: current.x, y: current.y, z: current.z });
+    const step = len / segments;
+    let perp1 = new THREE.Vector3(1,0,0).cross(direction).normalize();
+    if (perp1.lengthSq() < 0.1) perp1 = new THREE.Vector3(0,1,0).cross(direction).normalize();
+    const perp2 = direction.clone().cross(perp1).normalize();
+    for (let i=1;i<=segments;i++) {
+      const t = i/segments;
+      current.add(direction.clone().multiplyScalar(step));
+      const wave1 = Math.sin(t*Math.PI*4) * waviness * (1-t);
+      const wave2 = Math.cos(t*Math.PI*3) * waviness * (1-t);
+      const offset = perp1.clone().multiplyScalar(wave1).add(perp2.clone().multiplyScalar(wave2));
+      const pt = current.clone().add(offset);
+      if (direction.y < 0.5) pt.y -= t*t*2;
+      curve.push({ x: pt.x, y: pt.y, z: pt.z });
     }
+    return { curve, end: current };
+  };
+
+  if (dna.plantType === 'vine' || dna.plantType === 'flower_stalk') {
+    const { curve, end } = generateCurve(startPt, dir, length, 2, 20);
+    stems.push(curve); endPt = end;
+    const numBranches = Math.floor(dna.complexity/2);
+    for (let i=0;i<numBranches;i++) {
+      const t = 0.2 + Math.random()*0.6;
+      const idx = Math.floor(t*curve.length);
+      const branchStart = new THREE.Vector3(curve[idx].x, curve[idx].y, curve[idx].z);
+      const branchDir = dir.clone().applyAxisAngle(new THREE.Vector3(Math.random(),Math.random(),Math.random()).normalize(), Math.PI/3).normalize();
+      const branchLen = length * 0.4 * Math.random();
+      const { curve: bCurve, end: bEnd } = generateCurve(branchStart, branchDir, branchLen, 1, 10);
+      stems.push(bCurve);
+      if (dna.hasLeaves && Math.random()>0.3) leaves.push({ position: bEnd, direction: branchDir, type: dna.leafType, color: dna.leafColor, scale: 1 });
+      if (dna.hasFruits && Math.random()>0.6) fruits.push({ position: bEnd, direction: branchDir, type: dna.fruitType, color: dna.fruitColor, scale: 0.8 });
+    }
+    if (dna.hasFruits || dna.plantType==='flower_stalk') {
+      fruits.push({ position: endPt, direction: dir, type: dna.plantType==='flower_stalk'?'giant_flower':dna.fruitType, color: dna.fruitColor, scale: 1.5 });
+    }
+  } else if (dna.plantType === 'bush' || dna.plantType === 'fern') {
+    const numStems = 3 + Math.floor(dna.complexity/2);
+    let highestY = -Infinity;
+    for (let i=0;i<numStems;i++) {
+      const spreadDir = dir.clone().applyAxisAngle(new THREE.Vector3(0,1,0), (i/numStems)*Math.PI*2 + Math.random()*0.5);
+      spreadDir.y += 0.5; spreadDir.normalize();
+      const { curve, end } = generateCurve(startPt, spreadDir, length*(0.6+Math.random()*0.4), 1.5, 15);
+      stems.push(curve);
+      if (end.y > highestY) { highestY = end.y; endPt = end; }
+      if (dna.plantType==='fern' && dna.hasLeaves) {
+        for (let j=2;j<curve.length-1;j+=2) {
+          const p = curve[j];
+          const pDir = new THREE.Vector3(p.x-curve[j-1].x, p.y-curve[j-1].y, p.z-curve[j-1].z).normalize();
+          const side1 = pDir.clone().cross(new THREE.Vector3(0,1,0)).normalize();
+          const side2 = side1.clone().negate();
+          leaves.push({ position:p, direction:side1, type:'fern', color:dna.leafColor, scale:0.5*(1-j/curve.length) });
+          leaves.push({ position:p, direction:side2, type:'fern', color:dna.leafColor, scale:0.5*(1-j/curve.length) });
+        }
+      } else if (dna.hasLeaves) {
+        leaves.push({ position:end, direction:spreadDir, type:dna.leafType, color:dna.leafColor, scale:1.2 });
+      }
+      if (dna.hasFruits && Math.random()>0.7) fruits.push({ position:end, direction:spreadDir, type:dna.fruitType, color:dna.fruitColor, scale:1 });
+    }
+  } else if (dna.plantType === 'fungus') {
+    const { curve, end } = generateCurve(startPt, dir, length*0.5, 0.5, 10);
+    stems.push(curve); endPt = end;
+    fruits.push({ position:end, direction:dir, type:'fungus_cap', color:dna.fruitColor, scale:2 + dna.complexity*0.2 });
+    const numSmall = Math.floor(dna.complexity/3);
+    for (let i=0;i<numSmall;i++) {
+      const offset = new THREE.Vector3((Math.random()-0.5)*4, 0, (Math.random()-0.5)*4);
+      const { curve: sCurve, end: sEnd } = generateCurve(startPt.clone().add(offset), new THREE.Vector3(0,1,0), length*0.2, 0.2, 5);
+      stems.push(sCurve);
+      fruits.push({ position:sEnd, direction:new THREE.Vector3(0,1,0), type:'fungus_cap', color:dna.fruitColor, scale:0.8 });
+    }
+  }
+  return { stems, fruits, leaves, endPoint:{ x:endPt.x, y:endPt.y, z:endPt.z } };
 }
 
-// ===== Blood Particles (persistent) =====
-class BloodSystem2D {
-    constructor() {
-        this.canvas = document.getElementById('blood-canvas');
-        this.ctx = this.canvas.getContext('2d');
-        this.particles = [];
-        this.staticDots = [];
-        this.pools = [];
-        this.COLORS = ['#ff1a2a', '#d1001b', '#b00018', '#ff3040', '#aa0015'];
-        this.bleedTimer = 0;
-        this.maxParticles = 900;
-        this.maxDots = 5200;
-        this.maxPools = 240;
+function buildPlantPartMesh(part) {
+  const group = new THREE.Group();
+  group.position.set(part.startX, part.startY, part.startZ);
+  // stems
+  for (let i=0;i<part.stems.length;i++) {
+    const stem = part.stems[i];
+    if (stem.length < 2) continue;
+    const curve = new THREE.CatmullRomCurve3(stem.map(p=>new THREE.Vector3(p.x,p.y,p.z)));
+    const radius = Math.max(0.05, 0.18 - (part.stems.length * 0.008));
+    const geo = new THREE.TubeGeometry(curve, 64, radius, 10, false);
+    const mat = new THREE.MeshStandardMaterial({ color: part.stemColor, roughness:0.5, metalness:0.2, emissive: new THREE.Color(part.stemColor).multiplyScalar(0.1) });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.castShadow = true; mesh.receiveShadow = true;
+    mesh.userData.entryText = part.textInput;
+    group.add(mesh);
+  }
+  // fruits
+  for (const f of part.fruits) {
+    const pos = new THREE.Vector3(f.position.x, f.position.y, f.position.z);
+    const dir = new THREE.Vector3(f.direction.x, f.direction.y, f.direction.z).normalize();
+    const quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), dir);
+    const fruitGroup = new THREE.Group();
+    fruitGroup.position.copy(pos); fruitGroup.quaternion.copy(quat); fruitGroup.scale.setScalar(f.scale||1);
+    const mat = new THREE.MeshStandardMaterial({ color: f.color, roughness:0.3, metalness:0.4, emissive: new THREE.Color(f.color).multiplyScalar(0.4) });
+    if (f.type === 'fungus_cap') {
+      const cap = new THREE.Mesh(new THREE.SphereGeometry(1.2, 20, 16), mat);
+      cap.scale.set(1,0.4,1); fruitGroup.add(cap);
+    } else if (f.type === 'giant_flower') {
+      for (let i=0;i<10;i++) {
+        const petal = new THREE.Mesh(new THREE.SphereGeometry(0.8, 16, 12), mat);
+        petal.scale.set(0.3,0.08,1.1);
+        petal.position.set(1.1,0,0);
+        petal.rotation.z = 0.2;
+        petal.rotation.y = (i/10)*Math.PI*2;
+        fruitGroup.add(petal);
+      }
+      const core = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 12), new THREE.MeshStandardMaterial({ color:'#ffd200', emissive:'#ffd200', emissiveIntensity:1 }));
+      fruitGroup.add(core);
+    } else {
+      const orb = new THREE.Mesh(new THREE.SphereGeometry(0.7, 16, 12), mat);
+      fruitGroup.add(orb);
     }
-    _spawnRadialParticle(cx, cy, speedMin, speedMax, angle=null, spread=Math.PI*2) {
-        if (this.particles.length >= this.maxParticles) return;
-        const ang = angle === null ? (Math.random() * Math.PI * 2)
-            : (angle + (Math.random()-0.5)*spread);
-        const speed = speedMin + Math.random()*(speedMax-speedMin);
-        this.particles.push({
-            cx, cy,
-            angle: ang,
-            radius: 0,
-            speed,
-            age: 0,
-            size: 1.8+Math.random()*2.8,
-            color: this.COLORS[Math.floor(Math.random()*this.COLORS.length)]
-        });
-    }
-    _addStaticDot(x, y, size, color) {
-        if (this.staticDots.length >= this.maxDots) return;
-        this.staticDots.push({ x, y, size, color });
-    }
-    _addPool(cx, cy, startR, speed, maxR, color) {
-        if (this.pools.length >= this.maxPools) return;
-        this.pools.push({
-            cx, cy,
-            r: startR,
-            v: speed,
-            maxR,
-            color,
-            decay: 0.88 + Math.random()*0.06
-        });
-    }
-    burst(sx, sy) {
-        for (let i=0; i<220; i++) {
-            this._spawnRadialParticle(sx, sy, 200, 620);
-        }
-        for (let i=0; i<14; i++) {
-            this._addPool(
-                sx+(Math.random()-0.5)*6,
-                sy+(Math.random()-0.5)*6,
-                4+Math.random()*5,
-                70+Math.random()*45,
-                90+Math.random()*60,
-                this.COLORS[Math.floor(Math.random()*this.COLORS.length)]
-            );
-        }
-    }
-    edgeBurstBottom(sx) {
-        const y = H() + 8;
-        for (let i=0; i<260; i++) {
-            this._spawnRadialParticle(sx, y, 240, 760, -Math.PI/2, 1.0);
-        }
-    }
-    bleed(sx, sy, dt) {
-        this.bleedTimer += dt;
-        while (this.bleedTimer > 0.2) {
-            this.bleedTimer -= 0.2;
-            const ox = (Math.random()-0.5)*8;
-            const oy = (Math.random()-0.5)*8;
-            this._addPool(
-                sx+ox, sy+oy,
-                2+Math.random()*2,
-                10+Math.random()*8,
-                40+Math.random()*25,
-                this.COLORS[Math.floor(Math.random()*this.COLORS.length)]
-            );
-        }
-    }
-    reset() {
-        this.particles.length = 0;
-        this.staticDots.length = 0;
-        this.pools.length = 0;
-        this.bleedTimer = 0;
-    }
-    update(dt) {
-        const ctx = this.ctx;
-        if (this.canvas.width !== W() || this.canvas.height !== H()) {
-            this.canvas.width = W();
-            this.canvas.height = H();
-        }
-        ctx.imageSmoothingEnabled = false;
-        ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        ctx.save();
-        // Pools (expanding, decelerating, accumulating)
-        for (const p of this.pools) {
-            p.r += p.v*dt;
-            p.v *= p.decay;
-            if (p.r > p.maxR) { p.r = p.maxR; p.v = 0; }
-            const dots = Math.max(6, Math.floor(p.r * 0.28));
-            for (let i=0; i<dots; i++) {
-                const a = Math.random() * Math.PI * 2;
-                const rr = Math.sqrt(Math.random()) * p.r;
-                const x = p.cx + Math.cos(a) * rr;
-                const y = p.cy + Math.sin(a) * rr;
-                this._addStaticDot(x, y, 1.4+Math.random()*1.0, p.color);
-            }
-        }
-        // Static dots
-        ctx.globalAlpha = 0.95;
-        for (const d of this.staticDots) {
-            ctx.fillStyle = d.color;
-            const s = d.size;
-            ctx.fillRect(d.x - s*0.5, d.y - s*0.5, s, s);
-        }
-        // Radial particles (fountain burst)
-        for (let i=this.particles.length-1; i>=0; i--) {
-            const p = this.particles[i];
-            p.age += dt;
-            p.radius += p.speed*dt;
-            const x = p.cx + Math.cos(p.angle) * p.radius;
-            const y = p.cy + Math.sin(p.angle) * p.radius;
-            ctx.globalAlpha = 0.95;
-            ctx.fillStyle = p.color;
-            const s = p.size;
-            ctx.fillRect(x - s*0.5, y - s*0.5, s, s);
-            if (p.age > 0.35 || p.radius > 90) {
-                this._addStaticDot(x, y, 1.3+Math.random()*0.9, p.color);
-                this.particles.splice(i,1);
-            }
-        }
-        ctx.restore();
-        ctx.globalAlpha = 1;
-    }
+    fruitGroup.userData.entryText = part.textInput;
+    group.add(fruitGroup);
+  }
+  // leaves
+  for (const l of part.leaves) {
+    const pos = new THREE.Vector3(l.position.x, l.position.y, l.position.z);
+    const dir = new THREE.Vector3(l.direction.x, l.direction.y, l.direction.z).normalize();
+    const quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), dir);
+    const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.2, 1.2, 8), new THREE.MeshStandardMaterial({ color:l.color, roughness:0.5, metalness:0.2 }));
+    leaf.position.copy(pos); leaf.quaternion.copy(quat); leaf.scale.setScalar(l.scale||1);
+    leaf.userData.entryText = part.textInput;
+    group.add(leaf);
+  }
+  return group;
 }
+
+// ===== 3D Scene =====
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, W()/H(), 0.01, 200);
+const renderer = new THREE.WebGLRenderer({ alpha:true, antialias:true });
+renderer.setSize(W(), H());
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.setClearColor(0x000000,0);
+renderer.domElement.id = 'canvas3d';
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.AmbientLight(0xcccccc, 0.6));
+scene.add(new THREE.DirectionalLight(0xffffff, 1.6).position.set(5,8,5));
+
+let building = null;
+let rooftopY = 2.5;
+const buildingGroup = new THREE.Group();
+scene.add(buildingGroup);
+
+const mtlLoader = new MTLLoader();
+const objLoader = new OBJLoader();
+mtlLoader.load('./building/tripo_convert_81a5c880-066d-4bf1-9436-48ff4ce267bf.mtl', mtl => {
+  mtl.preload();
+  objLoader.setMaterials(mtl);
+  objLoader.load('./building/tripo_convert_81a5c880-066d-4bf1-9436-48ff4ce267bf.obj', obj => {
+    building = obj;
+    const box = new THREE.Box3().setFromObject(obj);
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.z);
+    const scale = 4 / maxDim;
+    obj.scale.setScalar(scale);
+    const box2 = new THREE.Box3().setFromObject(obj);
+    obj.position.y = -box2.min.y;
+    buildingGroup.add(obj);
+    const box3 = new THREE.Box3().setFromObject(obj);
+    rooftopY = box3.max.y + 0.02;
+  });
+});
+
+// Ground plane
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(50,50), new THREE.MeshStandardMaterial({ color:0x0a0f14, roughness:0.8 }));
+ground.rotation.x = -Math.PI/2;
+ground.receiveShadow = true;
+scene.add(ground);
 
 // ===== Character =====
 class GameCharacter {
-    constructor(scene) {
-        this.scene = scene;
-        this.root = new THREE.Group();
-        scene.add(this.root);
-        this.mixer=null; this.anims={}; this.curAction=null; this.curState='IDLE';
-        this.root.rotation.y = Math.PI;
-        this.charHeight = 0.066;
-        this.climbDownDuration = 0.8;
+  constructor(scene) {
+    this.scene = scene;
+    this.root = new THREE.Group();
+    scene.add(this.root);
+    this.mixer = null;
+    this.anims = {};
+    this.curAction = null;
+    this.curState = 'IDLE';
+    this.charHeight = 0.066;
+    this.loaded = false;
+    this.drinkDuration = 1.0;
+  }
+  async load() {
+    const gl = new GLTFLoader();
+    const dr = new DRACOLoader();
+    dr.setDecoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/draco/');
+    gl.setDRACOLoader(dr);
+    const fbx = new FBXLoader();
+    const texLoader = new THREE.TextureLoader();
+    let skinTex = null;
+    try { skinTex = await new Promise((r,j)=>texLoader.load('./playermodel/tripo_model_basecolor.JPEG',r,undefined,j)); } catch {}
+    if (skinTex) { skinTex.flipY=false; skinTex.colorSpace = THREE.SRGBColorSpace; }
+
+    const load = url => new Promise((r,j)=>gl.load(url,g=>r(g),undefined,e=>j(e)));
+    const idleG = await load('./playermodel/idle.glb');
+    const model = idleG.scene;
+    const box = new THREE.Box3().setFromObject(model);
+    const origH = box.getSize(new THREE.Vector3()).y;
+    const sc = this.charHeight / origH;
+    model.scale.setScalar(sc);
+    const box2 = new THREE.Box3().setFromObject(model);
+    model.position.y = -box2.min.y;
+    model.traverse(c=>{
+      if (c.isMesh) {
+        c.material = new THREE.MeshStandardMaterial({ map: skinTex || null, roughness:0.8, metalness:0.1 });
+        c.frustumCulled = false;
+      }
+    });
+    this.model3D = model;
+    this.root.add(model);
+    this.mixer = new THREE.AnimationMixer(model);
+    const strip = clip => { clip.tracks = clip.tracks.filter(t=>!/(Hips|RootNode)\.(position|quaternion)/i.test(t.name)); };
+    if (idleG.animations.length) {
+      strip(idleG.animations[0]);
+      this.anims['IDLE'] = this.mixer.clipAction(idleG.animations[0]);
+      this.anims['IDLE'].play();
+      this.curAction = this.anims['IDLE'];
     }
-    async load() {
-        const gl = new GLTFLoader();
-        const dr = new DRACOLoader();
-        dr.setDecoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/draco/');
-        gl.setDRACOLoader(dr);
-        const fbxLoader = new FBXLoader();
-        const texLoader = new THREE.TextureLoader();
-        let skinTex = null;
-        try {
-            skinTex = await new Promise((r,j)=>
-                texLoader.load('./playermodel/tripo_model_basecolor.JPEG',r,undefined,j));
-            skinTex.flipY=false; skinTex.colorSpace=THREE.SRGBColorSpace;
-        } catch(e){}
-        const load = url => new Promise((r,j)=>gl.load(url,g=>r(g),undefined,e=>j(e)));
-        try {
-            $status.textContent='Loading model...';
-            const idleG = await load('./playermodel/idle.glb');
-            prog.model=100; updateBar();
-            const model = idleG.scene;
-            const box = new THREE.Box3().setFromObject(model);
-            const origH = box.getSize(new THREE.Vector3()).y;
-            const sc = this.charHeight/origH;
-            model.scale.setScalar(sc); this.scaleFactor=sc;
-            const box2 = new THREE.Box3().setFromObject(model);
-            model.position.y = -box2.min.y;
-            model.traverse(c=>{
-                if(c.isMesh){
-                    c.material = new THREE.MeshStandardMaterial({
-                        map:skinTex, roughness:0.8, metalness:0.1, side:THREE.DoubleSide
-                    });
-                    c.frustumCulled=false;
-                }
-            });
-            this.model3D=model; this.root.add(model);
-            this.mixer = new THREE.AnimationMixer(model);
-            const strip = clip => {
-                clip.tracks = clip.tracks.filter(t=>
-                    !/(Hips|RootNode)\.(position|quaternion)/i.test(t.name));
-            };
-            if(idleG.animations.length){
-                strip(idleG.animations[0]);
-                this.anims['IDLE']=this.mixer.clipAction(idleG.animations[0]);
-                this.anims['IDLE'].play(); this.curAction=this.anims['IDLE'];
-            }
-            $status.textContent='Loading animations...';
-            const [cR,jR,dR] = await Promise.allSettled([
-                load('./playermodel/climb.glb'),
-                load('./playermodel/jump.glb'),
-                load('./playermodel/death.glb')
-            ]);
-            prog.anim=100; prog.death=100; updateBar();
-            if(cR.status==='fulfilled'&&cR.value.animations.length){
-                strip(cR.value.animations[0]);
-                this.anims['CLIMB']=this.mixer.clipAction(cR.value.animations[0]);
-            }
-            if(jR.status==='fulfilled'&&jR.value.animations.length){
-                strip(jR.value.animations[0]);
-                this.anims['JUMP']=this.mixer.clipAction(jR.value.animations[0]);
-                this.anims['JUMP'].setLoop(THREE.LoopOnce);
-                this.anims['JUMP'].clampWhenFinished=true;
-            }
-            if(dR.status==='fulfilled'&&dR.value.animations.length){
-                strip(dR.value.animations[0]);
-                this.anims['DEATH']=this.mixer.clipAction(dR.value.animations[0]);
-                this.anims['DEATH'].setLoop(THREE.LoopOnce);
-                this.anims['DEATH'].clampWhenFinished=true;
-            }
-            // Optional: Climbing Down animation (FBX)
-            try {
-                const downFbx = await new Promise((r,j)=>fbxLoader.load(
-                    './playermodel/Climbing Down.fbx', r, undefined, j));
-                if (downFbx.animations && downFbx.animations.length) {
-                    strip(downFbx.animations[0]);
-                    this.anims['CLIMB_DOWN'] = this.mixer.clipAction(downFbx.animations[0]);
-                    this.anims['CLIMB_DOWN'].setLoop(THREE.LoopOnce);
-                    this.anims['CLIMB_DOWN'].clampWhenFinished = true;
-                    this.climbDownDuration = downFbx.animations[0].duration || this.climbDownDuration;
-                }
-            } catch(e) {
-                // If missing, fall back to normal climb/idle
-            }
-            this.loaded=true;
-        } catch(e){
-            console.error('Load fail:',e);
-            $status.textContent='Load failed';
-            prog.model=prog.anim=prog.death=100; updateBar();
-        }
+    const jumpG = await load('./playermodel/jump.glb');
+    if (jumpG.animations.length) {
+      strip(jumpG.animations[0]);
+      this.anims['JUMP'] = this.mixer.clipAction(jumpG.animations[0]);
+      this.anims['JUMP'].setLoop(THREE.LoopOnce);
+      this.anims['JUMP'].clampWhenFinished = true;
     }
-    setState(s) {
-        if(this.curState===s) return;
-        this.curState=s;
-        if(!this.mixer) return;
-        const next=this.anims[s]; if(!next) return;
-        if(this.curAction) this.curAction.timeScale=1;
-        if(this.curAction&&this.curAction!==next){
-            next.reset().play();
-            next.crossFadeFrom(this.curAction,0.2,true);
-        } else next.reset().play();
-        this.curAction=next;
-    }
-    update(dt, moveY, holdClimbPose) {
-        if(!this.mixer) return;
-        if(this.curState==='CLIMB'&&this.anims['CLIMB']) {
-            const act = this.anims['CLIMB'];
-            if (holdClimbPose) {
-                act.play();
-                act.paused = true;
-                const dur = act.getClip().duration || 0;
-                act.time = Math.max(0, dur - 0.02);
-                act.timeScale = 0;
-            } else {
-                act.paused = false;
-                act.timeScale = moveY>0?1.5:(moveY<0?-1.5:1.0);
-            }
-        }
-        this.mixer.update(dt);
-    }
+    // Drinking FBX
+    try {
+      const drinkFbx = await new Promise((r,j)=>fbx.load('./playermodel/Drinking.fbx', r, undefined, j));
+      if (drinkFbx.animations && drinkFbx.animations.length) {
+        strip(drinkFbx.animations[0]);
+        this.anims['DRINK'] = this.mixer.clipAction(drinkFbx.animations[0]);
+        this.anims['DRINK'].setLoop(THREE.LoopOnce);
+        this.anims['DRINK'].clampWhenFinished = true;
+        this.drinkDuration = drinkFbx.animations[0].duration || this.drinkDuration;
+      }
+    } catch(e) {}
+
+    this.loaded = true;
+  }
+  setState(s) {
+    if (this.curState === s) return;
+    this.curState = s;
+    if (!this.mixer) return;
+    const next = this.anims[s];
+    if (!next) return;
+    if (this.curAction && this.curAction !== next) {
+      next.reset().play();
+      next.crossFadeFrom(this.curAction, 0.2, true);
+    } else next.reset().play();
+    this.curAction = next;
+  }
+  update(dt) {
+    if (this.mixer) this.mixer.update(dt);
+  }
 }
 
-// ===== Main =====
-async function main() {
-    $status.textContent='Loading...';
-    prog.camera=100; updateBar();
+const character = new GameCharacter(scene);
+await character.load();
 
-    const scene = new THREE.Scene();
-    const VFOV=60;
-    const camera = new THREE.PerspectiveCamera(VFOV, W()/H(), 0.001, 100);
-    const camZBase = 1.0/(2*Math.tan(THREE.MathUtils.degToRad(VFOV/2)));
-    let camZoom = 1.0;
-    let camRoll = 0;
-    camera.position.set(0,0.5,camZBase*camZoom);
-    camera.lookAt(0,0.5,0);
+// ===== Plant system =====
+const plantRoot = new THREE.Group();
+plantRoot.scale.setScalar(0.12);
+scene.add(plantRoot);
+const plantParts = [];
 
-    const renderer = new THREE.WebGLRenderer({alpha:true, antialias:true});
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
-    renderer.setSize(W(),H());
-    renderer.setClearColor(0x000000,0);
-    const canvas3d = renderer.domElement;
-    canvas3d.id='canvas3d';
-    canvas3d.style.cssText='position:absolute;top:0;left:0;width:100%;height:100%;z-index:3;pointer-events:none';
-    document.getElementById('camera-video').after(canvas3d);
-
-    scene.add(new THREE.DirectionalLight(0xffffff,2).translateX(2).translateY(3).translateZ(2));
-    scene.add(new THREE.AmbientLight(0xaaaaaa));
-    scene.add(new THREE.HemisphereLight(0xffffff,0x444444,0.5));
-
-    const character = new GameCharacter(scene);
-    await character.load();
-
-    const tentacles = new TentacleSystem2D();
-    const blood = new BloodSystem2D();
-    const vhs = new VHSEffect();
-
-    $status.textContent='ready.';
-    $start.style.display='block';
-
-    await new Promise(r => $start.addEventListener('click', async ()=>{
-        $status.textContent='launching...';
-        $start.style.display='none';
-        try {
-            const hasCam = await startCamera();
-            window._hasCam = hasCam;
-        } catch(e){ console.warn('Init error:',e); }
-        $loading.style.display='none';
-        r();
-    },{once:true}));
-
-    const hasCamera = window._hasCam;
-    const videoEl = document.getElementById('camera-video');
-
-    let viewX=0, viewY=0.5;
-    const panZone = document.getElementById('pan-zone');
-    const panPointers = new Map();
-    let panStart = { x:0, y:0, viewX:0, viewY:0 };
-    let pinchStartDist = 0;
-    let pinchStartAngle = 0;
-    let pinchStartZoom = 1.0;
-    let pinchStartRoll = 0;
-
-    const inUi = (ex, ey) => {
-        const jz=document.getElementById('joystick-zone').getBoundingClientRect();
-        const jb=document.getElementById('jump-btn').getBoundingClientRect();
-        const pad=20;
-        if(ex>=jz.left-pad&&ex<=jz.right+pad&&ey>=jz.top-pad&&ey<=jz.bottom+pad) return true;
-        if(ex>=jb.left-pad&&ex<=jb.right+pad&&ey>=jb.top-pad&&ey<=jb.bottom+pad) return true;
-        return false;
-    };
-    const dist = (a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
-    const angle = (a,b)=>Math.atan2(b.y-a.y,b.x-a.x);
-
-    panZone.addEventListener('pointerdown', e=>{
-        const ex=e.clientX, ey=e.clientY;
-        if(inUi(ex,ey)) return;
-        panPointers.set(e.pointerId,{x:ex,y:ey});
-        panZone.setPointerCapture(e.pointerId);
-        if (panPointers.size===1) {
-            panStart = { x:ex, y:ey, viewX, viewY };
-        } else if (panPointers.size===2) {
-            const pts=[...panPointers.values()];
-            pinchStartDist = dist(pts[0], pts[1]);
-            pinchStartAngle = angle(pts[0], pts[1]);
-            pinchStartZoom = camZoom;
-            pinchStartRoll = camRoll;
-        }
-        e.preventDefault();
-    },{passive:false});
-    panZone.addEventListener('pointermove', e=>{
-        if(!panPointers.has(e.pointerId)) return;
-        panPointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
-        if (panPointers.size===1) {
-            const dx = e.clientX - panStart.x;
-            const dy = e.clientY - panStart.y;
-            viewX = panStart.viewX + dx/W()*1.8;
-            viewY = panStart.viewY - dy/H()*2.2;
-        } else if (panPointers.size>=2) {
-            const pts=[...panPointers.values()];
-            const d = dist(pts[0], pts[1]);
-            const ang = angle(pts[0], pts[1]);
-            if (pinchStartDist>0) {
-                camZoom = clamp(pinchStartZoom * (pinchStartDist / d), 0.65, 1.8);
-            }
-            camRoll = clamp(pinchStartRoll + (ang - pinchStartAngle), -0.7, 0.7);
-        }
-        e.preventDefault();
-    },{passive:false});
-    const clearPointer = id => {
-        panPointers.delete(id);
-        if (panPointers.size===1) {
-            const only=[...panPointers.values()][0];
-            panStart = { x:only.x, y:only.y, viewX, viewY };
-        }
-        if (panPointers.size<2) {
-            pinchStartDist = 0;
-        }
-    };
-    panZone.addEventListener('pointerup', e=>{ clearPointer(e.pointerId); });
-    panZone.addEventListener('pointercancel', e=>{ clearPointer(e.pointerId); });
-
-    const input={x:0,y:0,jump:false};
-    const jZone=document.getElementById('joystick-zone');
-    const jKnob=document.getElementById('joystick-knob');
-    let joyTouchId=null, joyX0=0, joyY0=0;
-    jZone.addEventListener('pointerdown', e=>{
-        joyTouchId=e.pointerId; joyX0=e.clientX; joyY0=e.clientY;
-        jKnob.style.background='rgba(0,255,0,.3)';
-        jZone.setPointerCapture(e.pointerId);
-        e.preventDefault(); e.stopPropagation();
-    },{passive:false});
-    jZone.addEventListener('pointermove', e=>{
-        if(e.pointerId!==joyTouchId) return;
-        const dx=Math.max(-45,Math.min(45,e.clientX-joyX0));
-        const dy=Math.max(-45,Math.min(45,e.clientY-joyY0));
-        jKnob.style.transform=`translate(${dx}px,${dy}px)`;
-        input.x=dx/45; input.y=-dy/45;
-        e.stopPropagation();
-    });
-    jZone.addEventListener('pointerup', e=>{
-        if(e.pointerId!==joyTouchId) return;
-        joyTouchId=null;
-        jKnob.style.transform='translate(0,0)';
-        jKnob.style.background='rgba(0,255,0,.15)';
-        input.x=0; input.y=0; e.stopPropagation();
-    });
-    jZone.addEventListener('pointercancel', e=>{
-        if(e.pointerId!==joyTouchId) return;
-        joyTouchId=null;
-        jKnob.style.transform='translate(0,0)';
-        jKnob.style.background='rgba(0,255,0,.15)';
-        input.x=0; input.y=0;
-    });
-
-    const jBtn=document.getElementById('jump-btn');
-    jBtn.addEventListener('pointerdown', e=>{
-        input.jump=true; jBtn.classList.add('pressed');
-        e.preventDefault(); e.stopPropagation();
-    },{passive:false});
-    jBtn.addEventListener('pointerup', e=>{ jBtn.classList.remove('pressed'); e.stopPropagation(); });
-    jBtn.addEventListener('pointercancel', ()=>jBtn.classList.remove('pressed'));
-
-    window.addEventListener('keydown', e=>{
-        if(e.key==='ArrowUp'||e.key==='w')input.y=1;
-        if(e.key==='ArrowDown'||e.key==='s')input.y=-1;
-        if(e.key==='ArrowLeft'||e.key==='a')input.x=-1;
-        if(e.key==='ArrowRight'||e.key==='d')input.x=1;
-        if(e.key===' ')input.jump=true;
-    });
-    window.addEventListener('keyup', e=>{
-        if(['ArrowUp','w','ArrowDown','s'].includes(e.key))input.y=0;
-        if(['ArrowLeft','a','ArrowRight','d'].includes(e.key))input.x=0;
-    });
-    window.addEventListener('wheel', e=>{
-        camZoom = clamp(camZoom + e.deltaY*0.001, 0.65, 1.8);
-        e.preventDefault();
-    },{passive:false});
-
-    // ===== Game State =====
-    const clock = new THREE.Clock();
-    let state='CLIMB', fallVY=0, deaths=0;
-    let climbEngaged = false;
-    let startAnchorSet = false;
-    let offClimbFrames = 0;
-    let anchorLost = 0;
-    let climbBaseGridY = null;
-    let climbHeightMax = 0;
-    let jumpHeight = 0;
-    let lastClimbScreen = { x: W()/2, y: H()*0.6 };
-    let deathScreen = { x: 0, y: 0, valid: false };
-    let deathBurst = { x: 0, y: 0, valid: false };
-    let landedFrames = 0;
-    let deathStartTime = 0;
-    let tentacleBurstCount = 0;
-    let deadViewX = 0;
-    let deadViewY = 0.5;
-    let preJumpTimer = 0;
-    let preJumpStage = 0;
-    let tentacleTargetCount = 0;
-    let deathWorld = new THREE.Vector3(0,0,0);
-    let deathWorldValid = false;
-    const dbg = document.getElementById('debug-info');
-    const halfVisW = () => camera.position.z*Math.tan(THREE.MathUtils.degToRad(VFOV/2))*(W()/H());
-    const halfVisH = () => camera.position.z*Math.tan(THREE.MathUtils.degToRad(VFOV/2));
-    const tmpVec = new THREE.Vector3();
-    const tmpVec2 = new THREE.Vector3();
-    const BODY_OFFSET_SCALE = 0.55;
-
-    character.root.position.set(0, 0.5, 0);
-    let charScreen = { x: W()/2, y: H()*0.6 };
-    let targetScreen = { x: W()/2, y: H()*0.6 };
-
-    function worldToScreen(p) {
-        const pv = new THREE.Vector3().copy(p).project(camera);
-        return {
-            x: (pv.x*0.5+0.5)*W(),
-            y: (-pv.y*0.5+0.5)*H()
-        };
-    }
-    function screenToWorld(sx, sy) {
-        const ndc = new THREE.Vector3((sx/W())*2-1, -(sy/H())*2+1, 0.5);
-        ndc.unproject(camera);
-        const dir = ndc.sub(camera.position).normalize();
-        const t = -camera.position.z / dir.z;
-        return camera.position.clone().add(dir.multiplyScalar(t));
-    }
-    charScreen = worldToScreen(character.root.position);
-    targetScreen.x = charScreen.x; targetScreen.y = charScreen.y;
-
-    function tick() {
-        requestAnimationFrame(tick);
-        const dt = Math.min(clock.getDelta(), 0.05);
-        const t = clock.getElapsedTime();
-        const pos = character.root.position;
-        updateSegmentation(videoEl);
-
-        const moving = Math.abs(input.y)>0.1||Math.abs(input.x)>0.1;
-        const segReady = segStableFrames > 8;
-        if (!startAnchorSet && hasCamera && segReady) {
-            const start = findNearestClimbable(W()/2, H()/2, 6);
-            if (start) {
-                charScreen.x = start.x; charScreen.y = start.y;
-                targetScreen.x = start.x; targetScreen.y = start.y;
-                startAnchorSet = true;
-                climbEngaged = false;
-                offClimbFrames = 0;
-                const g = screenToGrid(start.x, start.y);
-                climbBaseGridY = g.y;
-                climbHeightMax = 0;
-                lastClimbScreen.x = start.x; lastClimbScreen.y = start.y;
-            }
-        }
-        const useObstacles = !!hasCamera && startAnchorSet;
-        const holdClimbPose = useObstacles && climbEngaged && !moving;
-
-        // Game Logic
-        switch(state) {
-            case 'CLIMB':
-                if (useObstacles) {
-                    if (moving) climbEngaged = true;
-                    if (!climbEngaged && !moving) character.setState('IDLE');
-                    else character.setState('CLIMB');
-                } else {
-                    if(moving) character.setState('CLIMB');
-                    else character.setState('IDLE');
-                    climbEngaged = false;
-                }
-
-                if (useObstacles) {
-                    const lockLand = landedFrames > 0 && !moving && !climbEngaged;
-                    const speedX = 170;
-                    const speedY = 160;
-                    const prevTX = targetScreen.x;
-                    const prevTY = targetScreen.y;
-                    const maxStep = 14;
-                    if (!lockLand) {
-                        let nextX = targetScreen.x + input.x*speedX*dt;
-                        let nextY = targetScreen.y - input.y*speedY*dt;
-                        nextX = clamp(nextX, 10, W()-10);
-                        nextY = clamp(nextY, 10, H()-10);
-
-                        if (isClimbableAt(nextX, nextY)) {
-                            targetScreen.x = nextX;
-                            targetScreen.y = nextY;
-                        } else {
-                            if (isClimbableAt(nextX, targetScreen.y)) targetScreen.x = nextX;
-                            if (isClimbableAt(targetScreen.x, nextY)) targetScreen.y = nextY;
-                        }
-                        const g = screenToGrid(targetScreen.x, targetScreen.y);
-                        const local = findLocalCentroid(g.x, g.y, 3);
-                        if (local) {
-                            const localScreen = gridToScreen(local.x, local.y);
-                            const lockLerp = moving ? 0.28 : 0.18;
-                            targetScreen.x += (localScreen.x - targetScreen.x) * lockLerp;
-                            targetScreen.y += (localScreen.y - targetScreen.y) * lockLerp;
-                            anchorLost = 0;
-                        } else {
-                            anchorLost++;
-                        }
-                        if (!isClimbableAt(targetScreen.x, targetScreen.y)) {
-                            offClimbFrames++;
-                            if (offClimbFrames > 6) {
-                                const near = findNearestClimbable(targetScreen.x, targetScreen.y, 6);
-                                if (near) {
-                                    targetScreen.x = near.x; targetScreen.y = near.y;
-                                }
-                                offClimbFrames = 0;
-                            }
-                        } else {
-                            offClimbFrames = 0;
-                        }
-                        if (anchorLost > 10) {
-                            targetScreen.x = prevTX; targetScreen.y = prevTY;
-                            anchorLost = 8;
-                        }
-                        const dtx = targetScreen.x - prevTX;
-                        const dty = targetScreen.y - prevTY;
-                        if (Math.abs(dtx) > maxStep) targetScreen.x = prevTX + Math.sign(dtx)*maxStep;
-                        if (Math.abs(dty) > maxStep) targetScreen.y = prevTY + Math.sign(dty)*maxStep;
-                        if (!moving && !local && !isClimbableAt(targetScreen.x, targetScreen.y)) {
-                            targetScreen.x = prevTX; targetScreen.y = prevTY;
-                        }
-                    }
-                    const follow = moving ? 0.32 : (landedFrames > 0 ? 0.05 : 0.14);
-                    charScreen.x += (targetScreen.x - charScreen.x) * follow;
-                    charScreen.y += (targetScreen.y - charScreen.y) * follow;
-                    if (isClimbableAt(charScreen.x, charScreen.y)) {
-                        lastClimbScreen.x = charScreen.x;
-                        lastClimbScreen.y = charScreen.y;
-                    }
-                    if (useObstacles && climbBaseGridY !== null) {
-                        const cg = screenToGrid(charScreen.x, charScreen.y);
-                        const diff = Math.max(0, (climbBaseGridY - cg.y));
-                        if (diff > climbHeightMax) climbHeightMax = diff;
-                    }
-                    const wpos = screenToWorld(charScreen.x, charScreen.y);
-                    pos.x = wpos.x; pos.y = wpos.y; pos.z = 0;
-                } else {
-                    if(Math.abs(input.y)>0.1||Math.abs(input.x)>0.1){
-                        pos.y += input.y*0.04*dt;
-                        if(pos.y<0.02) pos.y=0.02;
-                        pos.x += input.x*0.03*dt;
-                        pos.x = Math.max(-halfVisW()+0.02, Math.min(halfVisW()-0.02, pos.x));
-                    }
-                    const screenPos = worldToScreen(pos);
-                    charScreen.x = screenPos.x; charScreen.y = screenPos.y;
-                }
-                if(input.jump){
-                    input.jump=false;
-                    if (useObstacles) {
-                        const jumpUnlocked = climbHeightMax > 1;
-                        const canShowGlow = jumpUnlocked && glowTarget.valid;
-                        const dx = glowTarget.x - charScreen.x;
-                        const dy = glowTarget.y - charScreen.y;
-                        const nearGlow = canShowGlow && (dx*dx + dy*dy) < (48*48);
-                        if (canShowGlow && nearGlow) {
-                            state='PREJUMP';
-                            preJumpTimer=0; preJumpStage=0;
-                            climbEngaged = true;
-                            character.setState(character.anims['CLIMB_DOWN'] ? 'CLIMB_DOWN' : 'CLIMB');
-                            if (climbBaseGridY === null) {
-                                const g = screenToGrid(charScreen.x, charScreen.y);
-                                climbBaseGridY = g.y;
-                            }
-                            jumpHeight = climbHeightMax;
-                        }
-                    } else {
-                        state='JUMPING';
-                        character.setState('JUMP');
-                        character.root.rotation.y=0;
-                        fallVY=0.4;
-                        deaths++;
-                        climbEngaged = false;
-                        deathScreen.valid = false;
-                        landedFrames = 0;
-                        deathStartTime = 0;
-                        tentacleBurstCount = 0;
-                        tentacleTargetCount = 0;
-                        jumpHeight = 0;
-                    }
-                }
-                break;
-            case 'PREJUMP': {
-                preJumpTimer += dt;
-                // Hold position while playing the sequence
-                const wpos = screenToWorld(charScreen.x, charScreen.y);
-                pos.x = wpos.x; pos.y = wpos.y; pos.z = 0;
-                if (preJumpStage === 0) {
-                    if (preJumpTimer >= Math.max(0.4, character.climbDownDuration)) {
-                        preJumpStage = 1;
-                        preJumpTimer = 0;
-                        character.setState('IDLE');
-                    }
-                } else {
-                    if (preJumpTimer >= 0.25) {
-                        state='JUMPING';
-                        character.setState('JUMP');
-                        character.root.rotation.y=0;
-                        fallVY=0.4;
-                        deaths++;
-                        climbEngaged = false;
-                        deathScreen.valid = false;
-                        landedFrames = 0;
-                        deathStartTime = 0;
-                        tentacleBurstCount = 0;
-                        tentacleTargetCount = 0;
-                    }
-                }
-                break;
-            }
-            case 'JUMPING':
-                fallVY -= 1.8*dt;
-                pos.y += fallVY*dt;
-                pos.z += 0.2*dt;
-                {
-                    const screenPos = worldToScreen(pos);
-                    charScreen.x = screenPos.x; charScreen.y = screenPos.y;
-                }
-                if(pos.y<=0.01){
-                    pos.y=0.01; fallVY=0; pos.z=0;
-                    if (jumpHeight >= 10) {
-                        state='DEAD';
-                        character.setState('DEATH');
-                        // Place death slightly below screen; only visible when looking down
-                        deathScreen.x = charScreen.x; deathScreen.y = H() + 40; deathScreen.valid = true;
-                        const wpos = screenToWorld(deathScreen.x, deathScreen.y);
-                        deathWorld.copy(wpos); deathWorldValid = true;
-                        pos.x = wpos.x; pos.y = wpos.y; pos.z = 0;
-                        const bodyOffset = character.charHeight * BODY_OFFSET_SCALE;
-                        tmpVec.copy(pos); tmpVec.y += bodyOffset; tmpVec.project(camera);
-                        deathBurst.x = (tmpVec.x*0.5+0.5)*W();
-                        deathBurst.y = (-tmpVec.y*0.5+0.5)*H();
-                        deathBurst.valid = true;
-                        blood.edgeBurstBottom(deathScreen.x);
-                        blood.burst(deathBurst.x, deathBurst.y);
-                        deathStartTime = t;
-                        tentacleBurstCount = 0;
-                        tentacleTargetCount = 3 + Math.floor(Math.random()*3);
-                        deadViewX = viewX; deadViewY = viewY;
-                    } else {
-                        state='CLIMB';
-                        character.setState('IDLE');
-                        pos.z = 0;
-                        landedFrames = 20;
-                        if (useObstacles) {
-                            // stay at landing position
-                            const screenPos = worldToScreen(pos);
-                            charScreen.x = screenPos.x; charScreen.y = screenPos.y;
-                            targetScreen.x = charScreen.x; targetScreen.y = charScreen.y;
-                            climbEngaged = false;
-                        }
-                    }
-                }
-                break;
-            case 'DEAD':
-                // Stay dead until player presses jump to respawn
-                if(input.jump){
-                    state='CLIMB';
-                    pos.set(0,0.5,0);
-                    pos.z=0;
-                    character.root.rotation.y=Math.PI;
-                    character.setState('IDLE');
-                    viewY=0.5; viewX=0;
-                    charScreen = worldToScreen(pos);
-                    targetScreen.x = charScreen.x; targetScreen.y = charScreen.y;
-                    blood.reset();
-                    climbEngaged = false;
-                    startAnchorSet = false;
-                    offClimbFrames = 0;
-                    anchorLost = 0;
-                    climbBaseGridY = null;
-                    climbHeightMax = 0;
-                    jumpHeight = 0;
-                    deathScreen.valid = false;
-                    deathBurst.valid = false;
-                    deathWorldValid = false;
-                    landedFrames = 0;
-                    deathStartTime = 0;
-                    tentacleBurstCount = 0;
-                    tentacleTargetCount = 0;
-                }
-                break;
-        }
-        input.jump=false;
-        if (landedFrames > 0) landedFrames--;
-        if(state==='CLIMB') character.root.rotation.y=Math.PI;
-        jBtn.textContent = state==='DEAD'?'REVIVE':'JUMP';
-
-        // Camera (touch-driven pan/zoom/roll)
-        viewY=Math.max(-0.2, viewY);
-        camera.position.x = viewX;
-        camera.position.y = viewY;
-        camera.position.z = camZBase * camZoom;
-        camera.lookAt(camera.position.x, camera.position.y, 0);
-        camera.rotation.z = camRoll;
-
-        // Update systems
-        character.update(dt, input.y, holdClimbPose);
-        // Screen positions (feet vs body-center)
-        tmpVec.copy(pos).project(camera);
-        let charSX = (tmpVec.x*0.5+0.5)*W();
-        let charSY = (-tmpVec.y*0.5+0.5)*H();
-        charScreen.x = charSX; charScreen.y = charSY;
-        const bodyOffset = character.charHeight * BODY_OFFSET_SCALE;
-        tmpVec2.copy(pos); tmpVec2.y += bodyOffset; tmpVec2.project(camera);
-        const effectSX = (tmpVec2.x*0.5+0.5)*W();
-        const effectSY = (-tmpVec2.y*0.5+0.5)*H();
-        if (state === 'DEAD' && deathStartTime) {
-            const delay = 1.0;
-            const duration = 5.0;
-            const p = Math.max(0, Math.min(1, (t - deathStartTime - delay) / duration));
-            const want = Math.floor(p * tentacleTargetCount);
-            while (tentacleBurstCount < want) {
-                tentacles.spawnAtScreen(effectSX, effectSY);
-                tentacleBurstCount++;
-            }
-        }
-        if (state === 'DEAD') blood.bleed(effectSX, effectSY, dt);
-        tentacles.moveAnchors(effectSX, effectSY);
-        tentacles.update(t);
-        blood.update(dt);
-        vhs.update();
-        const jumpUnlocked = climbHeightMax > 1;
-        const showGlow = jumpUnlocked && glowTarget.valid;
-        const dxg = glowTarget.x - charScreen.x;
-        const dyg = glowTarget.y - charScreen.y;
-        const nearGlow = showGlow && (dxg*dxg + dyg*dyg) < (48*48);
-        drawGlowMarker(showGlow, glowTarget.x, glowTarget.y, nearGlow, dt);
-
-        renderer.domElement.style.transform = '';
-        document.getElementById('blood-canvas').style.transform = '';
-        document.getElementById('tentacle-canvas').style.transform = '';
-
-        // Render 3D scene directly
-        renderer.render(scene, camera);
-
-        // Off-screen arrow indicator
-        const arrow = document.getElementById('offscreen-arrow');
-        const margin = 30;
-        const onScreen = charSX>margin && charSX<W()-margin && charSY>margin && charSY<H()-margin;
-        if (!onScreen && state!=='DEAD') {
-            arrow.style.display='block';
-            // Clamp to screen edge
-            const cx=W()/2, cy=H()/2;
-            const dx=charSX-cx, dy=charSY-cy;
-            const angle=Math.atan2(dy,dx);
-            const edgeX=Math.max(40,Math.min(W()-40, cx+Math.cos(angle)*(W()/2-50)));
-            const edgeY=Math.max(40,Math.min(H()-40, cy+Math.sin(angle)*(H()/2-50)));
-            arrow.style.left=edgeX+'px';
-            arrow.style.top=edgeY+'px';
-            // Arrow character based on direction
-            const deg=angle*180/Math.PI;
-            if(deg>-45&&deg<=45) arrow.textContent='\u25B6';
-            else if(deg>45&&deg<=135) arrow.textContent='\u25BC';
-            else if(deg>-135&&deg<=-45) arrow.textContent='\u25B2';
-            else arrow.textContent='\u25C0';
-        } else {
-            arrow.style.display='none';
-        }
-
-        // Debug
-        const sb=camera.position.y-0.5, st=camera.position.y+0.5;
-        const vis = pos.y>=sb&&pos.y<=st;
-        dbg.innerHTML = [
-            `POS:${pos.x.toFixed(2)},${pos.y.toFixed(2)} ${state}`,
-            `CAM:${camera.position.y.toFixed(2)} [${sb.toFixed(1)}~${st.toFixed(1)}]`,
-            vis?'ON-SCREEN':'OFF-SCREEN',
-            `GYRO:OFF`,
-            `TENTACLES:${tentacles.tentacles.length} DEATHS:${deaths}`,
-            `SEG:${segActive?'ON':'OFF'} GLOW:${glowActive?'ON':'OFF'} S:${segStableFrames} CLB>${SAT_CLIMB.toFixed(2)} OBS>${SAT_OBS.toFixed(2)}`,
-        ].join('<br>');
-    }
-
-    function onResize() {
-        camera.aspect=W()/H();
-        camera.updateProjectionMatrix();
-        renderer.setSize(W(),H());
-        layoutUI();
-    }
-    window.addEventListener('resize', onResize);
-    window.addEventListener('orientationchange', ()=>setTimeout(onResize,300));
-    if(window.visualViewport) window.visualViewport.addEventListener('resize',onResize);
-
-    tick();
+function addPlantPart(part, grow=true) {
+  const mesh = buildPlantPartMesh(part);
+  mesh.userData.partId = part.id;
+  mesh.userData.entryText = part.textInput;
+  if (grow) {
+    mesh.userData.grow = 0;
+    mesh.scale.setScalar(0.01);
+  }
+  plantRoot.add(mesh);
+  plantParts.push({ data: part, mesh });
 }
 
-main().catch(e=>{
-    console.error(e);
-    document.getElementById('loading-status').textContent='ERROR: '+e.message;
+async function loadSavedPlants() {
+  const entries = await loadEntries();
+  let startX=0, startY=0, startZ=0;
+  for (const entry of entries) {
+    const part = entry.part;
+    part.startX = startX; part.startY = startY; part.startZ = startZ;
+    addPlantPart(part, false);
+    startX += part.endPoint.x; startY += part.endPoint.y; startZ += part.endPoint.z;
+  }
+}
+await loadSavedPlants();
+
+// ===== Light burst =====
+class LightBurst {
+  constructor(scene) {
+    this.points = [];
+    this.geo = new THREE.BufferGeometry();
+    this.mat = new THREE.PointsMaterial({ color:0xffe55a, size:0.06, transparent:true, opacity:1, depthWrite:false });
+    this.mesh = new THREE.Points(this.geo, this.mat);
+    scene.add(this.mesh);
+  }
+  burst(pos) {
+    this.points = [];
+    for (let i=0;i<200;i++) {
+      const v = new THREE.Vector3((Math.random()-0.5)*1.2, Math.random()*1.2, (Math.random()-0.5)*1.2);
+      this.points.push({ pos: pos.clone(), vel: v, life: 1 + Math.random()*0.6 });
+    }
+  }
+  update(dt) {
+    const verts = [];
+    for (const p of this.points) {
+      p.life -= dt;
+      if (p.life <= 0) continue;
+      p.vel.y -= dt*0.8;
+      p.pos.add(p.vel.clone().multiplyScalar(dt));
+      verts.push(p.pos.x, p.pos.y, p.pos.z);
+    }
+    this.points = this.points.filter(p=>p.life>0);
+    this.geo.setAttribute('position', new THREE.Float32BufferAttribute(verts,3));
+    this.geo.computeBoundingSphere();
+    this.mat.opacity = this.points.length ? 0.9 : 0;
+  }
+}
+const lightBurst = new LightBurst(scene);
+let lightRing = null;
+function spawnLightRing(pos) {
+  if (lightRing) scene.remove(lightRing);
+  const geo = new THREE.TorusGeometry(0.6, 0.05, 16, 48);
+  const mat = new THREE.MeshStandardMaterial({ color:0xffe55a, emissive:0xffe55a, emissiveIntensity:1.5, transparent:true, opacity:0.8 });
+  lightRing = new THREE.Mesh(geo, mat);
+  lightRing.position.copy(pos);
+  lightRing.rotation.x = Math.PI/2;
+  lightRing.userData.grow = 0;
+  scene.add(lightRing);
+}
+
+// ===== Camera controls =====
+let orbitYaw = 0;
+let orbitPitch = 0.25;
+let orbitRadius = 6;
+let orbitTarget = new THREE.Vector3(0, rooftopY, 0);
+let userInteracting = false;
+let interactionTimer = 0;
+
+const pointers = new Map();
+let dragStart = { x:0, y:0, yaw:0, pitch:0 };
+let pinchStartDist = 0;
+let pinchStartRadius = 6;
+
+function dist(a,b){ return Math.hypot(a.x-b.x,a.y-b.y); }
+
+renderer.domElement.addEventListener('pointerdown', e=>{
+  pointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
+  renderer.domElement.setPointerCapture(e.pointerId);
+  userInteracting = true;
+  interactionTimer = 0;
+  if (pointers.size===1) {
+    dragStart = { x:e.clientX, y:e.clientY, yaw:orbitYaw, pitch:orbitPitch };
+  } else if (pointers.size===2) {
+    const pts=[...pointers.values()];
+    pinchStartDist = dist(pts[0], pts[1]);
+    pinchStartRadius = orbitRadius;
+  }
 });
+renderer.domElement.addEventListener('pointermove', e=>{
+  if (!pointers.has(e.pointerId)) return;
+  pointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
+  userInteracting = true;
+  interactionTimer = 0;
+  if (pointers.size===1) {
+    const dx = e.clientX - dragStart.x;
+    const dy = e.clientY - dragStart.y;
+    orbitYaw = dragStart.yaw + dx/W()*2.2;
+    orbitPitch = clamp(dragStart.pitch + dy/H()*1.4, -0.2, 1.2);
+  } else if (pointers.size>=2) {
+    const pts=[...pointers.values()];
+    const d = dist(pts[0], pts[1]);
+    if (pinchStartDist>0) orbitRadius = clamp(pinchStartRadius * (pinchStartDist / d), 3.5, 12);
+  }
+});
+renderer.domElement.addEventListener('pointerup', e=>{ pointers.delete(e.pointerId); });
+renderer.domElement.addEventListener('pointercancel', e=>{ pointers.delete(e.pointerId); });
+
+function updateCamera() {
+  const cx = orbitTarget.x + orbitRadius * Math.cos(orbitPitch) * Math.sin(orbitYaw);
+  const cz = orbitTarget.z + orbitRadius * Math.cos(orbitPitch) * Math.cos(orbitYaw);
+  const cy = orbitTarget.y + orbitRadius * Math.sin(orbitPitch);
+  camera.position.set(cx, cy, cz);
+  camera.lookAt(orbitTarget);
+}
+
+// ===== Game flow =====
+const uiPanel = document.getElementById('ui-panel');
+const leaveBtn = document.getElementById('leave-btn');
+const textInput = document.getElementById('text-input');
+const popup = document.getElementById('text-popup');
+
+let phase = 'INTRO';
+let timer = 0;
+let pendingText = '';
+let fallVel = 0;
+
+function worldToScreen(p) {
+  const v = p.clone().project(camera);
+  return { x: (v.x*0.5+0.5)*W(), y: (-v.y*0.5+0.5)*H() };
+}
+
+function startLeave() {
+  const text = textInput.value.trim();
+  if (!text) return;
+  pendingText = text;
+  textInput.value = '';
+  // animate UI into hand
+  const handPos = character.root.position.clone().add(new THREE.Vector3(0, character.charHeight*0.7, 0));
+  const screen = worldToScreen(handPos);
+  const dx = screen.x - W()/2;
+  const dy = screen.y - H()/2;
+  uiPanel.style.setProperty('--to-x', `${dx}px`);
+  uiPanel.style.setProperty('--to-y', `${dy}px`);
+  uiPanel.classList.add('leaving');
+  phase = 'UI_SHRINK';
+  timer = 0;
+}
+leaveBtn.addEventListener('click', startLeave);
+
+// Plant text popup
+const raycaster = new THREE.Raycaster();
+renderer.domElement.addEventListener('pointerdown', e=>{
+  if (!plantRoot.children.length) return;
+  const rect = renderer.domElement.getBoundingClientRect();
+  const nx = ((e.clientX - rect.left)/rect.width)*2-1;
+  const ny = -((e.clientY - rect.top)/rect.height)*2+1;
+  raycaster.setFromCamera({x:nx,y:ny}, camera);
+  const hits = raycaster.intersectObjects(plantRoot.children, true);
+  if (hits.length) {
+    let obj = hits[0].object;
+    while (obj && !obj.userData.entryText) obj = obj.parent;
+    if (obj && obj.userData.entryText) {
+      popup.textContent = obj.userData.entryText;
+      popup.classList.add('show');
+      setTimeout(()=>popup.classList.remove('show'), 4000);
+    }
+  }
+});
+
+// Start camera
+async function startCamera() {
+  try {
+    const v = document.getElementById('camera-video');
+    v.srcObject = await navigator.mediaDevices.getUserMedia({ video:{facingMode:{ideal:'environment'}}, audio:false });
+    await v.play();
+  } catch (e) {}
+}
+await startCamera();
+
+// Initialize positions
+character.root.position.set(0, rooftopY, 0);
+orbitTarget = character.root.position.clone();
+
+// Load done
+document.getElementById('loading').style.display = 'none';
+
+const clock = new THREE.Clock();
+function tick() {
+  requestAnimationFrame(tick);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  timer += dt;
+  interactionTimer += dt;
+  if (interactionTimer > 1.2) userInteracting = false;
+
+  // update camera target and default framing
+  if (phase === 'INTRO' || phase === 'UI_SHRINK' || phase === 'DRINK') {
+    orbitTarget.copy(character.root.position).add(new THREE.Vector3(0, 0.05, 0));
+    if (!userInteracting) {
+      orbitPitch += (0.25 - orbitPitch) * 0.05;
+      orbitRadius += (6 - orbitRadius) * 0.05;
+    }
+  } else if (phase === 'JUMP' || phase === 'IMPACT') {
+    orbitTarget.set(0, 1.0, 0);
+    if (!userInteracting) {
+      orbitPitch += (-0.15 - orbitPitch) * 0.05;
+      orbitRadius += (7.5 - orbitRadius) * 0.05;
+    }
+  } else {
+    orbitTarget.set(0, 0.6, 0);
+    if (!userInteracting) {
+      orbitPitch += (0.1 - orbitPitch) * 0.05;
+      orbitRadius += (6.5 - orbitRadius) * 0.05;
+    }
+  }
+
+  // state machine
+  if (phase === 'UI_SHRINK' && timer > 0.6) {
+    uiPanel.classList.add('hidden');
+    phase = 'DRINK';
+    timer = 0;
+    character.setState(character.anims['DRINK'] ? 'DRINK' : 'IDLE');
+  }
+  if (phase === 'DRINK' && timer > (character.drinkDuration||1)) {
+    phase = 'JUMP';
+    timer = 0;
+    character.setState(character.anims['JUMP'] ? 'JUMP' : 'IDLE');
+    fallVel = 0.8;
+  }
+  if (phase === 'JUMP') {
+    fallVel -= 1.2 * dt;
+    character.root.position.y += fallVel * dt;
+    if (character.root.position.y <= 0.05) {
+      character.root.position.y = 0.05;
+      phase = 'IMPACT';
+      timer = 0;
+      // light burst
+      const impactPos = new THREE.Vector3(0, 0.05, 0);
+      lightBurst.burst(impactPos);
+      spawnLightRing(impactPos.clone().add(new THREE.Vector3(0,0.1,0)));
+      // generate new plant
+      const dna = generateDNAFromText(pendingText);
+      const gen = generateProceduralPlant(dna);
+      let startX=0, startY=0, startZ=0;
+      if (plantParts.length) {
+        const last = plantParts[plantParts.length-1].data;
+        startX = last.startX + last.endPoint.x;
+        startY = last.startY + last.endPoint.y;
+        startZ = last.startZ + last.endPoint.z;
+      }
+      const part = {
+        id: Date.now().toString(),
+        textInput: pendingText,
+        stems: gen.stems,
+        fruits: gen.fruits,
+        leaves: gen.leaves,
+        stemColor: dna.stemColor,
+        startX, startY, startZ,
+        endPoint: gen.endPoint
+      };
+      addPlantPart(part, true);
+      saveEntry({ text: pendingText, part });
+    }
+  }
+  if (phase === 'IMPACT') {
+    if (lightRing) {
+      lightRing.userData.grow += dt;
+      const g = clamp(lightRing.userData.grow/2, 0, 1);
+      lightRing.scale.setScalar(0.3 + g*1.4);
+      lightRing.position.y = 0.1 + g*0.8;
+      lightRing.material.opacity = 0.8 - g*0.5;
+      if (g >= 1) {
+        phase = 'PLANT_VIEW';
+      }
+    }
+  }
+
+  // grow new plant part
+  for (const p of plantParts) {
+    if (p.mesh.userData.grow !== undefined) {
+      p.mesh.userData.grow = Math.min(1, p.mesh.userData.grow + dt*0.6);
+      const s = 0.01 + p.mesh.userData.grow * 0.99;
+      p.mesh.scale.setScalar(s);
+      if (p.mesh.userData.grow >= 1) delete p.mesh.userData.grow;
+    }
+  }
+
+  character.update(dt);
+  updateCamera();
+  lightBurst.update(dt);
+  updateNoise();
+  renderer.setSize(W(), H());
+  camera.aspect = W()/H();
+  camera.updateProjectionMatrix();
+  renderer.render(scene, camera);
+}
+
+window.addEventListener('resize', ()=>{
+  renderer.setSize(W(),H());
+  camera.aspect=W()/H();
+  camera.updateProjectionMatrix();
+});
+
+// Move character to rooftop when building loads
+const checkReady = setInterval(()=>{
+  if (building && character.loaded) {
+    character.root.position.set(0, rooftopY, 0);
+    orbitTarget.copy(character.root.position);
+    clearInterval(checkReady);
+  }
+}, 200);
+
+// leave button enable
+textInput.addEventListener('input', ()=>{
+  leaveBtn.disabled = !textInput.value.trim();
+});
+leaveBtn.disabled = true;
+
+tick();
 </script>
 </body>
 </html>
