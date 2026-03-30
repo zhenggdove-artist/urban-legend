@@ -7,7 +7,7 @@
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
     html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:"Courier New",monospace}
-    #camera-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;background:#000}
+    body{background:#050810}
     #canvas3d{position:absolute;inset:0;width:100%;height:100%;z-index:2;pointer-events:auto}
     #vhs-scanlines{position:absolute;inset:0;z-index:3;pointer-events:none;
       background:repeating-linear-gradient(0deg,transparent 0px,transparent 2px,rgba(0,0,0,0.06) 2px,rgba(0,0,0,0.06) 5px)}
@@ -40,7 +40,6 @@
   }}</script>
 </head>
 <body>
-  <video id="camera-video" autoplay playsinline muted></video>
   <canvas id="vhs-noise"></canvas>
   <div id="vhs-scanlines"></div>
 
@@ -84,6 +83,11 @@ function updateNoise() {
 }
 
 // ===== Persistence / API =====
+const apiParam = new URLSearchParams(location.search).get('api');
+if (apiParam) {
+  const clean = apiParam.replace(/\/$/,'');
+  localStorage.setItem('PLANT_API_URL', clean);
+}
 const API_BASE = localStorage.getItem('PLANT_API_URL') || '';
 const STORAGE_KEY = 'urban_legend_plants_v1';
 async function loadEntries() {
@@ -97,16 +101,42 @@ async function loadEntries() {
   if (!raw) return [];
   try { return JSON.parse(raw); } catch { return []; }
 }
-async function saveEntry(entry) {
+async function createEntry(text) {
   if (API_BASE) {
     try {
-      await fetch(API_BASE + '/api/entries', {
-        method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(entry)
+      const res = await fetch(API_BASE + '/api/entries', {
+        method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ text })
       });
+      if (res.ok) {
+        const data = await res.json();
+        return data.id || null;
+      }
     } catch (e) {}
   }
   const list = await loadEntries();
-  list.push(entry);
+  const id = Date.now().toString();
+  list.push({ id, text, part: null, createdAt: new Date().toISOString() });
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+  return id;
+}
+
+async function finalizeEntry(id, part, text) {
+  if (API_BASE) {
+    try {
+      await fetch(API_BASE + `/api/entries/${id}`, {
+        method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ part, text })
+      });
+      return;
+    } catch (e) {}
+  }
+  const list = await loadEntries();
+  const idx = list.findIndex(e => e.id === id);
+  if (idx >= 0) {
+    list[idx].part = part;
+    list[idx].text = text || list[idx].text;
+  } else {
+    list.push({ id, text: text || '', part, createdAt: new Date().toISOString() });
+  }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
 }
 
@@ -241,15 +271,26 @@ function generateProceduralPlant(dna) {
 function buildPlantPartMesh(part) {
   const group = new THREE.Group();
   group.position.set(part.startX, part.startY, part.startZ);
+  const glassMat = (color) => new THREE.MeshPhysicalMaterial({
+    color,
+    roughness: 0.08,
+    metalness: 0.05,
+    transmission: 0.9,
+    thickness: 0.6,
+    ior: 1.5,
+    clearcoat: 0.2,
+    clearcoatRoughness: 0.1,
+    emissive: new THREE.Color(color).multiplyScalar(0.2),
+    emissiveIntensity: 0.4
+  });
   // stems
   for (let i=0;i<part.stems.length;i++) {
     const stem = part.stems[i];
     if (stem.length < 2) continue;
     const curve = new THREE.CatmullRomCurve3(stem.map(p=>new THREE.Vector3(p.x,p.y,p.z)));
     const radius = Math.max(0.05, 0.18 - (part.stems.length * 0.008));
-    const geo = new THREE.TubeGeometry(curve, 64, radius, 10, false);
-    const mat = new THREE.MeshStandardMaterial({ color: part.stemColor, roughness:0.5, metalness:0.2, emissive: new THREE.Color(part.stemColor).multiplyScalar(0.1) });
-    const mesh = new THREE.Mesh(geo, mat);
+    const geo = new THREE.TubeGeometry(curve, 64, radius, 12, false);
+    const mesh = new THREE.Mesh(geo, glassMat(part.stemColor));
     mesh.castShadow = true; mesh.receiveShadow = true;
     mesh.userData.entryText = part.textInput;
     group.add(mesh);
@@ -261,7 +302,7 @@ function buildPlantPartMesh(part) {
     const quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), dir);
     const fruitGroup = new THREE.Group();
     fruitGroup.position.copy(pos); fruitGroup.quaternion.copy(quat); fruitGroup.scale.setScalar(f.scale||1);
-    const mat = new THREE.MeshStandardMaterial({ color: f.color, roughness:0.3, metalness:0.4, emissive: new THREE.Color(f.color).multiplyScalar(0.4) });
+    const mat = glassMat(f.color);
     if (f.type === 'fungus_cap') {
       const cap = new THREE.Mesh(new THREE.SphereGeometry(1.2, 20, 16), mat);
       cap.scale.set(1,0.4,1); fruitGroup.add(cap);
@@ -274,7 +315,7 @@ function buildPlantPartMesh(part) {
         petal.rotation.y = (i/10)*Math.PI*2;
         fruitGroup.add(petal);
       }
-      const core = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 12), new THREE.MeshStandardMaterial({ color:'#ffd200', emissive:'#ffd200', emissiveIntensity:1 }));
+      const core = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 12), new THREE.MeshStandardMaterial({ color:'#ffd200', emissive:'#ffd200', emissiveIntensity:1.5, toneMapped:false }));
       fruitGroup.add(core);
     } else {
       const orb = new THREE.Mesh(new THREE.SphereGeometry(0.7, 16, 12), mat);
@@ -288,7 +329,7 @@ function buildPlantPartMesh(part) {
     const pos = new THREE.Vector3(l.position.x, l.position.y, l.position.z);
     const dir = new THREE.Vector3(l.direction.x, l.direction.y, l.direction.z).normalize();
     const quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), dir);
-    const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.2, 1.2, 8), new THREE.MeshStandardMaterial({ color:l.color, roughness:0.5, metalness:0.2 }));
+    const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.2, 1.2, 10), glassMat(l.color));
     leaf.position.copy(pos); leaf.quaternion.copy(quat); leaf.scale.setScalar(l.scale||1);
     leaf.userData.entryText = part.textInput;
     group.add(leaf);
@@ -298,11 +339,15 @@ function buildPlantPartMesh(part) {
 
 // ===== 3D Scene =====
 const scene = new THREE.Scene();
+scene.background = new THREE.Color('#050810');
 const camera = new THREE.PerspectiveCamera(60, W()/H(), 0.01, 200);
 const renderer = new THREE.WebGLRenderer({ alpha:true, antialias:true });
 renderer.setSize(W(), H());
 renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
 renderer.setClearColor(0x000000,0);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
 renderer.domElement.id = 'canvas3d';
 document.body.appendChild(renderer.domElement);
 
@@ -316,10 +361,12 @@ scene.add(buildingGroup);
 
 const mtlLoader = new MTLLoader();
 const objLoader = new OBJLoader();
-mtlLoader.load('./building/tripo_convert_81a5c880-066d-4bf1-9436-48ff4ce267bf.mtl', mtl => {
+mtlLoader.setPath('./building/');
+objLoader.setPath('./building/');
+mtlLoader.load('tripo_convert_81a5c880-066d-4bf1-9436-48ff4ce267bf.mtl', mtl => {
   mtl.preload();
   objLoader.setMaterials(mtl);
-  objLoader.load('./building/tripo_convert_81a5c880-066d-4bf1-9436-48ff4ce267bf.obj', obj => {
+  objLoader.load('tripo_convert_81a5c880-066d-4bf1-9436-48ff4ce267bf.obj', obj => {
     building = obj;
     const box = new THREE.Box3().setFromObject(obj);
     const size = box.getSize(new THREE.Vector3());
@@ -454,6 +501,7 @@ async function loadSavedPlants() {
   let startX=0, startY=0, startZ=0;
   for (const entry of entries) {
     const part = entry.part;
+    if (!part) continue;
     part.startX = startX; part.startY = startY; part.startZ = startZ;
     addPlantPart(part, false);
     startX += part.endPoint.x; startY += part.endPoint.y; startZ += part.endPoint.z;
@@ -570,6 +618,7 @@ let phase = 'INTRO';
 let timer = 0;
 let pendingText = '';
 let fallVel = 0;
+let pendingEntryId = null;
 
 function worldToScreen(p) {
   const v = p.clone().project(camera);
@@ -581,6 +630,7 @@ function startLeave() {
   if (!text) return;
   pendingText = text;
   textInput.value = '';
+  createEntry(pendingText).then(id => { pendingEntryId = id; });
   // animate UI into hand
   const handPos = character.root.position.clone().add(new THREE.Vector3(0, character.charHeight*0.7, 0));
   const screen = worldToScreen(handPos);
@@ -613,16 +663,6 @@ renderer.domElement.addEventListener('pointerdown', e=>{
     }
   }
 });
-
-// Start camera
-async function startCamera() {
-  try {
-    const v = document.getElementById('camera-video');
-    v.srcObject = await navigator.mediaDevices.getUserMedia({ video:{facingMode:{ideal:'environment'}}, audio:false });
-    await v.play();
-  } catch (e) {}
-}
-await startCamera();
 
 // Initialize positions
 character.root.position.set(0, rooftopY, 0);
@@ -705,7 +745,8 @@ function tick() {
         endPoint: gen.endPoint
       };
       addPlantPart(part, true);
-      saveEntry({ text: pendingText, part });
+      if (!pendingEntryId) pendingEntryId = Date.now().toString();
+      finalizeEntry(pendingEntryId, part, pendingText);
     }
   }
   if (phase === 'IMPACT') {

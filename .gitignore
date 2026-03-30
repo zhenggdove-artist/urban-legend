@@ -4,3 +4,8 @@ dist/
 .env.local
 *.fbx
 *.obj
+!building/*.obj
+!building/*.mtl
+!building/*.JPEG
+!playermodel/Climbing Down.fbx
+!playermodel/Drinking.fbx
