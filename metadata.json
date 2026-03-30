@@ -1,5 +1,0 @@
-{
-  "name": "WebAR Meatball Game Framework",
-  "description": "A Three.js WebAR game framework with a meatball system, NPR shader, and Firebase stub.",
-  "requestFramePermissions": []
-}
