@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -30,8 +30,24 @@
       padding:12px 16px;z-index:12;display:none}
     #text-popup.show{display:block}
 
-    #loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    #loading{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
       color:#9ff;letter-spacing:4px;font-size:12px;z-index:20;background:#000}
+    #progress-wrap{width:min(60vw,300px);height:4px;background:rgba(0,255,180,0.1);margin-top:16px;border-radius:2px;overflow:hidden}
+    #progress-bar{width:0%;height:100%;background:rgba(0,255,180,0.7);transition:width 0.3s}
+    #progress-pct{margin-top:8px;font-size:10px;color:rgba(0,255,180,0.5)}
+
+    #jump-btn{display:none;position:absolute;bottom:40px;right:30px;width:76px;height:76px;
+      border-radius:50%;background:rgba(255,60,60,0.2);border:2px solid rgba(255,60,60,0.5);
+      color:#faa;font-size:11px;letter-spacing:3px;cursor:pointer;z-index:14;
+      text-transform:uppercase;backdrop-filter:blur(4px)}
+    #jump-btn.pulse{animation:pulse-glow 1s infinite alternate}
+    @keyframes pulse-glow{0%{box-shadow:0 0 8px rgba(255,60,60,0.3)}100%{box-shadow:0 0 20px rgba(255,60,60,0.7)}}
+
+    #walk-hint{display:none;position:absolute;top:40%;left:50%;transform:translate(-50%,-50%);
+      color:rgba(0,255,180,0.5);font-size:11px;letter-spacing:4px;z-index:14;pointer-events:none;
+      text-transform:uppercase}
+
+    #fade-overlay{position:absolute;inset:0;background:#000;z-index:18;pointer-events:none;opacity:0;transition:opacity 0.8s}
   </style>
   <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
   <script type="importmap">{"imports":{
@@ -43,14 +59,21 @@
   <canvas id="vhs-noise"></canvas>
   <div id="vhs-scanlines"></div>
 
-  <div id="ui-panel">
+  <div id="ui-panel" class="hidden">
     <h2>WRITE</h2>
     <textarea id="text-input" placeholder="Type your words..."></textarea>
-    <button id="leave-btn">LEAVE</button>
+    <button id="leave-btn" disabled>LEAVE</button>
   </div>
 
   <div id="text-popup"></div>
-  <div id="loading">LOADING</div>
+  <div id="fade-overlay"></div>
+  <button id="jump-btn">JUMP</button>
+  <div id="walk-hint">DRAG TO WALK</div>
+  <div id="loading">
+    LOADING
+    <div id="progress-wrap"><div id="progress-bar"></div></div>
+    <div id="progress-pct">0%</div>
+  </div>
 
 <script type="module">
 import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
@@ -62,7 +85,7 @@ import { MTLLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/
 
 const W = () => window.innerWidth;
 const H = () => window.innerHeight;
-const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
+const clamp = (v,lo,hi) => Math.max(lo, Math.min(hi, v));
 
 // ===== VHS noise =====
 const noiseCanvas = document.getElementById('vhs-noise');
@@ -75,21 +98,19 @@ function updateNoise() {
   noiseCanvas.width = w; noiseCanvas.height = h;
   const img = noiseCtx.createImageData(w, h);
   const d = img.data;
-  for (let i=0; i<d.length; i+=4) {
-    const v = Math.random()*255;
-    d[i]=d[i+1]=d[i+2]=v; d[i+3]=50;
+  for (let i = 0; i < d.length; i += 4) {
+    const v = Math.random() * 255;
+    d[i] = d[i+1] = d[i+2] = v; d[i+3] = 50;
   }
   noiseCtx.putImageData(img, 0, 0);
 }
 
 // ===== Persistence / API =====
 const apiParam = new URLSearchParams(location.search).get('api');
-if (apiParam) {
-  const clean = apiParam.replace(/\/$/,'');
-  localStorage.setItem('PLANT_API_URL', clean);
-}
+if (apiParam) localStorage.setItem('PLANT_API_URL', apiParam.replace(/\/$/,''));
 const API_BASE = localStorage.getItem('PLANT_API_URL') || '';
 const STORAGE_KEY = 'urban_legend_plants_v1';
+
 async function loadEntries() {
   if (API_BASE) {
     try {
@@ -107,10 +128,7 @@ async function createEntry(text) {
       const res = await fetch(API_BASE + '/api/entries', {
         method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ text })
       });
-      if (res.ok) {
-        const data = await res.json();
-        return data.id || null;
-      }
+      if (res.ok) { const d = await res.json(); return d.id || null; }
     } catch (e) {}
   }
   const list = await loadEntries();
@@ -119,7 +137,6 @@ async function createEntry(text) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
   return id;
 }
-
 async function finalizeEntry(id, part, text) {
   if (API_BASE) {
     try {
@@ -131,208 +148,344 @@ async function finalizeEntry(id, part, text) {
   }
   const list = await loadEntries();
   const idx = list.findIndex(e => e.id === id);
-  if (idx >= 0) {
-    list[idx].part = part;
-    list[idx].text = text || list[idx].text;
-  } else {
-    list.push({ id, text: text || '', part, createdAt: new Date().toISOString() });
-  }
+  if (idx >= 0) { list[idx].part = part; list[idx].text = text || list[idx].text; }
+  else list.push({ id, text: text||'', part, createdAt: new Date().toISOString() });
   localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
 }
 
-// ===== Text -> DNA (deterministic) =====
+// ===== Text -> DNA =====
 function hashString(str) {
   let h = 2166136261;
-  for (let i=0;i<str.length;i++) {
-    h ^= str.charCodeAt(i);
-    h += (h<<1)+(h<<4)+(h<<7)+(h<<8)+(h<<24);
-  }
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h += (h<<1)+(h<<4)+(h<<7)+(h<<8)+(h<<24); }
   return h >>> 0;
 }
 function seededRandom(seed) {
   let s = seed >>> 0;
-  return () => {
-    s = (s * 1664525 + 1013904223) >>> 0;
-    return (s & 0xffffffff) / 0x100000000;
-  };
+  return () => { s = (s * 1664525 + 1013904223) >>> 0; return (s & 0xffffffff) / 0x100000000; };
 }
-function pick(arr, r) { return arr[Math.floor(r()*arr.length)]; }
+function pick(arr, r) { return arr[Math.floor(r() * arr.length)]; }
 function randColor(r) {
-  const h = Math.floor(r()*360);
-  const s = 60 + Math.floor(r()*30);
-  const l = 40 + Math.floor(r()*30);
-  return `hsl(${h},${s}%,${l}%)`;
+  return `hsl(${Math.floor(r()*360)},${60+Math.floor(r()*30)}%,${40+Math.floor(r()*30)}%)`;
 }
 
 function generateDNAFromText(text) {
   const seed = hashString(text);
   const r = seededRandom(seed);
-  const plantType = pick(['vine','fern','fungus','flower_stalk','bush'], r);
-  const complexity = 2 + Math.floor(r()*8);
-  const growthDirection = { x: r()*2-1, y: r()*0.8+0.2, z: r()*2-1 };
-  const stemColor = randColor(r);
-  const leafColor = randColor(r);
-  const fruitColor = randColor(r);
-  const hasLeaves = r() > 0.3;
-  const hasFruits = r() > 0.45;
-  const fruitType = pick(['eyeball','mouth','glowing_orb','generic','fungus_cap','giant_flower'], r);
-  const leafType = pick(['fern','broad','needle'], r);
-  return { name:'Mutation', description:'', plantType, complexity, growthDirection, stemColor, leafColor, fruitColor, hasLeaves, hasFruits, fruitType, leafType };
+  return {
+    name:'Mutation', description:'',
+    plantType: pick(['vine','fern','fungus','flower_stalk','bush'], r),
+    complexity: 2 + Math.floor(r()*8),
+    growthDirection: { x: r()*2-1, y: r()*0.8+0.2, z: r()*2-1 },
+    stemColor: randColor(r), leafColor: randColor(r), fruitColor: randColor(r),
+    hasLeaves: true, hasFruits: true,
+    fruitType: pick(['balloon_flower','lotus_flower','tubular_flower','jellyfish_flower','daisy_flower','fungus_cap','giant_flower'], r),
+    leafType: pick(['glass_leaf','wire_leaf','fern','broad','needle'], r),
+    growthStyle: pick(['straight','twining','erratic','drooping'], r)
+  };
 }
 
-// ===== Procedural plant =====
+// ===== Procedural plant generation =====
 function generateProceduralPlant(dna) {
-  const stems = [];
-  const fruits = [];
-  const leaves = [];
+  const stems = [], fruits = [], leaves = [];
   const startPt = new THREE.Vector3(0,0,0);
-  const dir = new THREE.Vector3(dna.growthDirection.x, dna.growthDirection.y, dna.growthDirection.z).normalize();
-  if (dir.lengthSq() === 0) dir.set(0,1,0);
+  const gx = Number(dna.growthDirection?.x)||0, gy = Number(dna.growthDirection?.y)||1, gz = Number(dna.growthDirection?.z)||0;
+  const dir = new THREE.Vector3(gx,gy,gz).normalize();
+  if (isNaN(dir.x)||isNaN(dir.y)||isNaN(dir.z)||dir.lengthSq()===0) dir.set(0,1,0);
   const length = 10 + dna.complexity * 1.5;
   let endPt = startPt.clone();
+  const style = dna.growthStyle || 'straight';
 
-  const generateCurve = (start, direction, len, waviness, segments) => {
+  const generateCurve = (start, direction, len, waviness, segments, curveStyle='straight') => {
     const curve = [];
     let current = start.clone();
-    curve.push({ x: current.x, y: current.y, z: current.z });
+    curve.push({ x:current.x, y:current.y, z:current.z });
     const step = len / segments;
     let perp1 = new THREE.Vector3(1,0,0).cross(direction).normalize();
     if (perp1.lengthSq() < 0.1) perp1 = new THREE.Vector3(0,1,0).cross(direction).normalize();
     const perp2 = direction.clone().cross(perp1).normalize();
-    for (let i=1;i<=segments;i++) {
-      const t = i/segments;
+    for (let i = 1; i <= segments; i++) {
+      const t = i / segments;
       current.add(direction.clone().multiplyScalar(step));
-      const wave1 = Math.sin(t*Math.PI*4) * waviness * (1-t);
-      const wave2 = Math.cos(t*Math.PI*3) * waviness * (1-t);
-      const offset = perp1.clone().multiplyScalar(wave1).add(perp2.clone().multiplyScalar(wave2));
-      const pt = current.clone().add(offset);
-      if (direction.y < 0.5) pt.y -= t*t*2;
-      curve.push({ x: pt.x, y: pt.y, z: pt.z });
+      let pt = current.clone();
+      if (curveStyle === 'twining') {
+        const radius = waviness * 2;
+        const angle = t * Math.PI * 10;
+        pt.add(perp1.clone().multiplyScalar(Math.cos(angle)*radius).add(perp2.clone().multiplyScalar(Math.sin(angle)*radius)));
+      } else if (curveStyle === 'erratic') {
+        pt.add(perp1.clone().multiplyScalar((Math.random()-0.5)*waviness*4).add(perp2.clone().multiplyScalar((Math.random()-0.5)*waviness*4)));
+      } else {
+        const w1 = Math.sin(t*Math.PI*4)*waviness*(1-t);
+        const w2 = Math.cos(t*Math.PI*3)*waviness*(1-t);
+        pt.add(perp1.clone().multiplyScalar(w1).add(perp2.clone().multiplyScalar(w2)));
+      }
+      if (curveStyle === 'drooping' || direction.y < 0.2) pt.y -= t*t*len*0.5;
+      curve.push({ x:pt.x, y:pt.y, z:pt.z });
     }
     return { curve, end: current };
   };
 
   if (dna.plantType === 'vine' || dna.plantType === 'flower_stalk') {
-    const { curve, end } = generateCurve(startPt, dir, length, 2, 20);
+    const { curve, end } = generateCurve(startPt, dir, length, 2, 20, style);
     stems.push(curve); endPt = end;
-    const numBranches = Math.floor(dna.complexity/2);
-    for (let i=0;i<numBranches;i++) {
+    const numLeaves = Math.floor(dna.complexity * 1.5);
+    for (let i = 0; i < numLeaves; i++) {
+      const t = 0.1 + Math.random()*0.8;
+      const idx = Math.floor(t * curve.length);
+      if (idx < curve.length) {
+        const p = curve[idx];
+        leaves.push({ position:p, direction:{ x:Math.random()-0.5, y:Math.random()-0.5, z:Math.random()-0.5 }, type:dna.leafType, color:dna.leafColor, scale:0.8+Math.random()*0.4 });
+      }
+    }
+    const numBranches = Math.floor(dna.complexity / 2);
+    for (let i = 0; i < numBranches; i++) {
       const t = 0.2 + Math.random()*0.6;
-      const idx = Math.floor(t*curve.length);
-      const branchStart = new THREE.Vector3(curve[idx].x, curve[idx].y, curve[idx].z);
-      const branchDir = dir.clone().applyAxisAngle(new THREE.Vector3(Math.random(),Math.random(),Math.random()).normalize(), Math.PI/3).normalize();
-      const branchLen = length * 0.4 * Math.random();
-      const { curve: bCurve, end: bEnd } = generateCurve(branchStart, branchDir, branchLen, 1, 10);
-      stems.push(bCurve);
-      if (dna.hasLeaves && Math.random()>0.3) leaves.push({ position: bEnd, direction: branchDir, type: dna.leafType, color: dna.leafColor, scale: 1 });
-      if (dna.hasFruits && Math.random()>0.6) fruits.push({ position: bEnd, direction: branchDir, type: dna.fruitType, color: dna.fruitColor, scale: 0.8 });
+      const idx = Math.floor(t * curve.length);
+      const bs = new THREE.Vector3(curve[idx].x, curve[idx].y, curve[idx].z);
+      let axis = new THREE.Vector3(Math.random(), Math.random(), Math.random()).normalize();
+      if (axis.lengthSq() < 0.001) axis.set(0,1,0);
+      const bDir = dir.clone().applyAxisAngle(axis, Math.PI/3).normalize();
+      const { curve:bC, end:bE } = generateCurve(bs, bDir, length*0.4*Math.random(), 1, 10, style==='twining'?'straight':style);
+      stems.push(bC);
+      if (Math.random()>0.1) leaves.push({ position:bE, direction:bDir, type:dna.leafType, color:dna.leafColor, scale:1 });
+      if (Math.random()>0.2) fruits.push({ position:bE, direction:bDir, type:dna.fruitType, color:dna.fruitColor, scale:0.8 });
     }
-    if (dna.hasFruits || dna.plantType==='flower_stalk') {
-      fruits.push({ position: endPt, direction: dir, type: dna.plantType==='flower_stalk'?'giant_flower':dna.fruitType, color: dna.fruitColor, scale: 1.5 });
-    }
+    fruits.push({ position:endPt, direction:dir, type:dna.fruitType, color:dna.fruitColor, scale:1.5 });
   } else if (dna.plantType === 'bush' || dna.plantType === 'fern') {
     const numStems = 3 + Math.floor(dna.complexity/2);
     let highestY = -Infinity;
-    for (let i=0;i<numStems;i++) {
-      const spreadDir = dir.clone().applyAxisAngle(new THREE.Vector3(0,1,0), (i/numStems)*Math.PI*2 + Math.random()*0.5);
+    for (let i = 0; i < numStems; i++) {
+      const spreadDir = dir.clone().applyAxisAngle(new THREE.Vector3(0,1,0), (i/numStems)*Math.PI*2+Math.random()*0.5);
       spreadDir.y += 0.5; spreadDir.normalize();
-      const { curve, end } = generateCurve(startPt, spreadDir, length*(0.6+Math.random()*0.4), 1.5, 15);
+      const { curve, end } = generateCurve(startPt, spreadDir, length*(0.6+Math.random()*0.4), 1.5, 15, style);
       stems.push(curve);
       if (end.y > highestY) { highestY = end.y; endPt = end; }
-      if (dna.plantType==='fern' && dna.hasLeaves) {
-        for (let j=2;j<curve.length-1;j+=2) {
+      if (dna.plantType === 'fern') {
+        for (let j = 2; j < curve.length-1; j += 2) {
           const p = curve[j];
           const pDir = new THREE.Vector3(p.x-curve[j-1].x, p.y-curve[j-1].y, p.z-curve[j-1].z).normalize();
-          const side1 = pDir.clone().cross(new THREE.Vector3(0,1,0)).normalize();
-          const side2 = side1.clone().negate();
-          leaves.push({ position:p, direction:side1, type:'fern', color:dna.leafColor, scale:0.5*(1-j/curve.length) });
-          leaves.push({ position:p, direction:side2, type:'fern', color:dna.leafColor, scale:0.5*(1-j/curve.length) });
+          let s1 = pDir.clone().cross(new THREE.Vector3(0,1,0)).normalize();
+          if (s1.lengthSq()<0.001) s1 = pDir.clone().cross(new THREE.Vector3(1,0,0)).normalize();
+          if (s1.lengthSq()<0.001) s1.set(1,0,0);
+          leaves.push({ position:p, direction:s1, type:'fern', color:dna.leafColor, scale:0.5*(1-j/curve.length) });
+          leaves.push({ position:p, direction:{x:-s1.x,y:-s1.y,z:-s1.z}, type:'fern', color:dna.leafColor, scale:0.5*(1-j/curve.length) });
         }
-      } else if (dna.hasLeaves) {
+      } else {
         leaves.push({ position:end, direction:spreadDir, type:dna.leafType, color:dna.leafColor, scale:1.2 });
       }
-      if (dna.hasFruits && Math.random()>0.7) fruits.push({ position:end, direction:spreadDir, type:dna.fruitType, color:dna.fruitColor, scale:1 });
+      if (Math.random()>0.3) fruits.push({ position:end, direction:spreadDir, type:dna.fruitType, color:dna.fruitColor, scale:1 });
     }
   } else if (dna.plantType === 'fungus') {
-    const { curve, end } = generateCurve(startPt, dir, length*0.5, 0.5, 10);
+    const { curve, end } = generateCurve(startPt, dir, length*0.5, 0.5, 10, style);
     stems.push(curve); endPt = end;
-    fruits.push({ position:end, direction:dir, type:'fungus_cap', color:dna.fruitColor, scale:2 + dna.complexity*0.2 });
-    const numSmall = Math.floor(dna.complexity/3);
-    for (let i=0;i<numSmall;i++) {
-      const offset = new THREE.Vector3((Math.random()-0.5)*4, 0, (Math.random()-0.5)*4);
-      const { curve: sCurve, end: sEnd } = generateCurve(startPt.clone().add(offset), new THREE.Vector3(0,1,0), length*0.2, 0.2, 5);
-      stems.push(sCurve);
-      fruits.push({ position:sEnd, direction:new THREE.Vector3(0,1,0), type:'fungus_cap', color:dna.fruitColor, scale:0.8 });
+    fruits.push({ position:end, direction:dir, type:'fungus_cap', color:dna.fruitColor, scale:2+dna.complexity*0.2 });
+    for (let i = 0; i < Math.floor(dna.complexity/3); i++) {
+      const off = new THREE.Vector3((Math.random()-0.5)*4, 0, (Math.random()-0.5)*4);
+      const { curve:sc, end:se } = generateCurve(startPt.clone().add(off), new THREE.Vector3(0,1,0), length*0.2, 0.2, 5, style);
+      stems.push(sc);
+      fruits.push({ position:se, direction:{x:0,y:1,z:0}, type:'fungus_cap', color:dna.fruitColor, scale:0.8 });
     }
   }
   return { stems, fruits, leaves, endPoint:{ x:endPt.x, y:endPt.y, z:endPt.z } };
 }
 
+// ===== Plant mesh materials =====
+function glassMat(color) {
+  return new THREE.MeshPhysicalMaterial({
+    color, transmission:0.9, transparent:true, roughness:0.1, metalness:0.2,
+    ior:1.5, thickness:0.5, clearcoat:1, clearcoatRoughness:0.1,
+    emissive: new THREE.Color(color).multiplyScalar(0.15), emissiveIntensity:0.3
+  });
+}
+function glowMat(color) {
+  return new THREE.MeshStandardMaterial({ color, emissive:color, emissiveIntensity:2, toneMapped:false });
+}
+
+// ===== Fruit renderer =====
+function createFruit(f) {
+  const g = new THREE.Group();
+  const mat = glassMat(f.color);
+
+  if (f.type === 'balloon_flower' || !f.type) {
+    for (let i = 0; i < 6; i++) {
+      const pg = new THREE.Group();
+      pg.rotation.y = (i * Math.PI) / 3;
+      const p = new THREE.Mesh(new THREE.SphereGeometry(1.2, 16, 12), mat);
+      p.scale.set(0.6, 0.2, 1); p.position.set(1.2, 0, 0); p.rotation.z = 0.3;
+      pg.add(p);
+      for (let j = 0; j < 3; j++) {
+        const dot = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6),
+          new THREE.MeshStandardMaterial({ color:'#FFD700', metalness:1, roughness:0.1 }));
+        dot.position.set(1.2+(Math.random()-0.5)*0.6, 0.15, (Math.random()-0.5)*0.6);
+        pg.add(dot);
+      }
+      g.add(pg);
+    }
+    const core = new THREE.Mesh(new THREE.SphereGeometry(0.8, 16, 16), glowMat('#FFD700'));
+    core.position.y = 0.2; g.add(core);
+
+  } else if (f.type === 'lotus_flower') {
+    for (let i = 0; i < 8; i++) {
+      const pg = new THREE.Group(); pg.rotation.y = (i*Math.PI)/4;
+      const p = new THREE.Mesh(new THREE.SphereGeometry(1.8, 16, 12), mat);
+      p.scale.set(0.3, 0.05, 1); p.position.set(1.5, -0.2, 0); p.rotation.z = 0.1;
+      pg.add(p); g.add(pg);
+    }
+    for (let i = 0; i < 6; i++) {
+      const pg = new THREE.Group(); pg.rotation.y = (i*Math.PI)/3+0.2;
+      const p = new THREE.Mesh(new THREE.SphereGeometry(1.2, 16, 12), glassMat('#ffffff'));
+      p.scale.set(0.3, 0.05, 1); p.position.set(0.8, 0.2, 0); p.rotation.z = 0.4;
+      pg.add(p); g.add(pg);
+    }
+    for (let i = 0; i < 10; i++) {
+      const a = Math.random()*Math.PI*2, rad = Math.random()*0.5, h = 1+Math.random()*1.5;
+      const s = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, h, 6),
+        new THREE.MeshStandardMaterial({ color:Math.random()>0.5?'#FFD700':'#4444ff', metalness:0.8, roughness:0.2 }));
+      s.position.set(Math.cos(a)*rad, h/2, Math.sin(a)*rad);
+      s.rotation.x = (Math.random()-0.5)*0.5; g.add(s);
+    }
+    g.add(new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 16), glowMat('#FFD700')));
+
+  } else if (f.type === 'tubular_flower') {
+    for (let i = 0; i < 16; i++) {
+      const pg = new THREE.Group(); pg.rotation.y = (i*Math.PI*2)/16;
+      const t = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.05, 2, 8), mat);
+      t.position.set(1, 0, 0); t.rotation.z = Math.PI/2; pg.add(t);
+      const tip = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 8), glassMat('#ffffff'));
+      tip.position.set(2, 0, 0); pg.add(tip);
+      g.add(pg);
+    }
+    g.add(new THREE.Mesh(new THREE.SphereGeometry(0.6, 16, 16), glowMat(f.color)));
+
+  } else if (f.type === 'jellyfish_flower') {
+    const bell = new THREE.Mesh(new THREE.SphereGeometry(1.2, 16, 12, 0, Math.PI*2, 0, Math.PI/2), mat);
+    bell.position.y = 0.5; g.add(bell);
+    g.add(new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 16), glowMat('#ffffff')));
+    for (let i = 0; i < 12; i++) {
+      const a = (i*Math.PI*2)/12;
+      const tent = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.01, 3, 6), mat);
+      tent.position.set(Math.cos(a)*0.8, -1, Math.sin(a)*0.8);
+      tent.rotation.x = (Math.random()-0.5)*0.2; g.add(tent);
+    }
+
+  } else if (f.type === 'daisy_flower') {
+    for (let i = 0; i < 12; i++) {
+      const pg = new THREE.Group(); pg.rotation.y = (i*Math.PI)/6;
+      const p = new THREE.Mesh(new THREE.SphereGeometry(0.6, 12, 8), mat);
+      p.scale.set(0.4, 0.1, 1); p.position.set(0.6, 0, 0);
+      pg.add(p); g.add(pg);
+    }
+    const c = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 16),
+      new THREE.MeshStandardMaterial({ color:'#FFD700', roughness:0.8 }));
+    c.position.y = 0.05; c.scale.set(1, 0.2, 1); g.add(c);
+
+  } else if (f.type === 'fungus_cap') {
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(1.5, 16, 16), mat);
+    cap.scale.set(1, 0.4, 1); g.add(cap);
+    const bot = new THREE.Mesh(new THREE.SphereGeometry(1.4, 16, 16),
+      new THREE.MeshStandardMaterial({ color:'#222222', roughness:0.9 }));
+    bot.scale.set(1, 0.1, 1); bot.position.y = -0.2; g.add(bot);
+    g.add(new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 16), glowMat(f.color)));
+
+  } else if (f.type === 'giant_flower') {
+    for (let i = 0; i < 12; i++) {
+      const pg = new THREE.Group(); pg.rotation.y = (i*Math.PI)/6;
+      const p = new THREE.Mesh(new THREE.SphereGeometry(1.5, 16, 12), mat);
+      p.scale.set(0.4, 0.1, 1); p.position.set(1.5, 0, 0); p.rotation.z = 0.2;
+      pg.add(p); g.add(pg);
+    }
+    for (let i = 0; i < 8; i++) {
+      const pg = new THREE.Group(); pg.rotation.y = (i*Math.PI)/4+0.2;
+      const p = new THREE.Mesh(new THREE.SphereGeometry(1.0, 16, 12), glassMat('#ffffff'));
+      p.scale.set(0.4, 0.1, 1); p.position.set(1.0, 0.5, 0); p.rotation.z = 0.5;
+      pg.add(p); g.add(pg);
+    }
+    g.add(new THREE.Mesh(new THREE.SphereGeometry(0.8, 16, 16), glowMat('#FFAA00')));
+  }
+
+  g.scale.setScalar(f.scale || 1);
+  return g;
+}
+
+// ===== Leaf renderer =====
+function createLeaf(l) {
+  const g = new THREE.Group();
+  const mat = glassMat(l.color);
+
+  if (l.type === 'glass_leaf' || !l.type) {
+    const lf = new THREE.Mesh(new THREE.SphereGeometry(1.5, 16, 12), mat);
+    lf.scale.set(0.5, 0.05, 1); lf.position.set(0, 0, 1.5); lf.rotation.z = 0.2;
+    g.add(lf);
+  } else if (l.type === 'wire_leaf') {
+    for (let i = 0; i < 3; i++) {
+      const curve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(0,0,0),
+        new THREE.Vector3((Math.random()-0.5)*2, Math.random()*2, 1),
+        new THREE.Vector3((Math.random()-0.5)*3, Math.random()*3, 2),
+        new THREE.Vector3((Math.random()-0.5)*4, Math.random()*4, 3)
+      ]);
+      const t = new THREE.Mesh(new THREE.TubeGeometry(curve, 16, 0.02, 6, false),
+        new THREE.MeshStandardMaterial({ color:l.color, metalness:0.8, roughness:0.2 }));
+      g.add(t);
+    }
+  } else if (l.type === 'fern') {
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 3, 6), mat);
+    stem.position.y = 1.5; g.add(stem);
+    for (let i = 0; i < 6; i++) {
+      const pair = new THREE.Group(); pair.position.y = 0.5+i*0.4;
+      const left = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 6), mat);
+      left.scale.set(1, 0.1, 0.3); left.position.set(0.4, 0, 0); left.rotation.z = -0.2;
+      pair.add(left);
+      const right = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 6), mat);
+      right.scale.set(1, 0.1, 0.3); right.position.set(-0.4, 0, 0); right.rotation.z = 0.2;
+      pair.add(right);
+      g.add(pair);
+    }
+  } else if (l.type === 'broad') {
+    const lf = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), mat);
+    lf.scale.set(0.8, 0.1, 1.5); lf.position.set(0, 0, 1.5); g.add(lf);
+  } else if (l.type === 'needle') {
+    const n = new THREE.Mesh(new THREE.ConeGeometry(0.1, 3, 8), mat);
+    n.position.y = 1.5; g.add(n);
+  }
+
+  g.scale.setScalar(l.scale || 1);
+  return g;
+}
+
+// ===== Build plant mesh =====
 function buildPlantPartMesh(part) {
   const group = new THREE.Group();
-  group.position.set(part.startX, part.startY, part.startZ);
-  const glassMat = (color) => new THREE.MeshPhysicalMaterial({
-    color,
-    roughness: 0.08,
-    metalness: 0.05,
-    transmission: 0.9,
-    thickness: 0.6,
-    ior: 1.5,
-    clearcoat: 0.2,
-    clearcoatRoughness: 0.1,
-    emissive: new THREE.Color(color).multiplyScalar(0.2),
-    emissiveIntensity: 0.4
-  });
-  // stems
-  for (let i=0;i<part.stems.length;i++) {
-    const stem = part.stems[i];
-    if (stem.length < 2) continue;
-    const curve = new THREE.CatmullRomCurve3(stem.map(p=>new THREE.Vector3(p.x,p.y,p.z)));
-    const radius = Math.max(0.05, 0.18 - (part.stems.length * 0.008));
-    const geo = new THREE.TubeGeometry(curve, 64, radius, 12, false);
-    const mesh = new THREE.Mesh(geo, glassMat(part.stemColor));
-    mesh.castShadow = true; mesh.receiveShadow = true;
+  for (const stemData of part.stems) {
+    if (stemData.length < 2) continue;
+    const pts = stemData.map(p => new THREE.Vector3(p.x, p.y, p.z))
+      .filter((p,i,arr) => i===0 || p.distanceToSquared(arr[i-1]) > 0.0001);
+    if (pts.length < 2) continue;
+    const curve = new THREE.CatmullRomCurve3(pts);
+    const radius = Math.max(0.05, 0.18 - part.stems.length * 0.008);
+    const mesh = new THREE.Mesh(new THREE.TubeGeometry(curve, 48, radius, 8, false), glassMat(part.stemColor));
+    mesh.castShadow = true;
     mesh.userData.entryText = part.textInput;
     group.add(mesh);
   }
-  // fruits
   for (const f of part.fruits) {
-    const pos = new THREE.Vector3(f.position.x, f.position.y, f.position.z);
-    const dir = new THREE.Vector3(f.direction.x, f.direction.y, f.direction.z).normalize();
-    const quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), dir);
-    const fruitGroup = new THREE.Group();
-    fruitGroup.position.copy(pos); fruitGroup.quaternion.copy(quat); fruitGroup.scale.setScalar(f.scale||1);
-    const mat = glassMat(f.color);
-    if (f.type === 'fungus_cap') {
-      const cap = new THREE.Mesh(new THREE.SphereGeometry(1.2, 20, 16), mat);
-      cap.scale.set(1,0.4,1); fruitGroup.add(cap);
-    } else if (f.type === 'giant_flower') {
-      for (let i=0;i<10;i++) {
-        const petal = new THREE.Mesh(new THREE.SphereGeometry(0.8, 16, 12), mat);
-        petal.scale.set(0.3,0.08,1.1);
-        petal.position.set(1.1,0,0);
-        petal.rotation.z = 0.2;
-        petal.rotation.y = (i/10)*Math.PI*2;
-        fruitGroup.add(petal);
-      }
-      const core = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 12), new THREE.MeshStandardMaterial({ color:'#ffd200', emissive:'#ffd200', emissiveIntensity:1.5, toneMapped:false }));
-      fruitGroup.add(core);
-    } else {
-      const orb = new THREE.Mesh(new THREE.SphereGeometry(0.7, 16, 12), mat);
-      fruitGroup.add(orb);
-    }
-    fruitGroup.userData.entryText = part.textInput;
-    group.add(fruitGroup);
+    const pos = new THREE.Vector3(f.position?.x||0, f.position?.y||0, f.position?.z||0);
+    const dir = new THREE.Vector3(f.direction?.x||0, f.direction?.y||1, f.direction?.z||0).normalize();
+    if (dir.lengthSq() < 0.001) dir.set(0,1,0);
+    const fruitMesh = createFruit(f);
+    fruitMesh.position.copy(pos);
+    fruitMesh.quaternion.copy(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), dir));
+    fruitMesh.userData.entryText = part.textInput;
+    group.add(fruitMesh);
   }
-  // leaves
   for (const l of part.leaves) {
-    const pos = new THREE.Vector3(l.position.x, l.position.y, l.position.z);
-    const dir = new THREE.Vector3(l.direction.x, l.direction.y, l.direction.z).normalize();
-    const quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), dir);
-    const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.2, 1.2, 10), glassMat(l.color));
-    leaf.position.copy(pos); leaf.quaternion.copy(quat); leaf.scale.setScalar(l.scale||1);
-    leaf.userData.entryText = part.textInput;
-    group.add(leaf);
+    const pos = new THREE.Vector3(l.position?.x||0, l.position?.y||0, l.position?.z||0);
+    const dir = new THREE.Vector3(l.direction?.x||0, l.direction?.y||1, l.direction?.z||0).normalize();
+    if (dir.lengthSq() < 0.001) dir.set(0,1,0);
+    const leafMesh = createLeaf(l);
+    leafMesh.position.copy(pos);
+    leafMesh.quaternion.copy(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0), dir));
+    leafMesh.userData.entryText = part.textInput;
+    group.add(leafMesh);
   }
   return group;
 }
@@ -343,8 +496,8 @@ scene.background = new THREE.Color('#050810');
 const camera = new THREE.PerspectiveCamera(60, W()/H(), 0.01, 200);
 const renderer = new THREE.WebGLRenderer({ alpha:true, antialias:true });
 renderer.setSize(W(), H());
-renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
-renderer.setClearColor(0x000000,0);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setClearColor(0x000000, 0);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.1;
@@ -352,54 +505,79 @@ renderer.domElement.id = 'canvas3d';
 document.body.appendChild(renderer.domElement);
 
 scene.add(new THREE.AmbientLight(0xcccccc, 0.6));
-scene.add(new THREE.DirectionalLight(0xffffff, 1.6).position.set(5,8,5));
+const dirLight = new THREE.DirectionalLight(0xffffff, 1.6);
+dirLight.position.set(5, 8, 5); scene.add(dirLight);
 
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(80, 80),
+  new THREE.MeshStandardMaterial({ color:0x0a0f14, roughness:0.8 }));
+ground.rotation.x = -Math.PI/2; ground.receiveShadow = true; scene.add(ground);
+
+// ===== Progress tracking =====
+const progressBarEl = document.getElementById('progress-bar');
+const progressPctEl = document.getElementById('progress-pct');
+const loadingDiv = document.getElementById('loading');
+
+const assetProg = { buildingObj:0, charIdle:0, charJump:0, charDrink:0, charTex:0 };
+const assetWeight = { buildingObj:0.55, charIdle:0.05, charJump:0.05, charDrink:0.30, charTex:0.05 };
+function updateProgress() {
+  let total = 0;
+  for (const k of Object.keys(assetProg)) total += assetProg[k] * (assetWeight[k]||0);
+  const pct = Math.min(100, Math.floor(total * 100));
+  progressBarEl.style.width = pct + '%';
+  progressPctEl.textContent = pct + '%';
+}
+function onProg(key) {
+  return xhr => { if (xhr.lengthComputable) assetProg[key] = xhr.loaded / xhr.total; updateProgress(); };
+}
+
+// ===== Building =====
 let building = null;
-let rooftopY = 2.5;
+let rooftopY = 4;
+let rooftopBounds = { minX:-1.5, maxX:1.5, minZ:-1.5, maxZ:1.5 };
 const buildingGroup = new THREE.Group();
 scene.add(buildingGroup);
 
-const mtlLoader = new MTLLoader();
-const objLoader = new OBJLoader();
-mtlLoader.setPath('./building/');
-objLoader.setPath('./building/');
-mtlLoader.load('tripo_convert_81a5c880-066d-4bf1-9436-48ff4ce267bf.mtl', mtl => {
-  mtl.preload();
-  objLoader.setMaterials(mtl);
-  objLoader.load('tripo_convert_81a5c880-066d-4bf1-9436-48ff4ce267bf.obj', obj => {
-    building = obj;
-    const box = new THREE.Box3().setFromObject(obj);
-    const size = box.getSize(new THREE.Vector3());
-    const maxDim = Math.max(size.x, size.z);
-    const scale = 4 / maxDim;
-    obj.scale.setScalar(scale);
-    const box2 = new THREE.Box3().setFromObject(obj);
-    obj.position.y = -box2.min.y;
-    buildingGroup.add(obj);
-    const box3 = new THREE.Box3().setFromObject(obj);
-    rooftopY = box3.max.y + 0.02;
+// Fallback box (shown while loading / if OBJ fails)
+const fallbackBldg = new THREE.Mesh(new THREE.BoxGeometry(3, 4, 3),
+  new THREE.MeshStandardMaterial({ color:0x1a1a2e, roughness:0.9 }));
+fallbackBldg.position.y = 2;
+buildingGroup.add(fallbackBldg);
+
+const buildingPromise = new Promise(resolve => {
+  const ml = new MTLLoader(); const ol = new OBJLoader();
+  ml.setPath('./building/'); ol.setPath('./building/');
+  ml.load('tripo_convert_81a5c880-066d-4bf1-9436-48ff4ce267bf.mtl', mtl => {
+    mtl.preload(); ol.setMaterials(mtl);
+    ol.load('tripo_convert_81a5c880-066d-4bf1-9436-48ff4ce267bf.obj', obj => {
+      building = obj;
+      buildingGroup.remove(fallbackBldg);
+      const box = new THREE.Box3().setFromObject(obj);
+      const maxDim = Math.max(box.getSize(new THREE.Vector3()).x, box.getSize(new THREE.Vector3()).z);
+      const scale = 4 / maxDim;
+      obj.scale.setScalar(scale);
+      const box2 = new THREE.Box3().setFromObject(obj);
+      obj.position.y = -box2.min.y;
+      buildingGroup.add(obj);
+      const box3 = new THREE.Box3().setFromObject(obj);
+      rooftopY = box3.max.y + 0.02;
+      rooftopBounds = { minX:box3.min.x+0.15, maxX:box3.max.x-0.15, minZ:box3.min.z+0.15, maxZ:box3.max.z-0.15 };
+      assetProg.buildingObj = 1; updateProgress(); resolve();
+    }, onProg('buildingObj'), err => {
+      console.warn('OBJ load error:', err);
+      assetProg.buildingObj = 1; updateProgress(); resolve();
+    });
+  }, undefined, err => {
+    console.warn('MTL load error:', err);
+    assetProg.buildingObj = 1; updateProgress(); resolve();
   });
 });
-
-// Ground plane
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(50,50), new THREE.MeshStandardMaterial({ color:0x0a0f14, roughness:0.8 }));
-ground.rotation.x = -Math.PI/2;
-ground.receiveShadow = true;
-scene.add(ground);
 
 // ===== Character =====
 class GameCharacter {
   constructor(scene) {
-    this.scene = scene;
-    this.root = new THREE.Group();
-    scene.add(this.root);
-    this.mixer = null;
-    this.anims = {};
-    this.curAction = null;
-    this.curState = 'IDLE';
-    this.charHeight = 0.066;
-    this.loaded = false;
-    this.drinkDuration = 1.0;
+    this.scene = scene; this.root = new THREE.Group(); scene.add(this.root);
+    this.mixer = null; this.anims = {}; this.curAction = null; this.curState = 'IDLE';
+    this.charHeight = 0.066; this.loaded = false; this.drinkDuration = 1.0;
   }
   async load() {
     const gl = new GLTFLoader();
@@ -408,53 +586,57 @@ class GameCharacter {
     gl.setDRACOLoader(dr);
     const fbx = new FBXLoader();
     const texLoader = new THREE.TextureLoader();
-    let skinTex = null;
-    try { skinTex = await new Promise((r,j)=>texLoader.load('./playermodel/tripo_model_basecolor.JPEG',r,undefined,j)); } catch {}
-    if (skinTex) { skinTex.flipY=false; skinTex.colorSpace = THREE.SRGBColorSpace; }
 
-    const load = url => new Promise((r,j)=>gl.load(url,g=>r(g),undefined,e=>j(e)));
-    const idleG = await load('./playermodel/idle.glb');
+    let skinTex = null;
+    try {
+      skinTex = await new Promise((r,j) => texLoader.load('./playermodel/tripo_model_basecolor.JPEG', r, onProg('charTex'), j));
+      assetProg.charTex = 1; updateProgress();
+    } catch { assetProg.charTex = 1; updateProgress(); }
+    if (skinTex) { skinTex.flipY = false; skinTex.colorSpace = THREE.SRGBColorSpace; }
+
+    const loadG = (url, key) => new Promise((r,j) => gl.load(url, g => {
+      assetProg[key] = 1; updateProgress(); r(g);
+    }, onProg(key), e => j(e)));
+
+    const idleG = await loadG('./playermodel/idle.glb', 'charIdle');
     const model = idleG.scene;
     const box = new THREE.Box3().setFromObject(model);
-    const origH = box.getSize(new THREE.Vector3()).y;
-    const sc = this.charHeight / origH;
+    const sc = this.charHeight / box.getSize(new THREE.Vector3()).y;
     model.scale.setScalar(sc);
     const box2 = new THREE.Box3().setFromObject(model);
     model.position.y = -box2.min.y;
-    model.traverse(c=>{
-      if (c.isMesh) {
-        c.material = new THREE.MeshStandardMaterial({ map: skinTex || null, roughness:0.8, metalness:0.1 });
-        c.frustumCulled = false;
-      }
+    model.traverse(c => {
+      if (c.isMesh) { c.material = new THREE.MeshStandardMaterial({ map:skinTex||null, roughness:0.8, metalness:0.1 }); c.frustumCulled = false; }
     });
-    this.model3D = model;
-    this.root.add(model);
+    this.model3D = model; this.root.add(model);
     this.mixer = new THREE.AnimationMixer(model);
-    const strip = clip => { clip.tracks = clip.tracks.filter(t=>!/(Hips|RootNode)\.(position|quaternion)/i.test(t.name)); };
+    const strip = clip => { clip.tracks = clip.tracks.filter(t => !/(Hips|RootNode)\.(position|quaternion)/i.test(t.name)); };
+
     if (idleG.animations.length) {
       strip(idleG.animations[0]);
       this.anims['IDLE'] = this.mixer.clipAction(idleG.animations[0]);
-      this.anims['IDLE'].play();
-      this.curAction = this.anims['IDLE'];
+      this.anims['IDLE'].play(); this.curAction = this.anims['IDLE'];
     }
-    const jumpG = await load('./playermodel/jump.glb');
-    if (jumpG.animations.length) {
-      strip(jumpG.animations[0]);
-      this.anims['JUMP'] = this.mixer.clipAction(jumpG.animations[0]);
-      this.anims['JUMP'].setLoop(THREE.LoopOnce);
-      this.anims['JUMP'].clampWhenFinished = true;
-    }
-    // Drinking FBX
+
     try {
-      const drinkFbx = await new Promise((r,j)=>fbx.load('./playermodel/Drinking.fbx', r, undefined, j));
-      if (drinkFbx.animations && drinkFbx.animations.length) {
+      const jumpG = await loadG('./playermodel/jump.glb', 'charJump');
+      if (jumpG.animations.length) {
+        strip(jumpG.animations[0]);
+        this.anims['JUMP'] = this.mixer.clipAction(jumpG.animations[0]);
+        this.anims['JUMP'].setLoop(THREE.LoopOnce); this.anims['JUMP'].clampWhenFinished = true;
+      }
+    } catch { assetProg.charJump = 1; updateProgress(); }
+
+    try {
+      const drinkFbx = await new Promise((r,j) => fbx.load('./playermodel/Drinking.fbx', r, onProg('charDrink'), j));
+      assetProg.charDrink = 1; updateProgress();
+      if (drinkFbx.animations?.length) {
         strip(drinkFbx.animations[0]);
         this.anims['DRINK'] = this.mixer.clipAction(drinkFbx.animations[0]);
-        this.anims['DRINK'].setLoop(THREE.LoopOnce);
-        this.anims['DRINK'].clampWhenFinished = true;
+        this.anims['DRINK'].setLoop(THREE.LoopOnce); this.anims['DRINK'].clampWhenFinished = true;
         this.drinkDuration = drinkFbx.animations[0].duration || this.drinkDuration;
       }
-    } catch(e) {}
+    } catch { assetProg.charDrink = 1; updateProgress(); }
 
     this.loaded = true;
   }
@@ -464,52 +646,46 @@ class GameCharacter {
     if (!this.mixer) return;
     const next = this.anims[s];
     if (!next) return;
-    if (this.curAction && this.curAction !== next) {
-      next.reset().play();
-      next.crossFadeFrom(this.curAction, 0.2, true);
-    } else next.reset().play();
+    if (this.curAction && this.curAction !== next) { next.reset().play(); next.crossFadeFrom(this.curAction, 0.2, true); }
+    else next.reset().play();
     this.curAction = next;
   }
-  update(dt) {
-    if (this.mixer) this.mixer.update(dt);
-  }
+  update(dt) { if (this.mixer) this.mixer.update(dt); }
 }
-
 const character = new GameCharacter(scene);
-await character.load();
 
 // ===== Plant system =====
 const plantRoot = new THREE.Group();
-plantRoot.scale.setScalar(0.12);
 scene.add(plantRoot);
 const plantParts = [];
+const PLANT_SCALE = 0.06;
 
 function addPlantPart(part, grow=true) {
   const mesh = buildPlantPartMesh(part);
   mesh.userData.partId = part.id;
   mesh.userData.entryText = part.textInput;
-  if (grow) {
-    mesh.userData.grow = 0;
-    mesh.scale.setScalar(0.01);
-  }
+  mesh.position.set(part.worldX||0, part.worldY||0, part.worldZ||0);
+  if (grow) { mesh.userData.grow = 0; mesh.scale.setScalar(0.001); }
+  else mesh.scale.setScalar(PLANT_SCALE);
   plantRoot.add(mesh);
-  plantParts.push({ data: part, mesh });
+  plantParts.push({ data:part, mesh });
 }
 
 async function loadSavedPlants() {
   const entries = await loadEntries();
-  let startX=0, startY=0, startZ=0;
-  for (const entry of entries) {
-    const part = entry.part;
-    if (!part) continue;
-    part.startX = startX; part.startY = startY; part.startZ = startZ;
-    addPlantPart(part, false);
-    startX += part.endPoint.x; startY += part.endPoint.y; startZ += part.endPoint.z;
-  }
+  const spacing = 1.8;
+  entries.forEach((entry, i) => {
+    if (!entry.part) return;
+    const col = (i % 5) - 2;
+    const row = Math.floor(i / 5);
+    entry.part.worldX = col * spacing;
+    entry.part.worldY = 0;
+    entry.part.worldZ = 4 + row * spacing;
+    addPlantPart(entry.part, false);
+  });
 }
-await loadSavedPlants();
 
-// ===== Light burst =====
+// ===== Light effects =====
 class LightBurst {
   constructor(scene) {
     this.points = [];
@@ -520,22 +696,21 @@ class LightBurst {
   }
   burst(pos) {
     this.points = [];
-    for (let i=0;i<200;i++) {
+    for (let i = 0; i < 200; i++) {
       const v = new THREE.Vector3((Math.random()-0.5)*1.2, Math.random()*1.2, (Math.random()-0.5)*1.2);
-      this.points.push({ pos: pos.clone(), vel: v, life: 1 + Math.random()*0.6 });
+      this.points.push({ pos:pos.clone(), vel:v, life:1+Math.random()*0.6 });
     }
   }
   update(dt) {
     const verts = [];
     for (const p of this.points) {
-      p.life -= dt;
-      if (p.life <= 0) continue;
+      p.life -= dt; if (p.life <= 0) continue;
       p.vel.y -= dt*0.8;
       p.pos.add(p.vel.clone().multiplyScalar(dt));
       verts.push(p.pos.x, p.pos.y, p.pos.z);
     }
-    this.points = this.points.filter(p=>p.life>0);
-    this.geo.setAttribute('position', new THREE.Float32BufferAttribute(verts,3));
+    this.points = this.points.filter(p => p.life > 0);
+    this.geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
     this.geo.computeBoundingSphere();
     this.mat.opacity = this.points.length ? 0.9 : 0;
   }
@@ -544,66 +719,77 @@ const lightBurst = new LightBurst(scene);
 let lightRing = null;
 function spawnLightRing(pos) {
   if (lightRing) scene.remove(lightRing);
-  const geo = new THREE.TorusGeometry(0.6, 0.05, 16, 48);
-  const mat = new THREE.MeshStandardMaterial({ color:0xffe55a, emissive:0xffe55a, emissiveIntensity:1.5, transparent:true, opacity:0.8 });
-  lightRing = new THREE.Mesh(geo, mat);
-  lightRing.position.copy(pos);
-  lightRing.rotation.x = Math.PI/2;
-  lightRing.userData.grow = 0;
+  lightRing = new THREE.Mesh(
+    new THREE.TorusGeometry(0.6, 0.05, 16, 48),
+    new THREE.MeshStandardMaterial({ color:0xffe55a, emissive:0xffe55a, emissiveIntensity:1.5, transparent:true, opacity:0.8 })
+  );
+  lightRing.position.copy(pos); lightRing.rotation.x = Math.PI/2; lightRing.userData.grow = 0;
   scene.add(lightRing);
 }
 
-// ===== Camera controls =====
-let orbitYaw = 0;
-let orbitPitch = 0.25;
-let orbitRadius = 6;
-let orbitTarget = new THREE.Vector3(0, rooftopY, 0);
-let userInteracting = false;
-let interactionTimer = 0;
-
+// ===== Camera =====
+let orbitYaw = 0, orbitPitch = 0.25, orbitRadius = 6;
+let orbitTarget = new THREE.Vector3(0, 4, 0);
+let userInteracting = false, interactionTimer = 0;
 const pointers = new Map();
 let dragStart = { x:0, y:0, yaw:0, pitch:0 };
-let pinchStartDist = 0;
-let pinchStartRadius = 6;
+let pinchStartDist = 0, pinchStartRadius = 6;
+function pDist(a,b) { return Math.hypot(a.x-b.x, a.y-b.y); }
 
-function dist(a,b){ return Math.hypot(a.x-b.x,a.y-b.y); }
+// Walk input
+let walkTouchId = -1, walkTouchStart = {x:0,y:0}, walkDelta = {x:0,y:0};
+const keys = {};
+window.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; if (e.key === ' ') e.preventDefault(); });
+window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
 
-renderer.domElement.addEventListener('pointerdown', e=>{
+renderer.domElement.addEventListener('pointerdown', e => {
+  if (phase === 'WALK') {
+    walkTouchId = e.pointerId;
+    walkTouchStart = { x:e.clientX, y:e.clientY };
+    walkDelta = { x:0, y:0 };
+    renderer.domElement.setPointerCapture(e.pointerId);
+    return;
+  }
   pointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
   renderer.domElement.setPointerCapture(e.pointerId);
-  userInteracting = true;
-  interactionTimer = 0;
-  if (pointers.size===1) {
-    dragStart = { x:e.clientX, y:e.clientY, yaw:orbitYaw, pitch:orbitPitch };
-  } else if (pointers.size===2) {
-    const pts=[...pointers.values()];
-    pinchStartDist = dist(pts[0], pts[1]);
-    pinchStartRadius = orbitRadius;
+  userInteracting = true; interactionTimer = 0;
+  if (pointers.size === 1) dragStart = { x:e.clientX, y:e.clientY, yaw:orbitYaw, pitch:orbitPitch };
+  else if (pointers.size === 2) {
+    const pts = [...pointers.values()];
+    pinchStartDist = pDist(pts[0], pts[1]); pinchStartRadius = orbitRadius;
   }
 });
-renderer.domElement.addEventListener('pointermove', e=>{
+renderer.domElement.addEventListener('pointermove', e => {
+  if (phase === 'WALK' && e.pointerId === walkTouchId) {
+    walkDelta.x = clamp((e.clientX - walkTouchStart.x)/60, -1, 1);
+    walkDelta.y = clamp((e.clientY - walkTouchStart.y)/60, -1, 1);
+    return;
+  }
   if (!pointers.has(e.pointerId)) return;
   pointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
-  userInteracting = true;
-  interactionTimer = 0;
-  if (pointers.size===1) {
-    const dx = e.clientX - dragStart.x;
-    const dy = e.clientY - dragStart.y;
-    orbitYaw = dragStart.yaw + dx/W()*2.2;
-    orbitPitch = clamp(dragStart.pitch + dy/H()*1.4, -0.2, 1.2);
-  } else if (pointers.size>=2) {
-    const pts=[...pointers.values()];
-    const d = dist(pts[0], pts[1]);
-    if (pinchStartDist>0) orbitRadius = clamp(pinchStartRadius * (pinchStartDist / d), 3.5, 12);
+  userInteracting = true; interactionTimer = 0;
+  if (pointers.size === 1) {
+    orbitYaw = dragStart.yaw + (e.clientX - dragStart.x)/W()*2.2;
+    orbitPitch = clamp(dragStart.pitch + (e.clientY - dragStart.y)/H()*1.4, -0.2, 1.2);
+  } else if (pointers.size >= 2) {
+    const pts = [...pointers.values()];
+    const d = pDist(pts[0], pts[1]);
+    if (pinchStartDist > 0) orbitRadius = clamp(pinchStartRadius*(pinchStartDist/d), 3.5, 12);
   }
 });
-renderer.domElement.addEventListener('pointerup', e=>{ pointers.delete(e.pointerId); });
-renderer.domElement.addEventListener('pointercancel', e=>{ pointers.delete(e.pointerId); });
+renderer.domElement.addEventListener('pointerup', e => {
+  if (e.pointerId === walkTouchId) { walkTouchId = -1; walkDelta = {x:0,y:0}; }
+  pointers.delete(e.pointerId);
+});
+renderer.domElement.addEventListener('pointercancel', e => {
+  if (e.pointerId === walkTouchId) { walkTouchId = -1; walkDelta = {x:0,y:0}; }
+  pointers.delete(e.pointerId);
+});
 
 function updateCamera() {
-  const cx = orbitTarget.x + orbitRadius * Math.cos(orbitPitch) * Math.sin(orbitYaw);
-  const cz = orbitTarget.z + orbitRadius * Math.cos(orbitPitch) * Math.cos(orbitYaw);
-  const cy = orbitTarget.y + orbitRadius * Math.sin(orbitPitch);
+  const cx = orbitTarget.x + orbitRadius*Math.cos(orbitPitch)*Math.sin(orbitYaw);
+  const cz = orbitTarget.z + orbitRadius*Math.cos(orbitPitch)*Math.cos(orbitYaw);
+  const cy = orbitTarget.y + orbitRadius*Math.sin(orbitPitch);
   camera.position.set(cx, cy, cz);
   camera.lookAt(orbitTarget);
 }
@@ -613,64 +799,89 @@ const uiPanel = document.getElementById('ui-panel');
 const leaveBtn = document.getElementById('leave-btn');
 const textInput = document.getElementById('text-input');
 const popup = document.getElementById('text-popup');
+const jumpBtn = document.getElementById('jump-btn');
+const walkHint = document.getElementById('walk-hint');
+const fadeOverlay = document.getElementById('fade-overlay');
 
-let phase = 'INTRO';
+let phase = 'LOADING';
 let timer = 0;
 let pendingText = '';
-let fallVel = 0;
 let pendingEntryId = null;
+let jumpVel = new THREE.Vector3();
 
 function worldToScreen(p) {
   const v = p.clone().project(camera);
-  return { x: (v.x*0.5+0.5)*W(), y: (-v.y*0.5+0.5)*H() };
+  return { x:(v.x*0.5+0.5)*W(), y:(-v.y*0.5+0.5)*H() };
 }
 
 function startLeave() {
   const text = textInput.value.trim();
   if (!text) return;
-  pendingText = text;
-  textInput.value = '';
+  pendingText = text; textInput.value = '';
   createEntry(pendingText).then(id => { pendingEntryId = id; });
-  // animate UI into hand
   const handPos = character.root.position.clone().add(new THREE.Vector3(0, character.charHeight*0.7, 0));
-  const screen = worldToScreen(handPos);
-  const dx = screen.x - W()/2;
-  const dy = screen.y - H()/2;
-  uiPanel.style.setProperty('--to-x', `${dx}px`);
-  uiPanel.style.setProperty('--to-y', `${dy}px`);
+  const scr = worldToScreen(handPos);
+  uiPanel.style.setProperty('--to-x', `${scr.x-W()/2}px`);
+  uiPanel.style.setProperty('--to-y', `${scr.y-H()/2}px`);
   uiPanel.classList.add('leaving');
-  phase = 'UI_SHRINK';
-  timer = 0;
+  phase = 'UI_SHRINK'; timer = 0;
 }
 leaveBtn.addEventListener('click', startLeave);
+textInput.addEventListener('input', () => { leaveBtn.disabled = !textInput.value.trim(); });
 
-// Plant text popup
+function startJump() {
+  if (phase !== 'WALK') return;
+  phase = 'FALLING'; timer = 0;
+  character.setState(character.anims['JUMP'] ? 'JUMP' : 'IDLE');
+  jumpBtn.style.display = 'none'; walkHint.style.display = 'none';
+  const facing = new THREE.Vector3(Math.sin(character.root.rotation.y), 0, Math.cos(character.root.rotation.y));
+  jumpVel.copy(facing).multiplyScalar(3); jumpVel.y = 4;
+}
+jumpBtn.addEventListener('click', e => { e.stopPropagation(); startJump(); });
+jumpBtn.addEventListener('pointerdown', e => e.stopPropagation());
+
+// Plant raycasting
 const raycaster = new THREE.Raycaster();
-renderer.domElement.addEventListener('pointerdown', e=>{
+renderer.domElement.addEventListener('pointerdown', e => {
+  if (phase !== 'PLANT_VIEW' && phase !== 'INTRO') return;
   if (!plantRoot.children.length) return;
   const rect = renderer.domElement.getBoundingClientRect();
-  const nx = ((e.clientX - rect.left)/rect.width)*2-1;
-  const ny = -((e.clientY - rect.top)/rect.height)*2+1;
-  raycaster.setFromCamera({x:nx,y:ny}, camera);
+  raycaster.setFromCamera({
+    x:((e.clientX-rect.left)/rect.width)*2-1,
+    y:-((e.clientY-rect.top)/rect.height)*2+1
+  }, camera);
   const hits = raycaster.intersectObjects(plantRoot.children, true);
   if (hits.length) {
     let obj = hits[0].object;
     while (obj && !obj.userData.entryText) obj = obj.parent;
-    if (obj && obj.userData.entryText) {
+    if (obj?.userData.entryText) {
       popup.textContent = obj.userData.entryText;
       popup.classList.add('show');
-      setTimeout(()=>popup.classList.remove('show'), 4000);
+      setTimeout(() => popup.classList.remove('show'), 4000);
     }
   }
 });
 
-// Initialize positions
-character.root.position.set(0, rooftopY, 0);
-orbitTarget = character.root.position.clone();
+// ===== Init =====
+async function init() {
+  try {
+    await Promise.all([buildingPromise, character.load()]);
+  } catch (err) { console.error('Asset load error:', err); }
 
-// Load done
-document.getElementById('loading').style.display = 'none';
+  await loadSavedPlants();
 
+  character.root.position.set(0, rooftopY, 0);
+  orbitTarget.copy(character.root.position);
+
+  loadingDiv.style.display = 'none';
+  phase = 'INTRO';
+  uiPanel.classList.remove('hidden');
+  uiPanel.classList.remove('leaving');
+
+  tick();
+}
+
+// ===== Game loop =====
 const clock = new THREE.Clock();
 function tick() {
   requestAnimationFrame(tick);
@@ -679,95 +890,134 @@ function tick() {
   interactionTimer += dt;
   if (interactionTimer > 1.2) userInteracting = false;
 
-  // update camera target and default framing
+  // Camera per phase
   if (phase === 'INTRO' || phase === 'UI_SHRINK' || phase === 'DRINK') {
     orbitTarget.copy(character.root.position).add(new THREE.Vector3(0, 0.05, 0));
-    if (!userInteracting) {
-      orbitPitch += (0.25 - orbitPitch) * 0.05;
-      orbitRadius += (6 - orbitRadius) * 0.05;
+    if (!userInteracting) { orbitPitch += (0.25-orbitPitch)*0.05; orbitRadius += (6-orbitRadius)*0.05; }
+  } else if (phase === 'WALK') {
+    orbitTarget.copy(character.root.position).add(new THREE.Vector3(0, 0.04, 0));
+    if (!userInteracting) { orbitPitch += (0.2-orbitPitch)*0.03; orbitRadius += (5-orbitRadius)*0.03; }
+  } else if (phase === 'FALLING') {
+    orbitTarget.copy(character.root.position);
+    if (!userInteracting) { orbitPitch += (-0.1-orbitPitch)*0.05; orbitRadius += (7-orbitRadius)*0.05; }
+  } else if (phase === 'IMPACT') {
+    orbitTarget.lerp(character.root.position.clone().add(new THREE.Vector3(0,0.5,0)), 0.05);
+    if (!userInteracting) { orbitPitch += (0.15-orbitPitch)*0.05; orbitRadius += (5-orbitRadius)*0.05; }
+  } else if (phase === 'PLANT_VIEW') {
+    if (plantParts.length) {
+      const lp = plantParts[plantParts.length-1].mesh;
+      orbitTarget.lerp(lp.position.clone().add(new THREE.Vector3(0,0.5,0)), 0.03);
     }
-  } else if (phase === 'JUMP' || phase === 'IMPACT') {
-    orbitTarget.set(0, 1.0, 0);
-    if (!userInteracting) {
-      orbitPitch += (-0.15 - orbitPitch) * 0.05;
-      orbitRadius += (7.5 - orbitRadius) * 0.05;
-    }
-  } else {
-    orbitTarget.set(0, 0.6, 0);
-    if (!userInteracting) {
-      orbitPitch += (0.1 - orbitPitch) * 0.05;
-      orbitRadius += (6.5 - orbitRadius) * 0.05;
-    }
+    if (!userInteracting) { orbitPitch += (0.2-orbitPitch)*0.03; orbitRadius += (4-orbitRadius)*0.03; orbitYaw += dt*0.15; }
   }
 
-  // state machine
+  // State machine
   if (phase === 'UI_SHRINK' && timer > 0.6) {
     uiPanel.classList.add('hidden');
-    phase = 'DRINK';
-    timer = 0;
+    phase = 'DRINK'; timer = 0;
     character.setState(character.anims['DRINK'] ? 'DRINK' : 'IDLE');
   }
+
   if (phase === 'DRINK' && timer > (character.drinkDuration||1)) {
-    phase = 'JUMP';
-    timer = 0;
-    character.setState(character.anims['JUMP'] ? 'JUMP' : 'IDLE');
-    fallVel = 0.8;
+    phase = 'WALK'; timer = 0;
+    character.setState('IDLE');
+    jumpBtn.style.display = 'block';
+    walkHint.style.display = 'block';
+    setTimeout(() => { walkHint.style.display = 'none'; }, 3000);
   }
-  if (phase === 'JUMP') {
-    fallVel -= 1.2 * dt;
-    character.root.position.y += fallVel * dt;
-    if (character.root.position.y <= 0.05) {
-      character.root.position.y = 0.05;
-      phase = 'IMPACT';
-      timer = 0;
-      // light burst
-      const impactPos = new THREE.Vector3(0, 0.05, 0);
-      lightBurst.burst(impactPos);
-      spawnLightRing(impactPos.clone().add(new THREE.Vector3(0,0.1,0)));
-      // generate new plant
+
+  if (phase === 'WALK') {
+    let dx = 0, dz = 0;
+    if (keys['w'] || keys['arrowup']) dz -= 1;
+    if (keys['s'] || keys['arrowdown']) dz += 1;
+    if (keys['a'] || keys['arrowleft']) dx -= 1;
+    if (keys['d'] || keys['arrowright']) dx += 1;
+    if (keys[' ']) startJump();
+    dx += walkDelta.x; dz += walkDelta.y;
+
+    if (Math.abs(dx) > 0.05 || Math.abs(dz) > 0.05) {
+      const forward = new THREE.Vector3();
+      camera.getWorldDirection(forward); forward.y = 0; forward.normalize();
+      const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0,1,0));
+      const move = forward.clone().multiplyScalar(-dz).add(right.clone().multiplyScalar(dx));
+      if (move.lengthSq() > 0.001) {
+        move.normalize();
+        const speed = 1.5;
+        character.root.position.x += move.x*speed*dt;
+        character.root.position.z += move.z*speed*dt;
+        character.root.position.x = clamp(character.root.position.x, rooftopBounds.minX, rooftopBounds.maxX);
+        character.root.position.z = clamp(character.root.position.z, rooftopBounds.minZ, rooftopBounds.maxZ);
+        character.root.rotation.y = Math.atan2(move.x, move.z);
+      }
+    }
+    // Pulse jump button near edge
+    const atEdge =
+      Math.abs(character.root.position.x-rooftopBounds.minX)<0.3 ||
+      Math.abs(character.root.position.x-rooftopBounds.maxX)<0.3 ||
+      Math.abs(character.root.position.z-rooftopBounds.minZ)<0.3 ||
+      Math.abs(character.root.position.z-rooftopBounds.maxZ)<0.3;
+    jumpBtn.classList.toggle('pulse', atEdge);
+  }
+
+  if (phase === 'FALLING') {
+    jumpVel.y -= 12*dt;
+    character.root.position.add(jumpVel.clone().multiplyScalar(dt));
+    if (character.root.position.y <= 0.02) {
+      character.root.position.y = 0.02;
+      phase = 'IMPACT'; timer = 0;
+      lightBurst.burst(character.root.position.clone());
+      spawnLightRing(character.root.position.clone().add(new THREE.Vector3(0,0.05,0)));
+      // Generate plant at landing
+      const lp = character.root.position.clone();
       const dna = generateDNAFromText(pendingText);
       const gen = generateProceduralPlant(dna);
-      let startX=0, startY=0, startZ=0;
-      if (plantParts.length) {
-        const last = plantParts[plantParts.length-1].data;
-        startX = last.startX + last.endPoint.x;
-        startY = last.startY + last.endPoint.y;
-        startZ = last.startZ + last.endPoint.z;
-      }
       const part = {
-        id: Date.now().toString(),
-        textInput: pendingText,
-        stems: gen.stems,
-        fruits: gen.fruits,
-        leaves: gen.leaves,
-        stemColor: dna.stemColor,
-        startX, startY, startZ,
-        endPoint: gen.endPoint
+        id: Date.now().toString(), textInput: pendingText,
+        stems:gen.stems, fruits:gen.fruits, leaves:gen.leaves, stemColor:dna.stemColor,
+        startX:0, startY:0, startZ:0, endPoint:gen.endPoint,
+        worldX:lp.x, worldY:0, worldZ:lp.z
       };
       addPlantPart(part, true);
       if (!pendingEntryId) pendingEntryId = Date.now().toString();
       finalizeEntry(pendingEntryId, part, pendingText);
     }
   }
+
   if (phase === 'IMPACT') {
     if (lightRing) {
       lightRing.userData.grow += dt;
       const g = clamp(lightRing.userData.grow/2, 0, 1);
-      lightRing.scale.setScalar(0.3 + g*1.4);
-      lightRing.position.y = 0.1 + g*0.8;
-      lightRing.material.opacity = 0.8 - g*0.5;
-      if (g >= 1) {
-        phase = 'PLANT_VIEW';
-      }
+      lightRing.scale.setScalar(0.3+g*1.4);
+      lightRing.position.y = 0.1+g*0.8;
+      lightRing.material.opacity = 0.8-g*0.5;
+      if (g >= 1) { phase = 'PLANT_VIEW'; timer = 0; }
     }
   }
 
-  // grow new plant part
+  if (phase === 'PLANT_VIEW' && timer > 4) {
+    fadeOverlay.style.opacity = '1';
+    phase = 'RESET'; timer = 0;
+  }
+
+  if (phase === 'RESET' && timer > 0.8) {
+    character.root.position.set(0, rooftopY, 0);
+    character.root.rotation.y = 0;
+    character.setState('IDLE');
+    orbitTarget.copy(character.root.position);
+    orbitYaw = 0; orbitPitch = 0.25; orbitRadius = 6;
+    uiPanel.classList.remove('hidden');
+    uiPanel.classList.remove('leaving');
+    leaveBtn.disabled = true;
+    fadeOverlay.style.opacity = '0';
+    phase = 'INTRO'; timer = 0;
+    pendingText = ''; pendingEntryId = null;
+  }
+
+  // Grow plants
   for (const p of plantParts) {
     if (p.mesh.userData.grow !== undefined) {
-      p.mesh.userData.grow = Math.min(1, p.mesh.userData.grow + dt*0.6);
-      const s = 0.01 + p.mesh.userData.grow * 0.99;
-      p.mesh.scale.setScalar(s);
+      p.mesh.userData.grow = Math.min(1, p.mesh.userData.grow + dt*0.5);
+      p.mesh.scale.setScalar(0.001 + p.mesh.userData.grow*(PLANT_SCALE-0.001));
       if (p.mesh.userData.grow >= 1) delete p.mesh.userData.grow;
     }
   }
@@ -782,28 +1032,13 @@ function tick() {
   renderer.render(scene, camera);
 }
 
-window.addEventListener('resize', ()=>{
-  renderer.setSize(W(),H());
-  camera.aspect=W()/H();
+window.addEventListener('resize', () => {
+  renderer.setSize(W(), H());
+  camera.aspect = W()/H();
   camera.updateProjectionMatrix();
 });
 
-// Move character to rooftop when building loads
-const checkReady = setInterval(()=>{
-  if (building && character.loaded) {
-    character.root.position.set(0, rooftopY, 0);
-    orbitTarget.copy(character.root.position);
-    clearInterval(checkReady);
-  }
-}, 200);
-
-// leave button enable
-textInput.addEventListener('input', ()=>{
-  leaveBtn.disabled = !textInput.value.trim();
-});
-leaveBtn.disabled = true;
-
-tick();
+init();
 </script>
 </body>
 </html>
