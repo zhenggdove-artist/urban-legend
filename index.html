@@ -7,960 +7,389 @@
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
     html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:"Courier New",monospace}
-    #canvas3d{position:absolute;inset:0;width:100%;height:100%;z-index:2;pointer-events:auto;touch-action:none}
-
-    #ui-panel{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-      width:min(80vw,520px);background:rgba(0,0,0,0.45);border:1px solid rgba(0,255,180,0.25);
-      padding:24px;z-index:10;color:#dff;backdrop-filter:blur(6px);transition:opacity 0.4s ease;}
-    #ui-panel.hidden{opacity:0;pointer-events:none}
-    #ui-panel h2{font-size:14px;letter-spacing:6px;color:#9ff;margin-bottom:10px}
-    #ui-panel textarea{width:100%;height:100px;background:rgba(0,0,0,0.6);border:1px solid rgba(0,255,180,0.25);
+    #c{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+    #ui{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+      width:min(80vw,520px);background:rgba(0,0,0,0.5);border:1px solid rgba(0,255,180,0.25);
+      padding:24px;z-index:10;color:#dff;backdrop-filter:blur(6px);transition:opacity 0.4s}
+    #ui.hidden{opacity:0;pointer-events:none}
+    #ui h2{font-size:14px;letter-spacing:6px;color:#9ff;margin-bottom:10px}
+    #ui textarea{width:100%;height:90px;background:rgba(0,0,0,0.6);border:1px solid rgba(0,255,180,0.25);
       color:#e8ffff;padding:12px;font-size:14px;resize:none;outline:none}
-    #submit-btn{margin-top:14px;width:100%;height:44px;background:rgba(0,255,180,0.12);
+    #go{margin-top:14px;width:100%;height:44px;background:rgba(0,255,180,0.12);
       border:1px solid rgba(0,255,180,0.4);color:#bff;text-transform:uppercase;letter-spacing:6px;cursor:pointer;font-family:inherit}
-    #submit-btn:disabled{opacity:0.4;cursor:not-allowed}
-
-    #text-popup{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);
+    #go:disabled{opacity:0.4;cursor:not-allowed}
+    #pop{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);
       max-width:min(90vw,600px);background:rgba(0,0,0,0.7);color:#e8ffff;border:1px solid rgba(0,255,180,0.3);
       padding:12px 16px;z-index:12;display:none;font-size:13px;letter-spacing:1px}
-    #text-popup.show{display:block}
-
-    #write-btn{display:none;position:absolute;bottom:30px;right:20px;
+    #pop.show{display:block}
+    #wb{display:none;position:absolute;bottom:30px;right:20px;
       background:rgba(0,255,180,0.12);border:1px solid rgba(0,255,180,0.4);color:#bff;padding:10px 20px;
       text-transform:uppercase;letter-spacing:4px;cursor:pointer;z-index:14;font-family:inherit;font-size:11px}
   </style>
 </head>
 <body>
-  <div id="ui-panel">
+  <canvas id="c"></canvas>
+  <div id="ui">
     <h2>WRITE</h2>
-    <textarea id="text-input" placeholder="留下你的話..."></textarea>
-    <button id="submit-btn" disabled>PLANT</button>
+    <textarea id="ta" placeholder="留下你的話..."></textarea>
+    <button id="go" disabled>PLANT</button>
   </div>
-
-  <div id="text-popup"></div>
-  <button id="write-btn">WRITE</button>
+  <div id="pop"></div>
+  <button id="wb">WRITE</button>
 
 <script type="module">
 import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
 
-const W = () => window.innerWidth;
-const H = () => window.innerHeight;
-const clamp = (v,lo,hi) => Math.max(lo, Math.min(hi, v));
+// ===== Globals =====
+const W = () => window.innerWidth, H = () => window.innerHeight;
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const neon = ['#ff00ff','#ff3388','#ffaa00','#00ff88','#00ddff','#ff4466','#88ff00','#ff00aa','#44ffcc','#ffdd00'];
 
 // ===== Persistence =====
-const apiParam = new URLSearchParams(location.search).get('api');
-if (apiParam) localStorage.setItem('PLANT_API_URL', apiParam.replace(/\/$/,''));
-const API_BASE = localStorage.getItem('PLANT_API_URL') || '';
-const STORAGE_KEY = 'urban_legend_plants_v1';
+const STORAGE_KEY = 'urban_legend_plants_v2';
+const apiP = new URLSearchParams(location.search).get('api');
+if (apiP) localStorage.setItem('PLANT_API', apiP.replace(/\/$/,''));
+const API = localStorage.getItem('PLANT_API') || '';
 
 async function loadEntries() {
-  if (API_BASE) {
-    try { const res = await fetch(API_BASE + '/api/entries'); if (res.ok) return await res.json(); } catch {}
-  }
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch { return []; }
+  if (API) { try { const r = await fetch(API+'/api/entries'); if (r.ok) return await r.json(); } catch{} }
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]'); } catch { return []; }
 }
-async function saveEntry(text, part) {
-  const id = Date.now().toString();
-  if (API_BASE) {
-    try {
-      const res = await fetch(API_BASE + '/api/entries', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ text }) });
-      if (res.ok) { const d = await res.json(); if (d.id) { await fetch(API_BASE+`/api/entries/${d.id}`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ part, text }) }); return; } }
-    } catch {}
-  }
-  const list = await loadEntries();
-  list.push({ id, text, part, createdAt: new Date().toISOString() });
+function saveEntry(text) {
+  const list = JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');
+  list.push({ text, id: Date.now(), t: new Date().toISOString() });
   localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+  if (API) fetch(API+'/api/entries',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})}).catch(()=>{});
 }
 
-// ===== Text -> deterministic random =====
-function hashString(str) {
-  let h = 2166136261;
-  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h += (h<<1)+(h<<4)+(h<<7)+(h<<8)+(h<<24); }
-  return h >>> 0;
-}
-function seededRandom(seed) {
-  let s = seed >>> 0;
-  return () => { s = (s * 1664525 + 1013904223) >>> 0; return (s & 0xffffffff) / 0x100000000; };
-}
+// ===== Seeded random =====
+function hash(s) { let h=2166136261; for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h+=(h<<1)+(h<<4)+(h<<7)+(h<<8)+(h<<24)} return h>>>0; }
+function srand(seed) { let s=seed>>>0; return()=>{s=(s*1664525+1013904223)>>>0;return s/0x100000000}; }
 
-// ===== Neon palette =====
-const neonColors = ['#ff00ff','#ff3388','#ffaa00','#00ff88','#00ddff','#ff4466','#88ff00','#ff00aa','#44ffcc','#ffdd00'];
-
-// ===== Ring helper: create ring of N points perpendicular to tangent =====
-function makeRing(center, tangent, radius, n) {
-  const pts = [];
-  let up = new THREE.Vector3(0, 1, 0);
-  if (Math.abs(tangent.dot(up)) > 0.95) up.set(1, 0, 0);
-  const p1 = new THREE.Vector3().crossVectors(tangent, up).normalize();
-  const p2 = new THREE.Vector3().crossVectors(tangent, p1).normalize();
-  for (let i = 0; i < n; i++) {
-    const a = (i / n) * Math.PI * 2;
-    pts.push(new THREE.Vector3(
-      center.x + (Math.cos(a) * p1.x + Math.sin(a) * p2.x) * radius,
-      center.y + (Math.cos(a) * p1.y + Math.sin(a) * p2.y) * radius,
-      center.z + (Math.cos(a) * p1.z + Math.sin(a) * p2.z) * radius
-    ));
+// ===== Ring helper =====
+function addRing(arr, col, cx, cy, cz, tx, ty, tz, radius, n) {
+  let ux, uy, uz, vx, vy, vz;
+  // Build perpendicular basis from tangent (tx,ty,tz)
+  if (Math.abs(ty) < 0.9) {
+    // cross(tangent, up)
+    ux = tz; uy = 0; uz = -tx;
+  } else {
+    ux = 0; uy = -tz; uz = ty;
   }
-  return pts;
+  const ulen = Math.sqrt(ux*ux+uy*uy+uz*uz) || 1;
+  ux/=ulen; uy/=ulen; uz/=ulen;
+  // v = cross(tangent, u)
+  vx = ty*uz-tz*uy; vy = tz*ux-tx*uz; vz = tx*uy-ty*ux;
+  for (let i = 0; i < n; i++) {
+    const a = (i/n)*Math.PI*2;
+    const ca = Math.cos(a), sa = Math.sin(a);
+    arr.push(cx+(ca*ux+sa*vx)*radius, cy+(ca*uy+sa*vy)*radius, cz+(ca*uz+sa*vz)*radius);
+    col.push(col._r, col._g, col._b);
+  }
 }
 
-// ===== Procedural plant structure generation =====
+// Simpler addRing that works with color arrays directly
+function pushRing(pts, cols, cx, cy, cz, tx, ty, tz, radius, n, cr, cg, cb) {
+  let ux, uy, uz;
+  if (Math.abs(ty) < 0.9) { ux=tz; uy=0; uz=-tx; }
+  else { ux=0; uy=-tz; uz=ty; }
+  const ulen = Math.sqrt(ux*ux+uy*uy+uz*uz)||1;
+  ux/=ulen; uy/=ulen; uz/=ulen;
+  const vx=ty*uz-tz*uy, vy=tz*ux-tx*uz, vz=tx*uy-ty*ux;
+  for (let i=0; i<n; i++) {
+    const a=(i/n)*Math.PI*2, ca=Math.cos(a), sa=Math.sin(a);
+    pts.push(cx+(ca*ux+sa*vx)*radius, cy+(ca*uy+sa*vy)*radius, cz+(ca*uz+sa*vz)*radius);
+    cols.push(cr, cg, cb);
+  }
+}
+
+// ===== Generate plant structure =====
 function generatePlant(text) {
-  const seed = hashString(text);
-  const r = seededRandom(seed);
-  const pick = arr => arr[Math.floor(r() * arr.length)];
+  const seed = hash(text);
+  const r = srand(seed);
 
-  const complexity = 3 + Math.floor(r() * 7);
-  // Main stem direction: mostly upward
-  const dir = new THREE.Vector3((r()-0.5)*0.6, 0.7 + r()*0.3, (r()-0.5)*0.6).normalize();
-  const length = 6 + complexity * 0.8;
-  const style = pick(['straight','twining','erratic','drooping']);
+  // Plant style
+  const height = 4 + r()*6;
+  const nBranches = 2 + Math.floor(r()*5);
+  const curviness = 0.3 + r()*1.5;
+  const branchSpread = 0.3 + r()*0.7;
 
-  const stems = [], fruitPositions = [], leafPositions = [], leafDirs = [];
-  const startPt = new THREE.Vector3(0, 0, 0);
-
-  // Generate curve with control points
-  const genCurve = (start, direction, len, waviness, segs) => {
-    const pts = [start.clone()];
-    let cur = start.clone();
-    const step = len / segs;
-    let perp1 = new THREE.Vector3().crossVectors(new THREE.Vector3(1,0,0), direction);
-    if (perp1.lengthSq() < 0.01) perp1.crossVectors(new THREE.Vector3(0,0,1), direction);
-    perp1.normalize();
-    const perp2 = new THREE.Vector3().crossVectors(direction, perp1).normalize();
-    for (let i = 1; i <= segs; i++) {
-      const t = i / segs;
-      cur = cur.clone().add(direction.clone().multiplyScalar(step));
-      if (style === 'twining') {
-        const a = t * Math.PI * 8, rad = waviness;
-        cur.add(perp1.clone().multiplyScalar(Math.cos(a)*rad)).add(perp2.clone().multiplyScalar(Math.sin(a)*rad));
-      } else if (style === 'erratic') {
-        cur.add(perp1.clone().multiplyScalar((r()-0.5)*waviness*3)).add(perp2.clone().multiplyScalar((r()-0.5)*waviness*3));
-      } else if (style === 'drooping') {
-        cur.y -= t * t * len * 0.3;
-        cur.add(perp1.clone().multiplyScalar(Math.sin(t*Math.PI*2)*waviness*0.5));
-      } else {
-        cur.add(perp1.clone().multiplyScalar(Math.sin(t*Math.PI*3)*waviness*0.5));
-      }
-      pts.push(cur.clone());
-    }
-    return pts;
-  };
-
-  // Main stem
-  const mainPts = genCurve(startPt, dir, length, 1.5, 24);
-  stems.push({ pts: mainPts, baseRadius: 0.25 + r()*0.15, tipRadius: 0.06 });
-
-  // Roots at base
-  const nRoots = 2 + Math.floor(r() * 3);
-  for (let i = 0; i < nRoots; i++) {
-    const rootDir = new THREE.Vector3((r()-0.5)*2, -0.5 - r()*0.5, (r()-0.5)*2).normalize();
-    const rootPts = genCurve(startPt, rootDir, 2 + r()*3, 0.8, 10);
-    stems.push({ pts: rootPts, baseRadius: 0.15, tipRadius: 0.03 });
+  // Main stem: spine points going upward with some curve
+  const mainSpine = [];
+  const segs = 30;
+  let cx=0, cy=0, cz=0;
+  let dx=(r()-0.5)*0.3, dz=(r()-0.5)*0.3;
+  for (let i=0; i<=segs; i++) {
+    mainSpine.push({x:cx, y:cy, z:cz});
+    const t = i/segs;
+    cy += height/segs;
+    cx += Math.sin(t*Math.PI*3+seed)*curviness*0.15;
+    cz += Math.cos(t*Math.PI*2.5+seed*0.7)*curviness*0.15;
+    cx += dx*0.1; cz += dz*0.1;
   }
 
   // Branches from main stem
-  const nBranch = 2 + Math.floor(complexity * 0.6);
-  for (let i = 0; i < nBranch; i++) {
-    const t = 0.2 + r() * 0.6;
-    const idx = Math.floor(t * (mainPts.length - 1));
-    const bStart = mainPts[idx].clone();
-    const bDir = new THREE.Vector3((r()-0.5)*2, r()*0.5+0.2, (r()-0.5)*2).normalize();
-    const bLen = length * (0.2 + r() * 0.3);
-    const bPts = genCurve(bStart, bDir, bLen, 0.8, 10);
-    stems.push({ pts: bPts, baseRadius: 0.12 + r()*0.08, tipRadius: 0.03 });
+  const branches = [];
+  for (let b=0; b<nBranches; b++) {
+    const startT = 0.2 + r()*0.6;
+    const startIdx = Math.floor(startT*segs);
+    const sp = mainSpine[startIdx];
+    const bLen = (1+r()*3) * branchSpread;
+    const bSegs = 12 + Math.floor(r()*8);
+    const bDir = {x:(r()-0.5)*2, y:0.3+r()*0.7, z:(r()-0.5)*2};
+    const bSpine = [];
+    let bx=sp.x, by=sp.y, bz=sp.z;
+    for (let i=0; i<=bSegs; i++) {
+      bSpine.push({x:bx, y:by, z:bz});
+      const t=i/bSegs;
+      bx += bDir.x*bLen/bSegs + Math.sin(t*Math.PI*4+b)*curviness*0.1;
+      by += bDir.y*bLen/bSegs;
+      bz += bDir.z*bLen/bSegs + Math.cos(t*Math.PI*3+b)*curviness*0.1;
+    }
+    branches.push({spine: bSpine, startT, radius: 0.06+r()*0.06});
 
     // Sub-branches
     if (r() > 0.4) {
-      const subIdx = Math.floor(0.5 * (bPts.length - 1));
-      const subDir = new THREE.Vector3((r()-0.5)*2, r()*0.6, (r()-0.5)*2).normalize();
-      const subPts = genCurve(bPts[subIdx], subDir, bLen * 0.5, 0.5, 6);
-      stems.push({ pts: subPts, baseRadius: 0.06, tipRadius: 0.02 });
-      leafPositions.push(subPts[subPts.length-1].clone());
-      leafDirs.push(subDir.clone());
+      const subIdx = Math.floor(0.4*bSegs + r()*0.4*bSegs);
+      const subSp = bSpine[Math.min(subIdx, bSpine.length-1)];
+      const subLen = bLen*0.4;
+      const subSegs = 6+Math.floor(r()*4);
+      const subSpine = [];
+      let sx=subSp.x, sy=subSp.y, sz=subSp.z;
+      const sd = {x:(r()-0.5)*2, y:0.2+r()*0.5, z:(r()-0.5)*2};
+      for(let i=0;i<=subSegs;i++){
+        subSpine.push({x:sx,y:sy,z:sz});
+        sx+=sd.x*subLen/subSegs; sy+=sd.y*subLen/subSegs; sz+=sd.z*subLen/subSegs;
+      }
+      branches.push({spine:subSpine, startT:startT+0.1, radius:0.03+r()*0.03});
     }
+  }
 
-    // Fruit/flower at branch end
-    fruitPositions.push(bPts[bPts.length - 1].clone());
+  // Roots
+  const roots = [];
+  const nRoots = 2+Math.floor(r()*3);
+  for (let i=0; i<nRoots; i++) {
+    const rLen = 1+r()*2;
+    const rSegs = 8;
+    const rSpine = [];
+    let rx=0, ry=0, rz=0;
+    const rd = {x:(r()-0.5)*2, y:-0.5-r()*0.5, z:(r()-0.5)*2};
+    for(let j=0;j<=rSegs;j++){
+      rSpine.push({x:rx,y:ry,z:rz});
+      rx+=rd.x*rLen/rSegs; ry+=rd.y*rLen/rSegs; rz+=rd.z*rLen/rSegs;
+    }
+    roots.push({spine:rSpine, radius:0.08+r()*0.06});
+  }
+
+  return { mainSpine, branches, roots, seed, height, nBranches };
+}
+
+// ===== Build point cloud — points ordered base-to-tip for progressive growth =====
+function buildPlantCloud(plantData, text) {
+  const pts = [], cols = [];
+  const r = srand(plantData.seed);
+
+  // Pick colors
+  const stemC = new THREE.Color(neon[Math.floor(r()*neon.length)]);
+  const flowerC = new THREE.Color(neon[Math.floor(r()*neon.length)]);
+  const leafC = new THREE.Color(neon[Math.floor(r()*neon.length)]);
+  const fruitC = new THREE.Color(neon[Math.floor(r()*neon.length)]);
+  const flowerType = Math.floor(r()*10);
+  const leafType = Math.floor(r()*10);
+
+  const RING_N = 8;
+
+  // Helper: add spine as tube (rings along spine)
+  function addTube(spine, baseR, tipR, cr, cg, cb) {
+    for (let i=0; i<spine.length; i++) {
+      const t = i/(spine.length-1);
+      const p = spine[i];
+      // Tangent
+      let tx, ty, tz;
+      if (i < spine.length-1) {
+        tx=spine[i+1].x-p.x; ty=spine[i+1].y-p.y; tz=spine[i+1].z-p.z;
+      } else {
+        tx=p.x-spine[i-1].x; ty=p.y-spine[i-1].y; tz=p.z-spine[i-1].z;
+      }
+      const tlen = Math.sqrt(tx*tx+ty*ty+tz*tz)||1;
+      tx/=tlen; ty/=tlen; tz/=tlen;
+      const radius = baseR*(1-t) + tipR*t;
+      pushRing(pts, cols, p.x, p.y, p.z, tx, ty, tz, radius, RING_N, cr, cg, cb);
+      // Center spine point
+      pts.push(p.x, p.y, p.z);
+      cols.push(cr, cg, cb);
+    }
+  }
+
+  // 1. Roots (grow first, underground)
+  for (const root of plantData.roots) {
+    const rc = new THREE.Color(stemC).offsetHSL(0, 0, -0.1);
+    addTube(root.spine, root.radius, 0.02, rc.r, rc.g, rc.b);
+  }
+
+  // 2. Main stem (grows upward)
+  addTube(plantData.mainSpine, 0.18, 0.04, stemC.r, stemC.g, stemC.b);
+
+  // 3. Branches with decorations
+  for (const branch of plantData.branches) {
+    const bc = new THREE.Color(stemC).offsetHSL(r()*0.08-0.04, 0, r()*0.06-0.03);
+    addTube(branch.spine, branch.radius, 0.02, bc.r, bc.g, bc.b);
+
+    // Flower at branch tip
+    const tip = branch.spine[branch.spine.length-1];
+    addFlower(pts, cols, tip.x, tip.y, tip.z, flowerType, 0.5+r()*0.8, flowerC.r, flowerC.g, flowerC.b, r);
+
+    // Fruit overlay
+    addFruit(pts, cols, tip.x, tip.y+0.1, tip.z, Math.floor(r()*10), 0.3+r()*0.3, fruitC.r, fruitC.g, fruitC.b, r);
 
     // Leaves along branch
-    for (let j = 0; j < 2; j++) {
-      const lIdx = Math.floor((0.3 + r()*0.5) * (bPts.length - 1));
-      leafPositions.push(bPts[lIdx].clone());
-      const lDir = new THREE.Vector3((r()-0.5)*2, r()*0.3, (r()-0.5)*2).normalize();
-      leafDirs.push(lDir);
+    const nLeaves = 1+Math.floor(r()*3);
+    for (let li=0; li<nLeaves; li++) {
+      const lIdx = Math.floor((0.2+r()*0.5)*(branch.spine.length-1));
+      const lp = branch.spine[lIdx];
+      addLeaf(pts, cols, lp.x, lp.y, lp.z, leafType, 0.3+r()*0.4, leafC.r, leafC.g, leafC.b, r);
     }
   }
 
-  // Leaves along main stem
-  for (let i = 0; i < complexity; i++) {
-    const idx = Math.floor((0.15 + r()*0.7) * (mainPts.length - 1));
-    leafPositions.push(mainPts[idx].clone());
-    const lDir = new THREE.Vector3((r()-0.5)*2, r()*0.3-0.1, (r()-0.5)*2).normalize();
-    leafDirs.push(lDir);
+  // 4. Top flower on main stem
+  const top = plantData.mainSpine[plantData.mainSpine.length-1];
+  addFlower(pts, cols, top.x, top.y, top.z, flowerType, 0.8+r()*0.6, flowerC.r, flowerC.g, flowerC.b, r);
+
+  // 5. Leaves along main stem
+  const nMainLeaves = 3+Math.floor(r()*4);
+  for (let i=0; i<nMainLeaves; i++) {
+    const idx = Math.floor((0.15+r()*0.6)*(plantData.mainSpine.length-1));
+    const lp = plantData.mainSpine[idx];
+    addLeaf(pts, cols, lp.x, lp.y, lp.z, leafType, 0.4+r()*0.5, leafC.r, leafC.g, leafC.b, r);
   }
 
-  // Top flower
-  fruitPositions.push(mainPts[mainPts.length - 1].clone());
-
-  return { stems, fruitPositions, leafPositions, leafDirs, seed, complexity };
-}
-
-// ===== 10 flower shapes: built from rings, spirals, shells =====
-const flowerShapes = [
-  // 0: Rose — layered spiral petals curving outward
-  (r, s) => {
-    const p = [];
-    for (let layer = 0; layer < 4; layer++) {
-      const nPetals = 5 + layer * 2;
-      const layerR = (0.3 + layer * 0.4) * s;
-      const h = layer * 0.15 * s;
-      for (let pet = 0; pet < nPetals; pet++) {
-        const baseA = (pet / nPetals) * Math.PI * 2 + layer * 0.3;
-        for (let i = 0; i < 15; i++) {
-          const t = i / 15;
-          const curl = t * 0.8;
-          const R = layerR * (0.3 + t * 0.7);
-          const a = baseA + (r() - 0.5) * 0.15;
-          const y = h + Math.sin(t * Math.PI) * 0.3 * s - curl * 0.2 * s;
-          p.push(new THREE.Vector3(Math.cos(a) * R, y, Math.sin(a) * R));
-          // petal width
-          const wa = a + Math.sin(t * Math.PI) * 0.15;
-          p.push(new THREE.Vector3(Math.cos(wa) * R * 1.05, y, Math.sin(wa) * R * 1.05));
-        }
-      }
-    }
-    // center spiral
-    for (let i = 0; i < 40; i++) {
-      const t = i / 40, a = t * Math.PI * 6, R = t * 0.25 * s;
-      p.push(new THREE.Vector3(Math.cos(a) * R, 0.5 * s + t * 0.1 * s, Math.sin(a) * R));
-    }
-    return p;
-  },
-  // 1: Sunflower — fibonacci center disc + radiating petals
-  (r, s) => {
-    const p = [];
-    const golden = Math.PI * (3 - Math.sqrt(5));
-    for (let i = 0; i < 80; i++) {
-      const R = Math.sqrt(i / 80) * 0.4 * s;
-      const a = i * golden;
-      p.push(new THREE.Vector3(Math.cos(a) * R, 0.3 * s, Math.sin(a) * R));
-    }
-    for (let pet = 0; pet < 16; pet++) {
-      const ba = (pet / 16) * Math.PI * 2;
-      for (let i = 0; i < 12; i++) {
-        const t = i / 12;
-        const R = (0.4 + t * 0.8) * s;
-        const w = Math.sin(t * Math.PI) * 0.12 * s;
-        const y = 0.25 * s - t * t * 0.15 * s;
-        p.push(new THREE.Vector3(Math.cos(ba) * R, y, Math.sin(ba) * R));
-        p.push(new THREE.Vector3(Math.cos(ba) * R + Math.sin(ba) * w, y, Math.sin(ba) * R - Math.cos(ba) * w));
-      }
-    }
-    return p;
-  },
-  // 2: Lily — 6 elongated petals curving outward + stamens
-  (r, s) => {
-    const p = [];
-    for (let pet = 0; pet < 6; pet++) {
-      const ba = (pet / 6) * Math.PI * 2;
-      for (let i = 0; i < 20; i++) {
-        const t = i / 20;
-        const R = t * 1.2 * s;
-        const y = Math.sin(t * Math.PI * 0.7) * 0.6 * s;
-        const w = Math.sin(t * Math.PI) * 0.15 * s;
-        for (let side = -1; side <= 1; side++) {
-          const a = ba + side * w / Math.max(R, 0.01);
-          p.push(new THREE.Vector3(Math.cos(a) * R, y, Math.sin(a) * R));
-        }
-      }
-    }
-    // stamens
-    for (let st = 0; st < 6; st++) {
-      const a = (st / 6) * Math.PI * 2 + 0.3;
-      for (let i = 0; i < 10; i++) {
-        const t = i / 10;
-        p.push(new THREE.Vector3(Math.cos(a) * t * 0.3 * s, t * 0.8 * s, Math.sin(a) * t * 0.3 * s));
-      }
-      // anther blob at top
-      for (let i = 0; i < 6; i++) {
-        const aa = r() * Math.PI * 2, rr = r() * 0.08 * s;
-        p.push(new THREE.Vector3(Math.cos(a) * 0.3 * s + Math.cos(aa) * rr, 0.8 * s + r() * 0.1 * s, Math.sin(a) * 0.3 * s + Math.sin(aa) * rr));
-      }
-    }
-    return p;
-  },
-  // 3: Dahlia — many layered concentric rings of petals
-  (r, s) => {
-    const p = [];
-    for (let layer = 0; layer < 6; layer++) {
-      const nPet = 8 + layer * 3;
-      const R = (0.15 + layer * 0.2) * s;
-      const tilt = layer * 0.12;
-      for (let pet = 0; pet < nPet; pet++) {
-        const ba = (pet / nPet) * Math.PI * 2 + layer * 0.2;
-        for (let i = 0; i < 8; i++) {
-          const t = i / 8;
-          const rr = R * (0.5 + t * 0.5);
-          const y = (0.6 - layer * 0.08) * s - t * tilt * s;
-          p.push(new THREE.Vector3(Math.cos(ba) * rr, y, Math.sin(ba) * rr));
-        }
-      }
-    }
-    return p;
-  },
-  // 4: Tulip — cup shape from overlapping petals
-  (r, s) => {
-    const p = [];
-    for (let pet = 0; pet < 6; pet++) {
-      const ba = (pet / 6) * Math.PI * 2;
-      for (let ring = 0; ring < 15; ring++) {
-        const t = ring / 15;
-        const y = t * 1.0 * s;
-        const R = (0.1 + Math.sin(t * Math.PI) * 0.5) * s;
-        const nDots = 4;
-        for (let d = 0; d < nDots; d++) {
-          const spread = (d / nDots - 0.5) * 0.3;
-          const a = ba + spread;
-          p.push(new THREE.Vector3(Math.cos(a) * R, y, Math.sin(a) * R));
-        }
-      }
-    }
-    return p;
-  },
-  // 5: Dandelion puff — sphere of radiating lines
-  (r, s) => {
-    const p = [];
-    for (let ray = 0; ray < 30; ray++) {
-      const phi = Math.acos(2 * r() - 1);
-      const theta = r() * Math.PI * 2;
-      const dx = Math.sin(phi) * Math.cos(theta);
-      const dy = Math.sin(phi) * Math.sin(theta);
-      const dz = Math.cos(phi);
-      for (let i = 0; i < 8; i++) {
-        const t = i / 8 * s * 0.8;
-        p.push(new THREE.Vector3(dx * t, dy * t + 0.3 * s, dz * t));
-      }
-      // tiny sphere at tip
-      const tipR = 0.04 * s;
-      for (let i = 0; i < 4; i++) {
-        const a = r() * Math.PI * 2, rr = r() * tipR;
-        p.push(new THREE.Vector3(dx * 0.8 * s + Math.cos(a) * rr, dy * 0.8 * s + 0.3 * s + r() * tipR, dz * 0.8 * s + Math.sin(a) * rr));
-      }
-    }
-    return p;
-  },
-  // 6: Chrysanthemum — many thin curving petals
-  (r, s) => {
-    const p = [];
-    for (let pet = 0; pet < 24; pet++) {
-      const ba = (pet / 24) * Math.PI * 2;
-      const curl = 0.3 + r() * 0.7;
-      for (let i = 0; i < 14; i++) {
-        const t = i / 14;
-        const R = t * (0.8 + r() * 0.4) * s;
-        const y = Math.sin(t * Math.PI * 0.8) * 0.4 * s - t * t * curl * 0.3 * s;
-        p.push(new THREE.Vector3(Math.cos(ba) * R, y, Math.sin(ba) * R));
-      }
-    }
-    // dense center
-    for (let i = 0; i < 30; i++) {
-      const a = r() * Math.PI * 2, rr = r() * 0.15 * s;
-      p.push(new THREE.Vector3(Math.cos(a) * rr, 0.35 * s + r() * 0.1 * s, Math.sin(a) * rr));
-    }
-    return p;
-  },
-  // 7: Lotus — bowl of layered petals
-  (r, s) => {
-    const p = [];
-    for (let layer = 0; layer < 3; layer++) {
-      const nPet = 6 + layer * 2;
-      for (let pet = 0; pet < nPet; pet++) {
-        const ba = (pet / nPet) * Math.PI * 2 + layer * 0.25;
-        for (let i = 0; i < 16; i++) {
-          const t = i / 16;
-          const R = (0.2 + layer * 0.25 + t * 0.3) * s;
-          const y = (0.15 + t * 0.5 - layer * 0.05) * s;
-          const w = Math.sin(t * Math.PI) * 0.1 * s;
-          p.push(new THREE.Vector3(Math.cos(ba) * R, y, Math.sin(ba) * R));
-          p.push(new THREE.Vector3(Math.cos(ba + w / R) * R, y - 0.02 * s, Math.sin(ba + w / R) * R));
-        }
-      }
-    }
-    // seed pod center
-    for (let ring = 0; ring < 5; ring++) {
-      const R = ring * 0.06 * s;
-      const n = 4 + ring * 2;
-      for (let i = 0; i < n; i++) {
-        const a = (i / n) * Math.PI * 2;
-        p.push(new THREE.Vector3(Math.cos(a) * R, 0.6 * s, Math.sin(a) * R));
-      }
-    }
-    return p;
-  },
-  // 8: Morning glory — trumpet/funnel
-  (r, s) => {
-    const p = [];
-    for (let ring = 0; ring < 20; ring++) {
-      const t = ring / 20;
-      const R = (0.05 + t * t * 0.8) * s;
-      const y = t * 1.0 * s;
-      const n = 8 + Math.floor(t * 12);
-      for (let i = 0; i < n; i++) {
-        const a = (i / n) * Math.PI * 2;
-        p.push(new THREE.Vector3(Math.cos(a) * R, y, Math.sin(a) * R));
-      }
-    }
-    // wavy rim
-    for (let i = 0; i < 40; i++) {
-      const a = (i / 40) * Math.PI * 2;
-      const R = 0.85 * s + Math.sin(a * 5) * 0.1 * s;
-      const y = 1.0 * s + Math.sin(a * 5) * 0.08 * s;
-      p.push(new THREE.Vector3(Math.cos(a) * R, y, Math.sin(a) * R));
-    }
-    return p;
-  },
-  // 9: Orchid — complex asymmetric structure
-  (r, s) => {
-    const p = [];
-    // 3 outer sepals
-    for (let sep = 0; sep < 3; sep++) {
-      const ba = (sep / 3) * Math.PI * 2;
-      for (let i = 0; i < 18; i++) {
-        const t = i / 18;
-        const R = t * 1.0 * s;
-        const y = Math.sin(t * Math.PI) * 0.3 * s;
-        const w = Math.sin(t * Math.PI) * 0.2 * s;
-        p.push(new THREE.Vector3(Math.cos(ba) * R, y, Math.sin(ba) * R));
-        p.push(new THREE.Vector3(Math.cos(ba) * R + Math.sin(ba) * w, y, Math.sin(ba) * R - Math.cos(ba) * w));
-      }
-    }
-    // 2 inner petals
-    for (let pet = 0; pet < 2; pet++) {
-      const ba = (pet / 2) * Math.PI + Math.PI / 6;
-      for (let i = 0; i < 14; i++) {
-        const t = i / 14;
-        const R = t * 0.7 * s;
-        const y = 0.1 * s + Math.sin(t * Math.PI) * 0.4 * s;
-        p.push(new THREE.Vector3(Math.cos(ba) * R, y, Math.sin(ba) * R));
-      }
-    }
-    // labellum (lip) — curving tongue
-    for (let i = 0; i < 20; i++) {
-      const t = i / 20;
-      const y = -t * 0.4 * s;
-      const R = Math.sin(t * Math.PI) * 0.35 * s;
-      for (let d = -2; d <= 2; d++) {
-        p.push(new THREE.Vector3(d * 0.05 * s, y, R));
-      }
-    }
-    // column center
-    for (let i = 0; i < 10; i++) {
-      const t = i / 10;
-      p.push(new THREE.Vector3(0, t * 0.5 * s, 0));
-    }
-    return p;
-  },
-];
-
-// ===== 10 leaf shapes: surface fills with veins =====
-const leafShapes = [
-  // 0: Oval leaf with midrib + veins
-  (r, s) => {
-    const p = [];
-    for (let i = 0; i < 30; i++) {
-      const t = i / 30;
-      p.push(new THREE.Vector3(0, 0, t * 2 * s)); // midrib
-      const w = Math.sin(t * Math.PI) * 0.5 * s;
-      for (let d = -3; d <= 3; d++) {
-        p.push(new THREE.Vector3(d / 3 * w, (r() - 0.5) * 0.02 * s, t * 2 * s));
-      }
-    }
-    // side veins
-    for (let v = 0; v < 5; v++) {
-      const vt = 0.15 + v * 0.15;
-      const vz = vt * 2 * s;
-      const vw = Math.sin(vt * Math.PI) * 0.5 * s;
-      for (let side of [-1, 1]) {
-        for (let i = 0; i < 6; i++) {
-          const t = i / 6;
-          p.push(new THREE.Vector3(side * t * vw, 0, vz + t * 0.15 * s));
-        }
-      }
-    }
-    return p;
-  },
-  // 1: Fern frond — compound leaflets
-  (r, s) => {
-    const p = [];
-    // main rachis
-    for (let i = 0; i < 20; i++) p.push(new THREE.Vector3(0, 0, i / 20 * 3 * s));
-    // paired leaflets
-    for (let pair = 0; pair < 8; pair++) {
-      const z = (pair + 1) / 9 * 3 * s;
-      const leafletLen = (1 - pair / 8) * 0.6 * s;
-      for (let side of [-1, 1]) {
-        for (let i = 0; i < 10; i++) {
-          const t = i / 10;
-          const x = side * t * leafletLen;
-          const lz = z + t * 0.1 * s;
-          const w = Math.sin(t * Math.PI) * 0.08 * s;
-          p.push(new THREE.Vector3(x, 0, lz));
-          p.push(new THREE.Vector3(x, 0, lz + w));
-          p.push(new THREE.Vector3(x, 0, lz - w));
-        }
-      }
-    }
-    return p;
-  },
-  // 2: Palm fan — radiating segments
-  (r, s) => {
-    const p = [];
-    for (let seg = 0; seg < 9; seg++) {
-      const ba = (seg / 9 - 0.5) * Math.PI * 0.8;
-      for (let i = 0; i < 15; i++) {
-        const t = i / 15;
-        const R = t * 1.5 * s;
-        const droop = t * t * 0.3 * s;
-        p.push(new THREE.Vector3(Math.sin(ba) * R, -droop, Math.cos(ba) * R));
-      }
-    }
-    // stem
-    for (let i = 0; i < 8; i++) p.push(new THREE.Vector3(0, 0, -i / 8 * 0.5 * s));
-    return p;
-  },
-  // 3: Needle cluster
-  (r, s) => {
-    const p = [];
-    const nNeedles = 12 + Math.floor(r() * 8);
-    for (let n = 0; n < nNeedles; n++) {
-      const a = r() * Math.PI * 2;
-      const spread = r() * 0.3;
-      for (let i = 0; i < 10; i++) {
-        const t = i / 10;
-        p.push(new THREE.Vector3(Math.cos(a) * spread * t * s, t * 1.5 * s, Math.sin(a) * spread * t * s));
-      }
-    }
-    return p;
-  },
-  // 4: Heart-shaped leaf
-  (r, s) => {
-    const p = [];
-    for (let i = 0; i < 40; i++) {
-      const t = i / 40 * Math.PI * 2;
-      const x = 0.5 * s * 16 * Math.pow(Math.sin(t), 3) / 16;
-      const z = 0.5 * s * (13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t)) / 16;
-      p.push(new THREE.Vector3(x, 0, z));
-    }
-    // fill interior
-    for (let i = 0; i < 30; i++) {
-      const t = r() * Math.PI * 2;
-      const x = 0.5 * s * 16 * Math.pow(Math.sin(t), 3) / 16 * r();
-      const z = 0.5 * s * (13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t)) / 16 * r();
-      p.push(new THREE.Vector3(x, 0, z));
-    }
-    // midrib
-    for (let i = 0; i < 10; i++) p.push(new THREE.Vector3(0, 0, (i/10 * 2 - 1) * 0.4 * s));
-    return p;
-  },
-  // 5: Serrated leaf
-  (r, s) => {
-    const p = [];
-    const teeth = 7;
-    for (let i = 0; i < 40; i++) {
-      const t = i / 40;
-      p.push(new THREE.Vector3(0, 0, t * 2 * s));
-      const baseW = Math.sin(t * Math.PI) * 0.4 * s;
-      const saw = Math.sin(t * teeth * Math.PI * 2) * 0.08 * s;
-      for (let side of [-1, 1]) {
-        p.push(new THREE.Vector3(side * (baseW + saw), 0, t * 2 * s));
-        p.push(new THREE.Vector3(side * baseW * 0.5, 0, t * 2 * s));
-      }
-    }
-    return p;
-  },
-  // 6: Compound leaf (multiple leaflets on petiole)
-  (r, s) => {
-    const p = [];
-    for (let i = 0; i < 15; i++) p.push(new THREE.Vector3(0, 0, i / 15 * 2 * s));
-    for (let leaf = 0; leaf < 5; leaf++) {
-      const z = (leaf + 1) / 6 * 2 * s;
-      for (let side of [-1, 1]) {
-        const cx = side * 0.4 * s;
-        for (let i = 0; i < 12; i++) {
-          const t = i / 12;
-          const lw = Math.sin(t * Math.PI) * 0.2 * s;
-          const lz = z + t * 0.3 * s;
-          p.push(new THREE.Vector3(cx + side * lw, 0, lz));
-          p.push(new THREE.Vector3(cx, 0, lz));
-        }
-      }
-    }
-    return p;
-  },
-  // 7: Grass blade (long, thin, curving)
-  (r, s) => {
-    const p = [];
-    const curve = r() * 0.5 + 0.2;
-    for (let i = 0; i < 30; i++) {
-      const t = i / 30;
-      const x = Math.sin(t * Math.PI * curve) * 0.8 * s;
-      const y = t * 3 * s;
-      const w = (1 - t) * 0.08 * s;
-      for (let d = -1; d <= 1; d++) p.push(new THREE.Vector3(x + d * w, y, 0));
-    }
-    return p;
-  },
-  // 8: Broad tropical leaf
-  (r, s) => {
-    const p = [];
-    for (let i = 0; i < 35; i++) {
-      const t = i / 35;
-      p.push(new THREE.Vector3(0, 0, t * 2.5 * s));
-      const w = Math.sin(t * Math.PI) * 0.8 * s;
-      for (let d = -4; d <= 4; d++) {
-        const x = (d / 4) * w;
-        const wobble = Math.sin(t * 8 + d) * 0.03 * s;
-        p.push(new THREE.Vector3(x, wobble, t * 2.5 * s));
-      }
-    }
-    return p;
-  },
-  // 9: Vine tendril (spiral)
-  (r, s) => {
-    const p = [];
-    for (let i = 0; i < 50; i++) {
-      const t = i / 50;
-      const a = t * Math.PI * 6;
-      const R = (1 - t) * 0.3 * s + 0.05 * s;
-      p.push(new THREE.Vector3(Math.cos(a) * R, t * 2 * s, Math.sin(a) * R));
-    }
-    return p;
-  },
-];
-
-// ===== 10 fruit shapes: latitude-ring spheres, pods, etc. =====
-const fruitShapes = [
-  // 0: Berry — latitude rings forming sphere
-  (r, s) => {
-    const p = [];
-    for (let ring = 0; ring <= 12; ring++) {
-      const phi = (ring / 12) * Math.PI;
-      const y = Math.cos(phi) * 0.5 * s;
-      const R = Math.sin(phi) * 0.5 * s;
-      const n = Math.max(4, Math.floor(R / s * 24));
-      for (let i = 0; i < n; i++) {
-        const a = (i / n) * Math.PI * 2;
-        p.push(new THREE.Vector3(Math.cos(a) * R, y, Math.sin(a) * R));
-      }
-    }
-    return p;
-  },
-  // 1: Pod — elongated with seam
-  (r, s) => {
-    const p = [];
-    for (let ring = 0; ring <= 16; ring++) {
-      const t = ring / 16;
-      const y = (t - 0.5) * 1.5 * s;
-      const R = Math.sin(t * Math.PI) * 0.25 * s;
-      const n = 8;
-      for (let i = 0; i < n; i++) {
-        const a = (i / n) * Math.PI * 2;
-        p.push(new THREE.Vector3(Math.cos(a) * R, y, Math.sin(a) * R));
-      }
-    }
-    // seam line
-    for (let i = 0; i < 10; i++) {
-      const t = i / 10;
-      const y = (t - 0.5) * 1.5 * s;
-      const R = Math.sin(t * Math.PI) * 0.25 * s;
-      p.push(new THREE.Vector3(R, y, 0));
-      p.push(new THREE.Vector3(-R, y, 0));
-    }
-    return p;
-  },
-  // 2: Star fruit cross-section
-  (r, s) => {
-    const p = [];
-    for (let ring = 0; ring <= 10; ring++) {
-      const y = (ring / 10 - 0.5) * s;
-      for (let i = 0; i < 30; i++) {
-        const a = (i / 30) * Math.PI * 2;
-        const R = (0.3 + Math.abs(Math.sin(a * 2.5)) * 0.3) * s;
-        p.push(new THREE.Vector3(Math.cos(a) * R, y, Math.sin(a) * R));
-      }
-    }
-    return p;
-  },
-  // 3: Cluster of small spheres
-  (r, s) => {
-    const p = [];
-    for (let ball = 0; ball < 6; ball++) {
-      const bx = (r() - 0.5) * 0.4 * s;
-      const by = (r() - 0.5) * 0.4 * s;
-      const bz = (r() - 0.5) * 0.4 * s;
-      const bR = (0.1 + r() * 0.1) * s;
-      for (let ring = 0; ring < 6; ring++) {
-        const phi = (ring / 5) * Math.PI;
-        const y = Math.cos(phi) * bR;
-        const R = Math.sin(phi) * bR;
-        const n = Math.max(3, Math.floor(R / s * 16));
-        for (let i = 0; i < n; i++) {
-          const a = (i / n) * Math.PI * 2;
-          p.push(new THREE.Vector3(bx + Math.cos(a) * R, by + y, bz + Math.sin(a) * R));
-        }
-      }
-    }
-    return p;
-  },
-  // 4: Teardrop
-  (r, s) => {
-    const p = [];
-    for (let ring = 0; ring <= 14; ring++) {
-      const t = ring / 14;
-      const y = (t - 0.3) * 1.2 * s;
-      const R = Math.sin(Math.pow(t, 0.7) * Math.PI) * 0.35 * s;
-      const n = Math.max(4, Math.floor(R / s * 20));
-      for (let i = 0; i < n; i++) {
-        const a = (i / n) * Math.PI * 2;
-        p.push(new THREE.Vector3(Math.cos(a) * R, y, Math.sin(a) * R));
-      }
-    }
-    return p;
-  },
-  // 5: Spiky ball
-  (r, s) => {
-    const p = [];
-    // base sphere
-    for (let ring = 0; ring <= 8; ring++) {
-      const phi = (ring / 8) * Math.PI;
-      const y = Math.cos(phi) * 0.3 * s;
-      const R = Math.sin(phi) * 0.3 * s;
-      const n = Math.max(3, Math.floor(R / s * 16));
-      for (let i = 0; i < n; i++) {
-        const a = (i / n) * Math.PI * 2;
-        p.push(new THREE.Vector3(Math.cos(a) * R, y, Math.sin(a) * R));
-      }
-    }
-    // spikes
-    for (let sp = 0; sp < 14; sp++) {
-      const phi = Math.acos(2 * r() - 1);
-      const theta = r() * Math.PI * 2;
-      const dx = Math.sin(phi) * Math.cos(theta);
-      const dy = Math.cos(phi);
-      const dz = Math.sin(phi) * Math.sin(theta);
-      for (let i = 0; i < 5; i++) {
-        const t = 0.3 * s + (i / 5) * 0.4 * s;
-        p.push(new THREE.Vector3(dx * t, dy * t, dz * t));
-      }
-    }
-    return p;
-  },
-  // 6: Torus (donut fruit)
-  (r, s) => {
-    const p = [];
-    const R = 0.35 * s, rr = 0.12 * s;
-    for (let i = 0; i < 24; i++) {
-      const u = (i / 24) * Math.PI * 2;
-      for (let j = 0; j < 10; j++) {
-        const v = (j / 10) * Math.PI * 2;
-        p.push(new THREE.Vector3(
-          (R + rr * Math.cos(v)) * Math.cos(u),
-          rr * Math.sin(v),
-          (R + rr * Math.cos(v)) * Math.sin(u)
-        ));
-      }
-    }
-    return p;
-  },
-  // 7: Heart fruit
-  (r, s) => {
-    const p = [];
-    for (let ring = 0; ring < 8; ring++) {
-      const z = (ring / 8 - 0.5) * 0.3 * s;
-      for (let i = 0; i < 30; i++) {
-        const t = (i / 30) * Math.PI * 2;
-        const x = 0.35 * s * 16 * Math.pow(Math.sin(t), 3) / 16;
-        const y = 0.35 * s * (13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t)) / 16;
-        p.push(new THREE.Vector3(x, y, z));
-      }
-    }
-    return p;
-  },
-  // 8: Pinecone
-  (r, s) => {
-    const p = [];
-    for (let ring = 0; ring <= 12; ring++) {
-      const t = ring / 12;
-      const y = (t - 0.5) * 1.2 * s;
-      const R = (1 - t) * 0.4 * s;
-      const n = 6 + Math.floor((1 - t) * 6);
-      const offset = ring * 0.4;
-      for (let i = 0; i < n; i++) {
-        const a = (i / n) * Math.PI * 2 + offset;
-        p.push(new THREE.Vector3(Math.cos(a) * R, y, Math.sin(a) * R));
-        // scale tip
-        p.push(new THREE.Vector3(Math.cos(a) * R * 1.15, y + 0.05 * s, Math.sin(a) * R * 1.15));
-      }
-    }
-    return p;
-  },
-  // 9: Acorn — dome top + cup bottom
-  (r, s) => {
-    const p = [];
-    // dome (top half sphere)
-    for (let ring = 0; ring <= 8; ring++) {
-      const phi = (ring / 8) * Math.PI * 0.5;
-      const y = Math.cos(phi) * 0.35 * s + 0.1 * s;
-      const R = Math.sin(phi) * 0.3 * s;
-      const n = Math.max(3, Math.floor(R / s * 18));
-      for (let i = 0; i < n; i++) {
-        const a = (i / n) * Math.PI * 2;
-        p.push(new THREE.Vector3(Math.cos(a) * R, y, Math.sin(a) * R));
-      }
-    }
-    // textured cup (bottom)
-    for (let ring = 0; ring < 6; ring++) {
-      const t = ring / 6;
-      const y = -t * 0.4 * s;
-      const R = (0.32 - t * 0.08) * s;
-      const n = 10;
-      for (let i = 0; i < n; i++) {
-        const a = (i / n) * Math.PI * 2 + ring * 0.3;
-        p.push(new THREE.Vector3(Math.cos(a) * R, y, Math.sin(a) * R));
-      }
-    }
-    // stem on top
-    for (let i = 0; i < 4; i++) p.push(new THREE.Vector3(0, 0.45 * s + i * 0.05 * s, 0));
-    return p;
-  },
-];
-
-// ===== Build point-cloud from plant data using RINGS along stems =====
-function buildPlantCloud(plantData, text) {
-  const group = new THREE.Group();
-  const allPts = [], allCols = [];
-  const r = seededRandom(plantData.seed);
-  const flowerIdx = Math.floor(r() * 10);
-  const leafIdx = Math.floor(r() * 10);
-  const fruitIdx = Math.floor(r() * 10);
-  const stemCol = new THREE.Color(neonColors[Math.floor(r() * neonColors.length)]);
-
-  // ---- STEMS: rings of dots stacked along each curve ----
-  try {
-    for (const stem of plantData.stems) {
-      if (!stem.pts || stem.pts.length < 2) continue;
-      const curve = new THREE.CatmullRomCurve3(stem.pts);
-      const segments = Math.max(20, stem.pts.length * 3);
-      const dotsPerRing = 8;
-      const col = new THREE.Color(stemCol);
-      col.offsetHSL(r() * 0.1 - 0.05, 0, r() * 0.1 - 0.05);
-
-      for (let i = 0; i <= segments; i++) {
-        const t = i / segments;
-        const pos = curve.getPoint(t);
-        const tangent = curve.getTangent(t);
-        if (tangent.lengthSq() < 0.0001) tangent.set(0, 1, 0);
-        else tangent.normalize();
-        const radius = stem.baseRadius * (1 - t) + stem.tipRadius * t;
-        const ringPts = makeRing(pos, tangent, radius, dotsPerRing);
-        for (const rp of ringPts) {
-          allPts.push(rp.x, rp.y, rp.z);
-          allCols.push(col.r, col.g, col.b);
-        }
-        allPts.push(pos.x, pos.y, pos.z);
-        allCols.push(col.r, col.g, col.b);
-      }
-    }
-  } catch(e) { console.error('STEM error:', e); }
-
-  // ---- FLOWERS at fruit positions ----
-  try {
-    for (const pos of plantData.fruitPositions) {
-      const sc = 1.0 + r() * 0.8;
-      const col = new THREE.Color(neonColors[Math.floor(r() * neonColors.length)]);
-      const pts = flowerShapes[flowerIdx](r, sc);
-      for (const p of pts) {
-        allPts.push(p.x + pos.x, p.y + pos.y, p.z + pos.z);
-        allCols.push(col.r, col.g, col.b);
-      }
-      const col2 = new THREE.Color(neonColors[Math.floor(r() * neonColors.length)]);
-      const fpts = fruitShapes[fruitIdx](r, sc * 0.4);
-      for (const p of fpts) {
-        allPts.push(p.x + pos.x, p.y + pos.y + 0.1, p.z + pos.z);
-        allCols.push(col2.r, col2.g, col2.b);
-      }
-    }
-  } catch(e) { console.error('FLOWER error:', e); }
-
-  // ---- LEAVES ----
-  try {
-    for (let li = 0; li < plantData.leafPositions.length; li++) {
-      const pos = plantData.leafPositions[li];
-      const dir = plantData.leafDirs[li] || new THREE.Vector3(1, 0, 0);
-      const sc = 0.5 + r() * 0.5;
-      const col = new THREE.Color(neonColors[Math.floor(r() * neonColors.length)]);
-      const pts = leafShapes[leafIdx](r, sc);
-
-      const quat = new THREE.Quaternion();
-      const defaultDir = new THREE.Vector3(0, 0, 1);
-      if (dir.lengthSq() > 0.001) {
-        quat.setFromUnitVectors(defaultDir, dir.clone().normalize());
-      }
-
-      for (const p of pts) {
-        const rotated = p.clone().applyQuaternion(quat);
-        allPts.push(rotated.x + pos.x, rotated.y + pos.y, rotated.z + pos.z);
-        allCols.push(col.r, col.g, col.b);
-      }
-    }
-  } catch(e) { console.error('LEAF error:', e); }
-
-  if (allPts.length === 0) return group;
-
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(allPts, 3));
-  geo.setAttribute('color', new THREE.Float32BufferAttribute(allCols, 3));
-  const mat = new THREE.PointsMaterial({
-    size: 0.15,
-    vertexColors: true,
-    transparent: true,
-    opacity: 0.92,
-    depthWrite: false,
-    sizeAttenuation: true
-  });
-  const points = new THREE.Points(geo, mat);
-  points.userData.entryText = text;
-  group.add(points);
-  return group;
-}
-
-// ===== 3D Scene =====
-const scene = new THREE.Scene();
-scene.background = new THREE.Color('#050810');
-const camera = new THREE.PerspectiveCamera(60, W()/H(), 0.1, 500);
-const isMobile = /Mobi|Android/i.test(navigator.userAgent);
-const renderer = new THREE.WebGLRenderer({ antialias: !isMobile });
-renderer.setSize(W(), H());
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2));
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.domElement.id = 'canvas3d';
-document.body.appendChild(renderer.domElement);
-
-scene.add(new THREE.AmbientLight(0xffffff, 0.4));
-
-// Ground scatter (chaotic graffiti dots)
-{
-  const pts = [], cols = [];
-  for (let i = 0; i < 600; i++) {
-    pts.push((Math.random()-0.5)*60, -0.1, (Math.random()-0.5)*60);
-    const c = new THREE.Color(neonColors[Math.floor(Math.random()*neonColors.length)]);
-    cols.push(c.r, c.g, c.b);
-  }
+  // Build geometry
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
   geo.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
-  scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ size:0.06, vertexColors:true, transparent:true, opacity:0.15, depthWrite:false })));
+  geo.setDrawRange(0, 0); // Start hidden for growth animation
+
+  const mat = new THREE.PointsMaterial({
+    size: 0.12, vertexColors: true, transparent: true,
+    opacity: 0.9, depthWrite: false, sizeAttenuation: true
+  });
+  const mesh = new THREE.Points(geo, mat);
+  mesh.userData.entryText = text;
+  mesh.userData.totalVerts = pts.length / 3;
+
+  const group = new THREE.Group();
+  group.add(mesh);
+  return group;
+}
+
+// ===== Flower shapes (added at position) =====
+function addFlower(pts, cols, cx, cy, cz, type, scale, cr, cg, cb, r) {
+  const s = scale;
+  switch(type) {
+    case 0: // Rose spiral
+      for(let lay=0;lay<4;lay++){const nP=5+lay*2,R=(0.2+lay*0.3)*s;for(let p=0;p<nP;p++){const ba=(p/nP)*Math.PI*2+lay*0.3;for(let i=0;i<10;i++){const t=i/10,rr=R*(0.3+t*0.7),y=Math.sin(t*Math.PI)*0.2*s-t*t*0.15*s;pts.push(cx+Math.cos(ba+t*0.1)*rr,cy+lay*0.1*s+y,cz+Math.sin(ba+t*0.1)*rr);cols.push(cr,cg,cb)}}}
+      for(let i=0;i<30;i++){const t=i/30,a=t*Math.PI*6,R=t*0.2*s;pts.push(cx+Math.cos(a)*R,cy+0.4*s+t*0.05*s,cz+Math.sin(a)*R);cols.push(cr*1.2,cg*1.2,cb*1.2)}
+      break;
+    case 1: // Sunflower
+      {const g=Math.PI*(3-Math.sqrt(5));for(let i=0;i<60;i++){const R=Math.sqrt(i/60)*0.3*s,a=i*g;pts.push(cx+Math.cos(a)*R,cy+0.2*s,cz+Math.sin(a)*R);cols.push(cr*0.8,cg*0.6,cb*0.2)}
+      for(let p=0;p<14;p++){const ba=(p/14)*Math.PI*2;for(let i=0;i<8;i++){const t=i/8,R=(0.3+t*0.6)*s,w=Math.sin(t*Math.PI)*0.08*s;pts.push(cx+Math.cos(ba)*R,cy+0.15*s-t*t*0.1*s,cz+Math.sin(ba)*R);cols.push(cr,cg,cb)}}} break;
+    case 2: // Lily
+      for(let p=0;p<6;p++){const ba=(p/6)*Math.PI*2;for(let i=0;i<14;i++){const t=i/14,R=t*0.9*s,y=Math.sin(t*Math.PI*0.7)*0.4*s;pts.push(cx+Math.cos(ba)*R,cy+y,cz+Math.sin(ba)*R);cols.push(cr,cg,cb)}}
+      for(let i=0;i<6;i++){const a=(i/6)*Math.PI*2;for(let j=0;j<6;j++){const t=j/6;pts.push(cx+Math.cos(a)*t*0.2*s,cy+t*0.5*s,cz+Math.sin(a)*t*0.2*s);cols.push(cr*1.3,cg*1.3,cb*0.5)}} break;
+    case 3: // Dahlia layers
+      for(let lay=0;lay<5;lay++){const nP=6+lay*3,R=(0.1+lay*0.15)*s;for(let p=0;p<nP;p++){const ba=(p/nP)*Math.PI*2+lay*0.2;for(let i=0;i<6;i++){const t=i/6,rr=R*(0.5+t*0.5);pts.push(cx+Math.cos(ba)*rr,cy+(0.4-lay*0.06)*s-t*lay*0.02*s,cz+Math.sin(ba)*rr);cols.push(cr,cg,cb)}}} break;
+    case 4: // Tulip cup
+      for(let p=0;p<6;p++){const ba=(p/6)*Math.PI*2;for(let i=0;i<12;i++){const t=i/12,R=(0.08+Math.sin(t*Math.PI)*0.35)*s,y=t*0.7*s;for(let d=-1;d<=1;d++){pts.push(cx+Math.cos(ba+d*0.1)*R,cy+y,cz+Math.sin(ba+d*0.1)*R);cols.push(cr,cg,cb)}}} break;
+    case 5: // Dandelion puff
+      for(let ray=0;ray<24;ray++){const phi=Math.acos(2*r()-1),th=r()*Math.PI*2,dx=Math.sin(phi)*Math.cos(th),dy=Math.sin(phi)*Math.sin(th),dz=Math.cos(phi);for(let i=0;i<6;i++){const t=i/6*s*0.6;pts.push(cx+dx*t,cy+0.2*s+dy*t,cz+dz*t);cols.push(cr,cg,cb)}pts.push(cx+dx*0.6*s,cy+0.2*s+dy*0.6*s,cz+dz*0.6*s);cols.push(1,1,1)} break;
+    case 6: // Chrysanthemum
+      for(let p=0;p<20;p++){const ba=(p/20)*Math.PI*2,curl=0.3+r()*0.5;for(let i=0;i<10;i++){const t=i/10,R=t*(0.5+r()*0.3)*s,y=Math.sin(t*Math.PI*0.8)*0.3*s-t*t*curl*0.2*s;pts.push(cx+Math.cos(ba)*R,cy+y,cz+Math.sin(ba)*R);cols.push(cr,cg,cb)}}
+      for(let i=0;i<20;i++){const a=r()*Math.PI*2,rr=r()*0.1*s;pts.push(cx+Math.cos(a)*rr,cy+0.25*s,cz+Math.sin(a)*rr);cols.push(cr*1.3,cg*1.3,cb*0.3)} break;
+    case 7: // Lotus bowl
+      for(let lay=0;lay<3;lay++){const nP=5+lay*2;for(let p=0;p<nP;p++){const ba=(p/nP)*Math.PI*2+lay*0.25;for(let i=0;i<12;i++){const t=i/12,R=(0.15+lay*0.2+t*0.2)*s,y=(0.1+t*0.35-lay*0.04)*s;pts.push(cx+Math.cos(ba)*R,cy+y,cz+Math.sin(ba)*R);cols.push(cr,cg,cb)}}} break;
+    case 8: // Morning glory trumpet
+      for(let ring=0;ring<16;ring++){const t=ring/16,R=(0.04+t*t*0.6)*s,y=t*0.7*s,n=6+Math.floor(t*8);for(let i=0;i<n;i++){const a=(i/n)*Math.PI*2;pts.push(cx+Math.cos(a)*R,cy+y,cz+Math.sin(a)*R);cols.push(cr,cg,cb)}} break;
+    default: // Orchid
+      for(let sep=0;sep<3;sep++){const ba=(sep/3)*Math.PI*2;for(let i=0;i<12;i++){const t=i/12,R=t*0.7*s;pts.push(cx+Math.cos(ba)*R,cy+Math.sin(t*Math.PI)*0.2*s,cz+Math.sin(ba)*R);cols.push(cr,cg,cb)}}
+      for(let i=0;i<15;i++){const t=i/15;pts.push(cx+(r()-0.5)*0.1*s,cy-t*0.3*s,cz+Math.sin(t*Math.PI)*0.25*s);cols.push(cr,cg,cb)}
+  }
+}
+
+// ===== Leaf shapes =====
+function addLeaf(pts, cols, cx, cy, cz, type, scale, cr, cg, cb, r) {
+  const s=scale, dx=(r()-0.5)*2, dz=(r()-0.5)*2;
+  const len = Math.sqrt(dx*dx+dz*dz)||1;
+  const nx=dx/len, nz=dz/len;
+  switch(type%10) {
+    case 0: // Oval with veins
+      for(let i=0;i<20;i++){const t=i/20,w=Math.sin(t*Math.PI)*0.35*s;pts.push(cx+nx*t*1.5*s,cy,cz+nz*t*1.5*s);cols.push(cr,cg,cb);for(let d of[-1,1]){pts.push(cx+nx*t*1.5*s+nz*d*w,cy+0.02*s,cz+nz*t*1.5*s-nx*d*w);cols.push(cr,cg,cb)}} break;
+    case 1: // Fern
+      for(let i=0;i<15;i++){pts.push(cx+nx*i/15*2*s,cy,cz+nz*i/15*2*s);cols.push(cr,cg,cb);const ll=(1-i/15)*0.4*s;for(let d of[-1,1])for(let j=0;j<4;j++){const jt=j/4;pts.push(cx+nx*i/15*2*s+nz*d*jt*ll,cy,cz+nz*i/15*2*s-nx*d*jt*ll);cols.push(cr,cg,cb)}} break;
+    case 2: // Palm fan
+      for(let seg=0;seg<7;seg++){const ba=(seg/7-0.5)*Math.PI*0.6;for(let i=0;i<10;i++){const t=i/10,R=t*1.2*s;pts.push(cx+Math.sin(ba)*R,cy-t*t*0.2*s,cz+Math.cos(ba)*R);cols.push(cr,cg,cb)}} break;
+    case 3: // Needles
+      for(let n=0;n<8+Math.floor(r()*6);n++){const a=r()*Math.PI*2,sp=r()*0.2;for(let i=0;i<6;i++){const t=i/6;pts.push(cx+Math.cos(a)*sp*t*s,cy+t*1.2*s,cz+Math.sin(a)*sp*t*s);cols.push(cr,cg,cb)}} break;
+    case 4: // Heart
+      for(let i=0;i<30;i++){const t=(i/30)*Math.PI*2,x=0.3*s*Math.pow(Math.sin(t),3),z=0.3*s*(13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t))/16;pts.push(cx+x,cy,cz+z);cols.push(cr,cg,cb)} break;
+    case 5: // Serrated
+      for(let i=0;i<25;i++){const t=i/25,w=(Math.sin(t*Math.PI)+Math.sin(t*7*Math.PI)*0.15)*0.3*s;pts.push(cx+nx*t*1.5*s,cy,cz+nz*t*1.5*s);pts.push(cx+nx*t*1.5*s+nz*w,cy,cz+nz*t*1.5*s-nx*w);pts.push(cx+nx*t*1.5*s-nz*w,cy,cz+nz*t*1.5*s+nx*w);cols.push(cr,cg,cb,cr,cg,cb,cr,cg,cb)} break;
+    case 6: // Broad tropical
+      for(let i=0;i<25;i++){const t=i/25,w=Math.sin(t*Math.PI)*0.6*s;for(let d=-3;d<=3;d++){pts.push(cx+nx*t*2*s+nz*(d/3)*w,cy+Math.sin(t*6+d)*0.02*s,cz+nz*t*2*s-nx*(d/3)*w);cols.push(cr,cg,cb)}} break;
+    case 7: // Grass blade
+      for(let i=0;i<20;i++){const t=i/20;pts.push(cx+Math.sin(t*Math.PI*0.4)*0.5*s*nx,cy+t*2*s,cz+Math.sin(t*Math.PI*0.4)*0.5*s*nz);cols.push(cr,cg,cb)} break;
+    case 8: // Compound
+      for(let leaf=0;leaf<4;leaf++){const z=cx+nx*(leaf+1)*0.4*s,zz=cz+nz*(leaf+1)*0.4*s;for(let d of[-1,1])for(let i=0;i<6;i++){const t=i/6,w=Math.sin(t*Math.PI)*0.15*s;pts.push(z+nz*d*t*0.3*s,cy+leaf*0.1*s,zz-nx*d*t*0.3*s);cols.push(cr,cg,cb)}} break;
+    default: // Vine tendril
+      for(let i=0;i<30;i++){const t=i/30,a=t*Math.PI*4,R=(1-t)*0.2*s+0.03*s;pts.push(cx+Math.cos(a)*R,cy+t*1.5*s,cz+Math.sin(a)*R);cols.push(cr,cg,cb)}
+  }
+}
+
+// ===== Fruit shapes =====
+function addFruit(pts, cols, cx, cy, cz, type, scale, cr, cg, cb, r) {
+  const s=scale;
+  switch(type%10) {
+    case 0: // Berry sphere rings
+      for(let ring=0;ring<=8;ring++){const phi=(ring/8)*Math.PI,y=Math.cos(phi)*0.35*s,R=Math.sin(phi)*0.35*s,n=Math.max(3,Math.floor(R/s*16));for(let i=0;i<n;i++){const a=(i/n)*Math.PI*2;pts.push(cx+Math.cos(a)*R,cy+y,cz+Math.sin(a)*R);cols.push(cr,cg,cb)}} break;
+    case 1: // Pod
+      for(let ring=0;ring<=10;ring++){const t=ring/10,y=(t-0.5)*s,R=Math.sin(t*Math.PI)*0.18*s;for(let i=0;i<6;i++){const a=(i/6)*Math.PI*2;pts.push(cx+Math.cos(a)*R,cy+y,cz+Math.sin(a)*R);cols.push(cr,cg,cb)}} break;
+    case 2: // Star
+      for(let ring=0;ring<=6;ring++){const y=(ring/6-0.5)*0.6*s;for(let i=0;i<20;i++){const a=(i/20)*Math.PI*2,R=(0.2+Math.abs(Math.sin(a*2.5))*0.2)*s;pts.push(cx+Math.cos(a)*R,cy+y,cz+Math.sin(a)*R);cols.push(cr,cg,cb)}} break;
+    case 3: // Cluster
+      for(let b=0;b<4;b++){const bx=(r()-0.5)*0.3*s,by=(r()-0.5)*0.3*s,bz=(r()-0.5)*0.3*s,bR=0.08*s;for(let ring=0;ring<4;ring++){const phi=(ring/3)*Math.PI,y=Math.cos(phi)*bR,R=Math.sin(phi)*bR;for(let i=0;i<5;i++){const a=(i/5)*Math.PI*2;pts.push(cx+bx+Math.cos(a)*R,cy+by+y,cz+bz+Math.sin(a)*R);cols.push(cr,cg,cb)}}} break;
+    case 4: // Teardrop
+      for(let ring=0;ring<=10;ring++){const t=ring/10,y=(t-0.3)*0.8*s,R=Math.sin(Math.pow(t,0.7)*Math.PI)*0.25*s;for(let i=0;i<6;i++){const a=(i/6)*Math.PI*2;pts.push(cx+Math.cos(a)*R,cy+y,cz+Math.sin(a)*R);cols.push(cr,cg,cb)}} break;
+    case 5: // Torus
+      {const R=0.25*s,rr=0.08*s;for(let i=0;i<16;i++){const u=(i/16)*Math.PI*2;for(let j=0;j<6;j++){const v=(j/6)*Math.PI*2;pts.push(cx+(R+rr*Math.cos(v))*Math.cos(u),cy+rr*Math.sin(v),cz+(R+rr*Math.cos(v))*Math.sin(u));cols.push(cr,cg,cb)}}} break;
+    default: // Spiky
+      for(let sp=0;sp<8;sp++){const phi=Math.acos(2*r()-1),th=r()*Math.PI*2,dx=Math.sin(phi)*Math.cos(th),dy=Math.cos(phi),dz=Math.sin(phi)*Math.sin(th);for(let i=0;i<4;i++){const t=0.15*s+i/4*0.25*s;pts.push(cx+dx*t,cy+dy*t,cz+dz*t);cols.push(cr,cg,cb)}}
+  }
+}
+
+// ===== THREE.js Scene =====
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setSize(W(), H());
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#050810');
+const camera = new THREE.PerspectiveCamera(55, W()/H(), 0.1, 200);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+
+// Ground scatter
+{
+  const p=[],c=[];
+  for(let i=0;i<400;i++){
+    p.push((Math.random()-0.5)*30,-0.1,(Math.random()-0.5)*30);
+    const col=new THREE.Color(neon[Math.floor(Math.random()*neon.length)]);
+    c.push(col.r,col.g,col.b);
+  }
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(p,3));
+  g.setAttribute('color',new THREE.Float32BufferAttribute(c,3));
+  scene.add(new THREE.Points(g,new THREE.PointsMaterial({size:0.05,vertexColors:true,transparent:true,opacity:0.12,depthWrite:false})));
 }
 
 // ===== Plant container =====
@@ -968,241 +397,181 @@ const plantRoot = new THREE.Group();
 scene.add(plantRoot);
 const plantEntries = [];
 
-function makeFallbackPlant(text) {
-  // Guaranteed-working simple plant: vertical rings + top sphere
-  const allPts = [], allCols = [];
-  const col = new THREE.Color('#00ff88');
-  // Stem: 30 rings stacked vertically
-  for (let ring = 0; ring < 30; ring++) {
-    const y = ring * 0.3;
-    const R = 0.15 * (1 - ring / 40);
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * Math.PI * 2;
-      allPts.push(Math.cos(a) * R, y, Math.sin(a) * R);
-      allCols.push(col.r, col.g, col.b);
-    }
-  }
-  // Top: sphere of dots
-  const fc = new THREE.Color('#ff00ff');
-  for (let i = 0; i < 60; i++) {
-    const phi = Math.acos(2 * Math.random() - 1);
-    const theta = Math.random() * Math.PI * 2;
-    const R = 0.8;
-    allPts.push(Math.sin(phi)*Math.cos(theta)*R, 9 + Math.sin(phi)*Math.sin(theta)*R, Math.cos(phi)*R);
-    allCols.push(fc.r, fc.g, fc.b);
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(allPts, 3));
-  geo.setAttribute('color', new THREE.Float32BufferAttribute(allCols, 3));
-  const mat = new THREE.PointsMaterial({ size: 0.2, vertexColors: true, sizeAttenuation: true, transparent: true, opacity: 0.95, depthWrite: false });
-  const points = new THREE.Points(geo, mat);
-  points.userData.entryText = text;
-  const group = new THREE.Group();
-  group.add(points);
-  return group;
-}
-
-function addPlant(text, grow = true) {
+function addPlant(text, grow=true) {
   let mesh;
   try {
-    const plantData = generatePlant(text);
-    mesh = buildPlantCloud(plantData, text);
-    // Verify it has points
-    let hasPoints = false;
-    mesh.traverse(c => { if (c.geometry && c.geometry.attributes.position) hasPoints = true; });
-    if (!hasPoints) throw new Error('Empty plant geometry');
+    const data = generatePlant(text);
+    mesh = buildPlantCloud(data, text);
   } catch(e) {
-    console.error('Plant generation failed:', e);
-    // Show error on screen
-    const errDiv = document.getElementById('text-popup');
-    errDiv.textContent = 'ERR: ' + e.message;
-    errDiv.classList.add('show');
-    setTimeout(() => errDiv.classList.remove('show'), 8000);
-    // Use fallback
-    mesh = makeFallbackPlant(text);
+    console.error('Plant error:', e);
+    document.getElementById('pop').textContent = 'ERR:'+e.message;
+    document.getElementById('pop').classList.add('show');
+    return null;
   }
 
-  const idx = plantEntries.length;
-  // First plant at origin, rest in grid
-  const c = idx === 0 ? 0 : (idx % 5) - 2;
-  const row = idx === 0 ? 0 : Math.floor(idx / 5);
-  mesh.position.set(c * 14, 0, row * 14);
+  // ALL plants clustered at center with slight random offset
+  const rr = srand(hash(text)+plantEntries.length);
+  mesh.position.set((rr()-0.5)*1.5, 0, (rr()-0.5)*1.5);
 
-  if (grow) { mesh.userData.growT = 0; mesh.scale.setScalar(0.01); }
-  else mesh.scale.setScalar(1);
+  // Growth animation via setDrawRange
+  const pointsMesh = mesh.children[0];
+  if (grow && pointsMesh) {
+    mesh.userData.growStart = performance.now();
+    mesh.userData.growDuration = 1200 + Math.random()*600; // 1.2-1.8s
+    mesh.userData.totalVerts = pointsMesh.userData.totalVerts;
+    mesh.userData.wigglePhase = Math.random()*Math.PI*2;
+    // DrawRange starts at 0 — immediately visible as it grows
+    pointsMesh.geometry.setDrawRange(0, 1);
+  } else if (pointsMesh) {
+    pointsMesh.geometry.setDrawRange(0, pointsMesh.userData.totalVerts);
+  }
 
   plantRoot.add(mesh);
   plantEntries.push({ mesh, text });
-
-  saveEntry(text, { seed: hashString(text) }).catch(() => {});
+  saveEntry(text);
   return mesh;
 }
 
-// ===== Camera orbit =====
-let orbitYaw = 0.3, orbitPitch = 0.35, orbitRadius = 15;
-let orbitTarget = new THREE.Vector3(0, 3, 0);
-let userInteracting = false, interactionTimer = 0;
-const pointers = new Map();
-let dragStart = { x:0, y:0, yaw:0, pitch:0 };
-let pinchStartDist = 0, pinchStartRadius = 18;
+// ===== Camera =====
+let camYaw=0.3, camPitch=0.4, camDist=12;
+let camTarget = new THREE.Vector3(0, 3, 0);
+let interacting=false, interTimer=0;
+const ptrs=new Map();
+let dragS={x:0,y:0,yaw:0,pitch:0}, pinchD0=0, pinchR0=12;
 
-renderer.domElement.addEventListener('pointerdown', e => {
-  pointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
-  renderer.domElement.setPointerCapture(e.pointerId);
-  userInteracting = true; interactionTimer = 0;
-  if (pointers.size === 1) {
-    dragStart = { x:e.clientX, y:e.clientY, yaw:orbitYaw, pitch:orbitPitch };
-  } else if (pointers.size === 2) {
-    const pts = [...pointers.values()];
-    pinchStartDist = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y);
-    pinchStartRadius = orbitRadius;
+canvas.addEventListener('pointerdown', e=>{
+  ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  canvas.setPointerCapture(e.pointerId);
+  interacting=true; interTimer=0;
+  if(ptrs.size===1) dragS={x:e.clientX,y:e.clientY,yaw:camYaw,pitch:camPitch};
+  else if(ptrs.size===2){const p=[...ptrs.values()];pinchD0=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y);pinchR0=camDist}
+});
+canvas.addEventListener('pointermove', e=>{
+  if(!ptrs.has(e.pointerId))return;
+  ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  interacting=true; interTimer=0;
+  if(ptrs.size===1){
+    camYaw=dragS.yaw+(e.clientX-dragS.x)/W()*4;
+    camPitch=clamp(dragS.pitch+(e.clientY-dragS.y)/H()*2,-0.3,1.4);
+  } else if(ptrs.size>=2){
+    const p=[...ptrs.values()],d=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y);
+    if(pinchD0>0) camDist=clamp(pinchR0*(pinchD0/d),3,40);
   }
 });
+canvas.addEventListener('pointerup', e=>ptrs.delete(e.pointerId));
+canvas.addEventListener('pointercancel', e=>ptrs.delete(e.pointerId));
+canvas.addEventListener('wheel', e=>{e.preventDefault();camDist=clamp(camDist+e.deltaY*0.015,3,40);interacting=true;interTimer=0},{passive:false});
 
-renderer.domElement.addEventListener('pointermove', e => {
-  if (!pointers.has(e.pointerId)) return;
-  pointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
-  userInteracting = true; interactionTimer = 0;
-  if (pointers.size === 1) {
-    orbitYaw = dragStart.yaw + (e.clientX - dragStart.x) / W() * 4;
-    orbitPitch = clamp(dragStart.pitch + (e.clientY - dragStart.y) / H() * 2, -0.2, 1.4);
-  } else if (pointers.size >= 2) {
-    const pts = [...pointers.values()];
-    const d = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y);
-    if (pinchStartDist > 0) orbitRadius = clamp(pinchStartRadius * (pinchStartDist / d), 3, 60);
-  }
-});
-
-renderer.domElement.addEventListener('pointerup', e => pointers.delete(e.pointerId));
-renderer.domElement.addEventListener('pointercancel', e => pointers.delete(e.pointerId));
-
-// Mouse wheel zoom
-renderer.domElement.addEventListener('wheel', e => {
-  e.preventDefault();
-  orbitRadius = clamp(orbitRadius + e.deltaY * 0.02, 3, 60);
-  userInteracting = true; interactionTimer = 0;
-}, { passive: false });
-
-function updateCamera() {
-  const cx = orbitTarget.x + orbitRadius * Math.cos(orbitPitch) * Math.sin(orbitYaw);
-  const cz = orbitTarget.z + orbitRadius * Math.cos(orbitPitch) * Math.cos(orbitYaw);
-  const cy = orbitTarget.y + orbitRadius * Math.sin(orbitPitch);
-  camera.position.set(cx, cy, cz);
-  camera.lookAt(orbitTarget);
+function updateCam() {
+  camera.position.set(
+    camTarget.x + camDist*Math.cos(camPitch)*Math.sin(camYaw),
+    camTarget.y + camDist*Math.sin(camPitch),
+    camTarget.z + camDist*Math.cos(camPitch)*Math.cos(camYaw)
+  );
+  camera.lookAt(camTarget);
 }
 
-// ===== Click to read plant text =====
+// ===== Click to read =====
 const raycaster = new THREE.Raycaster();
 raycaster.params.Points.threshold = 0.5;
-const popup = document.getElementById('text-popup');
-
-renderer.domElement.addEventListener('click', e => {
-  if (!plantRoot.children.length) return;
-  const rect = renderer.domElement.getBoundingClientRect();
-  raycaster.setFromCamera({
-    x: ((e.clientX - rect.left) / rect.width) * 2 - 1,
-    y: -((e.clientY - rect.top) / rect.height) * 2 + 1
-  }, camera);
-  const hits = raycaster.intersectObjects(plantRoot.children, true);
-  if (hits.length) {
-    let obj = hits[0].object;
-    while (obj && !obj.userData.entryText) obj = obj.parent;
-    if (obj?.userData.entryText) {
-      popup.textContent = obj.userData.entryText;
-      popup.classList.add('show');
-      setTimeout(() => popup.classList.remove('show'), 4000);
-    }
-  }
+const pop = document.getElementById('pop');
+canvas.addEventListener('click', e=>{
+  if(!plantRoot.children.length) return;
+  const rect=canvas.getBoundingClientRect();
+  raycaster.setFromCamera({x:((e.clientX-rect.left)/rect.width)*2-1,y:-((e.clientY-rect.top)/rect.height)*2+1},camera);
+  const hits=raycaster.intersectObjects(plantRoot.children,true);
+  if(hits.length){let o=hits[0].object;while(o&&!o.userData.entryText)o=o.parent;if(o?.userData.entryText){pop.textContent=o.userData.entryText;pop.classList.add('show');setTimeout(()=>pop.classList.remove('show'),4000)}}
 });
 
 // ===== UI =====
-const uiPanel = document.getElementById('ui-panel');
-const submitBtn = document.getElementById('submit-btn');
-const textInput = document.getElementById('text-input');
-const writeBtn = document.getElementById('write-btn');
+const ui=document.getElementById('ui'), goBtn=document.getElementById('go');
+const ta=document.getElementById('ta'), wb=document.getElementById('wb');
 
-textInput.addEventListener('input', () => { submitBtn.disabled = !textInput.value.trim(); });
+ta.addEventListener('input', ()=>{goBtn.disabled=!ta.value.trim()});
 
-submitBtn.addEventListener('click', () => {
-  const text = textInput.value.trim();
-  if (!text) return;
-  textInput.value = '';
-  submitBtn.disabled = true;
-  uiPanel.classList.add('hidden');
-  writeBtn.style.display = 'block';
-
+goBtn.addEventListener('click', ()=>{
+  const text=ta.value.trim();
+  if(!text) return;
+  ta.value=''; goBtn.disabled=true;
+  ui.classList.add('hidden');
+  wb.style.display='block';
   const mesh = addPlant(text, true);
-  orbitTarget.copy(mesh.position).add(new THREE.Vector3(0, 4, 0));
-  orbitRadius = 15;
+  if(mesh){
+    camTarget.set(0, 3, 0);
+    camDist = 10;
+  }
 });
 
-writeBtn.addEventListener('click', () => {
-  writeBtn.style.display = 'none';
-  uiPanel.classList.remove('hidden');
-});
+wb.addEventListener('click', ()=>{wb.style.display='none';ui.classList.remove('hidden')});
 
-// ===== Load saved plants =====
+// ===== Load saved =====
 async function loadSaved() {
   try {
     const entries = await loadEntries();
-    entries.forEach((entry, i) => {
-      if (!entry.text) return;
-      const plantData = generatePlant(entry.text);
-      const mesh = buildPlantCloud(plantData, entry.text);
-      const col = (i % 5) - 2;
-      const row = Math.floor(i / 5);
-      mesh.position.set(col * 14, 0, row * 14);
-      mesh.scale.setScalar(1);
-      plantRoot.add(mesh);
-      plantEntries.push({ mesh, text: entry.text });
-    });
-  } catch (err) { console.error('Load saved error:', err); }
+    for (const entry of entries) {
+      if (!entry.text) continue;
+      addPlant(entry.text, false);
+    }
+  } catch(e) { console.error('Load error:', e); }
 }
 
 // ===== Game loop =====
 const clock = new THREE.Clock();
+let globalTime = 0;
+
 function tick() {
   requestAnimationFrame(tick);
   const dt = Math.min(clock.getDelta(), 0.05);
-  interactionTimer += dt;
-  if (interactionTimer > 2) userInteracting = false;
+  globalTime += dt;
+  interTimer += dt;
+  if (interTimer > 2) interacting = false;
+  if (!interacting) camYaw += dt * 0.08;
 
-  if (!userInteracting) orbitYaw += dt * 0.08;
+  const now = performance.now();
 
-  // Grow animation
   for (const entry of plantEntries) {
     const m = entry.mesh;
-    if (m.userData.growT !== undefined) {
-      m.userData.growT = Math.min(1, m.userData.growT + dt * 1.2);
-      const ease = m.userData.growT * (2 - m.userData.growT);
-      m.scale.setScalar(0.05 + ease * 0.95);
-      if (m.userData.growT >= 1) delete m.userData.growT;
+    const pm = m.children[0];
+    if (!pm || !pm.geometry) continue;
+
+    // Progressive growth via setDrawRange
+    if (m.userData.totalVerts !== undefined) {
+      const elapsed = now - m.userData.growStart;
+      const t = Math.min(1, elapsed / m.userData.growDuration);
+      // Ease-out: fast start, slow finish
+      const ease = 1 - (1 - t) * (1 - t);
+      const count = Math.ceil(ease * m.userData.totalVerts);
+      pm.geometry.setDrawRange(0, count);
+      if (t >= 1) delete m.userData.totalVerts;
     }
+
+    // Organic wriggle — subtle multi-freq oscillation
+    const phase = m.userData.wigglePhase || 0;
+    m.rotation.x = Math.sin(globalTime*1.2+phase)*0.015 + Math.sin(globalTime*2.5+phase*1.7)*0.008;
+    m.rotation.z = Math.cos(globalTime*0.9+phase*0.8)*0.015 + Math.cos(globalTime*2.1+phase*1.3)*0.008;
   }
 
-  updateCamera();
+  // Camera target slowly drifts up as more plants are added
+  const maxY = plantEntries.reduce((acc, e) => {
+    const d = e.mesh.children[0]?.userData;
+    return Math.max(acc, d ? 5 : 3);
+  }, 3);
+  camTarget.y += (maxY - camTarget.y) * dt * 0.5;
+
+  updateCam();
   renderer.render(scene, camera);
 }
 
-// ===== Start =====
+// ===== Init =====
 async function init() {
-  // DEBUG: add a visible test plant at origin immediately
-  try {
-    const testPlant = makeFallbackPlant('test');
-    testPlant.position.set(0, 0, 0);
-    plantRoot.add(testPlant);
-    plantEntries.push({ mesh: testPlant, text: 'test' });
-    console.log('Test plant added successfully');
-  } catch(e) { console.error('Even fallback plant failed:', e); }
-
   await loadSaved();
   tick();
 }
 init();
 
-window.addEventListener('resize', () => {
-  renderer.setSize(W(), H());
-  camera.aspect = W() / H();
+window.addEventListener('resize', ()=>{
+  renderer.setSize(W(),H());
+  camera.aspect=W()/H();
   camera.updateProjectionMatrix();
 });
 </script>
