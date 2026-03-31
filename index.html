@@ -80,8 +80,6 @@ import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
 import { GLTFLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/DRACOLoader.js';
 import { FBXLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/FBXLoader.js';
-import { OBJLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/OBJLoader.js';
-import { MTLLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/MTLLoader.js';
 
 const W = () => window.innerWidth;
 const H = () => window.innerHeight;
@@ -291,115 +289,204 @@ function generateProceduralPlant(dna) {
 // ===== Plant mesh materials =====
 function glassMat(color) {
   return new THREE.MeshPhysicalMaterial({
-    color, transmission:0.9, transparent:true, roughness:0.1, metalness:0.2,
-    ior:1.5, thickness:0.5, clearcoat:1, clearcoatRoughness:0.1,
-    emissive: new THREE.Color(color).multiplyScalar(0.15), emissiveIntensity:0.3
+    color, transmission:0.92, transparent:true, roughness:0.05, metalness:0.0,
+    ior:1.45, thickness:0.3, clearcoat:1.0, clearcoatRoughness:0.05,
+    emissive: new THREE.Color(color).multiplyScalar(0.1), emissiveIntensity:0.5,
+    opacity:0.85, side: THREE.DoubleSide, depthWrite:false
   });
 }
 function glowMat(color) {
-  return new THREE.MeshStandardMaterial({ color, emissive:color, emissiveIntensity:2, toneMapped:false });
+  return new THREE.MeshStandardMaterial({ color, emissive:color, emissiveIntensity:3, toneMapped:false });
+}
+function wireMat(color) {
+  return new THREE.MeshStandardMaterial({ color, metalness:0.6, roughness:0.3, emissive:color, emissiveIntensity:0.3 });
+}
+
+// Helper: create a curling tendril curve
+function makeTendril(origin, dir, length, curl) {
+  const pts = [];
+  const p = origin.clone();
+  const d = dir.clone().normalize();
+  const perp = new THREE.Vector3(1,0,0).cross(d).normalize();
+  if (perp.lengthSq()<0.1) perp.set(0,0,1).cross(d).normalize();
+  for (let i = 0; i <= 12; i++) {
+    const t = i/12;
+    const r = curl * t * t;
+    const angle = t * Math.PI * 3;
+    const offset = perp.clone().multiplyScalar(Math.cos(angle)*r)
+      .add(new THREE.Vector3(0,1,0).cross(perp).normalize().multiplyScalar(Math.sin(angle)*r));
+    pts.push(p.clone().add(d.clone().multiplyScalar(t*length)).add(offset));
+  }
+  return new THREE.CatmullRomCurve3(pts);
+}
+
+// Helper: add fine stamens radiating from center
+function addStamens(group, count, height, color, tipColor) {
+  const stMat = wireMat(color);
+  const tipMat = glowMat(tipColor || color);
+  for (let i = 0; i < count; i++) {
+    const a = (i/count)*Math.PI*2 + (Math.random()-0.5)*0.3;
+    const tilt = 0.2 + Math.random()*0.6;
+    const h = height * (0.6 + Math.random()*0.4);
+    const rad = 0.15 + Math.random()*0.3;
+    const curve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0,0,0),
+      new THREE.Vector3(Math.cos(a)*rad*0.5, h*0.4, Math.sin(a)*rad*0.5),
+      new THREE.Vector3(Math.cos(a)*rad, h*0.8, Math.sin(a)*rad),
+      new THREE.Vector3(Math.cos(a)*rad*1.1, h, Math.sin(a)*rad*1.1)
+    ]);
+    const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 8, 0.015, 4, false), stMat);
+    group.add(tube);
+    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 6), tipMat);
+    const end = curve.getPoint(1);
+    tip.position.copy(end);
+    group.add(tip);
+  }
 }
 
 // ===== Fruit renderer =====
 function createFruit(f) {
   const g = new THREE.Group();
   const mat = glassMat(f.color);
+  const whiteMat = glassMat('#f0e8ff');
 
   if (f.type === 'balloon_flower' || !f.type) {
-    for (let i = 0; i < 6; i++) {
-      const pg = new THREE.Group();
-      pg.rotation.y = (i * Math.PI) / 3;
-      const p = new THREE.Mesh(new THREE.SphereGeometry(1.2, 16, 12), mat);
-      p.scale.set(0.6, 0.2, 1); p.position.set(1.2, 0, 0); p.rotation.z = 0.3;
-      pg.add(p);
-      for (let j = 0; j < 3; j++) {
-        const dot = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6),
-          new THREE.MeshStandardMaterial({ color:'#FFD700', metalness:1, roughness:0.1 }));
-        dot.position.set(1.2+(Math.random()-0.5)*0.6, 0.15, (Math.random()-0.5)*0.6);
-        pg.add(dot);
+    // Multi-layer translucent petals + radiating stamens
+    for (let layer = 0; layer < 2; layer++) {
+      const n = layer===0 ? 8 : 6;
+      const r = layer===0 ? 1.4 : 0.9;
+      const m = layer===0 ? mat : whiteMat;
+      for (let i = 0; i < n; i++) {
+        const pg = new THREE.Group();
+        pg.rotation.y = (i*Math.PI*2)/n + layer*0.3;
+        const p = new THREE.Mesh(new THREE.SphereGeometry(r, 16, 12), m);
+        p.scale.set(0.5, 0.03, 1); p.position.set(r*0.9, layer*0.15, 0);
+        p.rotation.z = 0.15+layer*0.25;
+        pg.add(p); g.add(pg);
       }
-      g.add(pg);
     }
-    const core = new THREE.Mesh(new THREE.SphereGeometry(0.8, 16, 16), glowMat('#FFD700'));
-    core.position.y = 0.2; g.add(core);
+    addStamens(g, 20, 1.8, '#ffe8d0', '#FFD700');
+    g.add(new THREE.Mesh(new THREE.SphereGeometry(0.35, 12, 12), glowMat('#FFD700')));
 
   } else if (f.type === 'lotus_flower') {
-    for (let i = 0; i < 8; i++) {
-      const pg = new THREE.Group(); pg.rotation.y = (i*Math.PI)/4;
-      const p = new THREE.Mesh(new THREE.SphereGeometry(1.8, 16, 12), mat);
-      p.scale.set(0.3, 0.05, 1); p.position.set(1.5, -0.2, 0); p.rotation.z = 0.1;
-      pg.add(p); g.add(pg);
+    // 3 layers of petals + dense stamens
+    for (let layer = 0; layer < 3; layer++) {
+      const n = [10,8,5][layer];
+      const r = [2.0,1.4,0.8][layer];
+      const m = layer===2 ? whiteMat : mat;
+      for (let i = 0; i < n; i++) {
+        const pg = new THREE.Group();
+        pg.rotation.y = (i*Math.PI*2)/n + layer*0.15;
+        const p = new THREE.Mesh(new THREE.SphereGeometry(r, 16, 12), m);
+        p.scale.set(0.3, 0.02, 1);
+        p.position.set(r*0.7, layer*0.25-0.15, 0);
+        p.rotation.z = 0.05+layer*0.2;
+        pg.add(p); g.add(pg);
+      }
     }
-    for (let i = 0; i < 6; i++) {
-      const pg = new THREE.Group(); pg.rotation.y = (i*Math.PI)/3+0.2;
-      const p = new THREE.Mesh(new THREE.SphereGeometry(1.2, 16, 12), glassMat('#ffffff'));
-      p.scale.set(0.3, 0.05, 1); p.position.set(0.8, 0.2, 0); p.rotation.z = 0.4;
-      pg.add(p); g.add(pg);
-    }
-    for (let i = 0; i < 10; i++) {
-      const a = Math.random()*Math.PI*2, rad = Math.random()*0.5, h = 1+Math.random()*1.5;
-      const s = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, h, 6),
-        new THREE.MeshStandardMaterial({ color:Math.random()>0.5?'#FFD700':'#4444ff', metalness:0.8, roughness:0.2 }));
-      s.position.set(Math.cos(a)*rad, h/2, Math.sin(a)*rad);
-      s.rotation.x = (Math.random()-0.5)*0.5; g.add(s);
-    }
-    g.add(new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 16), glowMat('#FFD700')));
+    addStamens(g, 30, 2.0, '#fff0e0', '#ff6644');
+    g.add(new THREE.Mesh(new THREE.SphereGeometry(0.25, 12, 12), glowMat('#FFD700')));
 
   } else if (f.type === 'tubular_flower') {
-    for (let i = 0; i < 16; i++) {
-      const pg = new THREE.Group(); pg.rotation.y = (i*Math.PI*2)/16;
-      const t = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.05, 2, 8), mat);
-      t.position.set(1, 0, 0); t.rotation.z = Math.PI/2; pg.add(t);
-      const tip = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 8), glassMat('#ffffff'));
-      tip.position.set(2, 0, 0); pg.add(tip);
-      g.add(pg);
+    // Radiating glass tubes + curling tips
+    for (let i = 0; i < 20; i++) {
+      const a = (i*Math.PI*2)/20;
+      const h = 1.5+Math.random()*1.0;
+      const curve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(0,0,0),
+        new THREE.Vector3(Math.cos(a)*0.3, h*0.3, Math.sin(a)*0.3),
+        new THREE.Vector3(Math.cos(a)*0.8, h*0.7, Math.sin(a)*0.8),
+        new THREE.Vector3(Math.cos(a)*1.2, h, Math.sin(a)*1.2),
+        new THREE.Vector3(Math.cos(a)*1.0, h+0.4, Math.sin(a)*1.0)
+      ]);
+      const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 12, 0.06-i*0.001, 6, false), mat);
+      g.add(tube);
+      const tip = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6), glowMat('#ffffff'));
+      tip.position.copy(curve.getPoint(1)); g.add(tip);
     }
-    g.add(new THREE.Mesh(new THREE.SphereGeometry(0.6, 16, 16), glowMat(f.color)));
+    g.add(new THREE.Mesh(new THREE.SphereGeometry(0.4, 12, 12), glowMat(f.color)));
 
   } else if (f.type === 'jellyfish_flower') {
-    const bell = new THREE.Mesh(new THREE.SphereGeometry(1.2, 16, 12, 0, Math.PI*2, 0, Math.PI/2), mat);
-    bell.position.y = 0.5; g.add(bell);
-    g.add(new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 16), glowMat('#ffffff')));
-    for (let i = 0; i < 12; i++) {
-      const a = (i*Math.PI*2)/12;
-      const tent = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.01, 3, 6), mat);
-      tent.position.set(Math.cos(a)*0.8, -1, Math.sin(a)*0.8);
-      tent.rotation.x = (Math.random()-0.5)*0.2; g.add(tent);
+    // Translucent bell + curling tendrils
+    const bell = new THREE.Mesh(new THREE.SphereGeometry(1.3, 20, 14, 0, Math.PI*2, 0, Math.PI*0.55), mat);
+    bell.position.y = 0.3; g.add(bell);
+    const innerBell = new THREE.Mesh(new THREE.SphereGeometry(1.0, 16, 12, 0, Math.PI*2, 0, Math.PI*0.45), whiteMat);
+    innerBell.position.y = 0.35; g.add(innerBell);
+    g.add(new THREE.Mesh(new THREE.SphereGeometry(0.25, 12, 12), glowMat('#ffe0ff')));
+    // Curling tendrils
+    for (let i = 0; i < 16; i++) {
+      const a = (i*Math.PI*2)/16;
+      const r = 0.7 + Math.random()*0.3;
+      const origin = new THREE.Vector3(Math.cos(a)*r, 0.1, Math.sin(a)*r);
+      const dir = new THREE.Vector3(Math.cos(a)*0.3, -1, Math.sin(a)*0.3);
+      const curve = makeTendril(origin, dir, 2+Math.random()*2, 0.5+Math.random()*0.5);
+      const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 12, 0.02, 4, false), mat);
+      g.add(tube);
     }
 
   } else if (f.type === 'daisy_flower') {
-    for (let i = 0; i < 12; i++) {
-      const pg = new THREE.Group(); pg.rotation.y = (i*Math.PI)/6;
-      const p = new THREE.Mesh(new THREE.SphereGeometry(0.6, 12, 8), mat);
-      p.scale.set(0.4, 0.1, 1); p.position.set(0.6, 0, 0);
-      pg.add(p); g.add(pg);
+    // Many thin round petals + dense center
+    for (let layer = 0; layer < 2; layer++) {
+      const n = layer===0 ? 14 : 10;
+      for (let i = 0; i < n; i++) {
+        const pg = new THREE.Group();
+        pg.rotation.y = (i*Math.PI*2)/n + layer*0.2;
+        const p = new THREE.Mesh(new THREE.SphereGeometry(0.7, 12, 8), layer===0?mat:whiteMat);
+        p.scale.set(0.35, 0.02, 1);
+        p.position.set(0.65, layer*0.1, 0);
+        p.rotation.z = layer*0.15;
+        pg.add(p); g.add(pg);
+      }
     }
-    const c = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 16),
-      new THREE.MeshStandardMaterial({ color:'#FFD700', roughness:0.8 }));
-    c.position.y = 0.05; c.scale.set(1, 0.2, 1); g.add(c);
+    addStamens(g, 12, 0.8, '#ffe080', '#ff4400');
+    const c = new THREE.Mesh(new THREE.SphereGeometry(0.25, 12, 12),
+      new THREE.MeshStandardMaterial({ color:'#FFD700', roughness:0.5, emissive:'#FFD700', emissiveIntensity:0.5 }));
+    c.position.y = 0.05; c.scale.set(1, 0.3, 1); g.add(c);
 
   } else if (f.type === 'fungus_cap') {
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(1.5, 16, 16), mat);
-    cap.scale.set(1, 0.4, 1); g.add(cap);
-    const bot = new THREE.Mesh(new THREE.SphereGeometry(1.4, 16, 16),
-      new THREE.MeshStandardMaterial({ color:'#222222', roughness:0.9 }));
-    bot.scale.set(1, 0.1, 1); bot.position.y = -0.2; g.add(bot);
-    g.add(new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 16), glowMat(f.color)));
+    // Layered translucent cap + gills underneath
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(1.6, 20, 16), mat);
+    cap.scale.set(1, 0.45, 1); g.add(cap);
+    const innerCap = new THREE.Mesh(new THREE.SphereGeometry(1.3, 16, 12), whiteMat);
+    innerCap.scale.set(1, 0.3, 1); innerCap.position.y = 0.05; g.add(innerCap);
+    // Gills (radial fins underneath)
+    for (let i = 0; i < 20; i++) {
+      const a = (i*Math.PI*2)/20;
+      const gill = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.3),
+        new THREE.MeshPhysicalMaterial({ color:f.color, transparent:true, opacity:0.3, side:THREE.DoubleSide, roughness:0.2 }));
+      gill.position.set(Math.cos(a)*0.5, -0.2, Math.sin(a)*0.5);
+      gill.rotation.y = a; gill.rotation.x = Math.PI/2;
+      g.add(gill);
+    }
+    g.add(new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 12), glowMat(f.color)));
 
   } else if (f.type === 'giant_flower') {
-    for (let i = 0; i < 12; i++) {
-      const pg = new THREE.Group(); pg.rotation.y = (i*Math.PI)/6;
-      const p = new THREE.Mesh(new THREE.SphereGeometry(1.5, 16, 12), mat);
-      p.scale.set(0.4, 0.1, 1); p.position.set(1.5, 0, 0); p.rotation.z = 0.2;
-      pg.add(p); g.add(pg);
+    // Spectacular multi-layer flower with stamens and tendrils
+    for (let layer = 0; layer < 3; layer++) {
+      const n = [14,10,6][layer];
+      const r = [2.0,1.5,0.9][layer];
+      const m = [mat, whiteMat, glassMat('#ffe8f0')][layer];
+      for (let i = 0; i < n; i++) {
+        const pg = new THREE.Group();
+        pg.rotation.y = (i*Math.PI*2)/n + layer*0.25;
+        const p = new THREE.Mesh(new THREE.SphereGeometry(r, 16, 12), m);
+        p.scale.set(0.4, 0.02, 1);
+        p.position.set(r*0.75, layer*0.3, 0);
+        p.rotation.z = 0.1+layer*0.2;
+        pg.add(p); g.add(pg);
+      }
     }
+    addStamens(g, 35, 2.5, '#ffe0d0', '#ff3300');
+    // Curling tendrils at edges
     for (let i = 0; i < 8; i++) {
-      const pg = new THREE.Group(); pg.rotation.y = (i*Math.PI)/4+0.2;
-      const p = new THREE.Mesh(new THREE.SphereGeometry(1.0, 16, 12), glassMat('#ffffff'));
-      p.scale.set(0.4, 0.1, 1); p.position.set(1.0, 0.5, 0); p.rotation.z = 0.5;
-      pg.add(p); g.add(pg);
+      const a = (i*Math.PI*2)/8;
+      const origin = new THREE.Vector3(Math.cos(a)*1.5, 0.2, Math.sin(a)*1.5);
+      const dir = new THREE.Vector3(Math.cos(a), 0.5, Math.sin(a));
+      const curve = makeTendril(origin, dir, 1.5, 0.6);
+      const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 10, 0.015, 4, false), wireMat(f.color));
+      g.add(tube);
     }
-    g.add(new THREE.Mesh(new THREE.SphereGeometry(0.8, 16, 16), glowMat('#FFAA00')));
+    g.add(new THREE.Mesh(new THREE.SphereGeometry(0.5, 12, 12), glowMat('#FFAA00')));
   }
 
   g.scale.setScalar(f.scale || 1);
@@ -412,40 +499,69 @@ function createLeaf(l) {
   const mat = glassMat(l.color);
 
   if (l.type === 'glass_leaf' || !l.type) {
+    // Veined translucent leaf
     const lf = new THREE.Mesh(new THREE.SphereGeometry(1.5, 16, 12), mat);
-    lf.scale.set(0.5, 0.05, 1); lf.position.set(0, 0, 1.5); lf.rotation.z = 0.2;
+    lf.scale.set(0.5, 0.02, 1); lf.position.set(0, 0, 1.5); lf.rotation.z = 0.2;
     g.add(lf);
-  } else if (l.type === 'wire_leaf') {
-    for (let i = 0; i < 3; i++) {
-      const curve = new THREE.CatmullRomCurve3([
-        new THREE.Vector3(0,0,0),
-        new THREE.Vector3((Math.random()-0.5)*2, Math.random()*2, 1),
-        new THREE.Vector3((Math.random()-0.5)*3, Math.random()*3, 2),
-        new THREE.Vector3((Math.random()-0.5)*4, Math.random()*4, 3)
+    // Central vein
+    const vein = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0,0.02,0), new THREE.Vector3(0,0.02,1), new THREE.Vector3(0,0.02,2.5)
+    ]);
+    g.add(new THREE.Mesh(new THREE.TubeGeometry(vein, 8, 0.02, 4, false), wireMat(l.color)));
+    // Side veins
+    for (let i = 0; i < 4; i++) {
+      const t = 0.3+i*0.15;
+      const side = (i%2===0)?1:-1;
+      const sv = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(0,0.02,t*2.5),
+        new THREE.Vector3(side*0.4,0.02,t*2.5+0.4),
+        new THREE.Vector3(side*0.6,0.02,t*2.5+0.7)
       ]);
-      const t = new THREE.Mesh(new THREE.TubeGeometry(curve, 16, 0.02, 6, false),
-        new THREE.MeshStandardMaterial({ color:l.color, metalness:0.8, roughness:0.2 }));
-      g.add(t);
+      g.add(new THREE.Mesh(new THREE.TubeGeometry(sv, 6, 0.012, 3, false), wireMat(l.color)));
+    }
+  } else if (l.type === 'wire_leaf') {
+    // Organic curling wires
+    for (let i = 0; i < 5; i++) {
+      const dir = new THREE.Vector3((Math.random()-0.5)*2, Math.random()+0.5, (Math.random()-0.5)*2).normalize();
+      const curve = makeTendril(new THREE.Vector3(0,0,0), dir, 2+Math.random()*2, 0.4+Math.random()*0.6);
+      g.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 12, 0.015, 4, false), wireMat(l.color)));
+      const tip = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 6), glowMat(l.color));
+      tip.position.copy(curve.getPoint(1)); g.add(tip);
     }
   } else if (l.type === 'fern') {
-    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 3, 6), mat);
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 3, 6), mat);
     stem.position.y = 1.5; g.add(stem);
-    for (let i = 0; i < 6; i++) {
-      const pair = new THREE.Group(); pair.position.y = 0.5+i*0.4;
-      const left = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 6), mat);
-      left.scale.set(1, 0.1, 0.3); left.position.set(0.4, 0, 0); left.rotation.z = -0.2;
-      pair.add(left);
-      const right = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 6), mat);
-      right.scale.set(1, 0.1, 0.3); right.position.set(-0.4, 0, 0); right.rotation.z = 0.2;
-      pair.add(right);
+    for (let i = 0; i < 8; i++) {
+      const pair = new THREE.Group(); pair.position.y = 0.3+i*0.32;
+      const sz = 0.5*(1-i/10);
+      for (let side of [-1,1]) {
+        const lf = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 6), mat);
+        lf.scale.set(1, 0.03, 0.4); lf.position.set(side*0.35, 0, 0);
+        lf.rotation.z = side*(-0.2); lf.scale.multiplyScalar(sz);
+        pair.add(lf);
+      }
       g.add(pair);
     }
   } else if (l.type === 'broad') {
-    const lf = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), mat);
-    lf.scale.set(0.8, 0.1, 1.5); lf.position.set(0, 0, 1.5); g.add(lf);
+    const lf = new THREE.Mesh(new THREE.SphereGeometry(1.2, 16, 12), mat);
+    lf.scale.set(0.8, 0.02, 1.5); lf.position.set(0, 0, 1.5); g.add(lf);
+    // Veins
+    for (let i = -2; i <= 2; i++) {
+      const sv = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(0,0.02,0.3),
+        new THREE.Vector3(i*0.3,0.02,1.5),
+        new THREE.Vector3(i*0.5,0.02,2.5)
+      ]);
+      g.add(new THREE.Mesh(new THREE.TubeGeometry(sv, 6, 0.012, 3, false), wireMat(l.color)));
+    }
   } else if (l.type === 'needle') {
-    const n = new THREE.Mesh(new THREE.ConeGeometry(0.1, 3, 8), mat);
-    n.position.y = 1.5; g.add(n);
+    // Cluster of thin needles
+    for (let i = 0; i < 5; i++) {
+      const n = new THREE.Mesh(new THREE.ConeGeometry(0.04, 2+Math.random(), 6), mat);
+      n.position.set((Math.random()-0.5)*0.2, 1+Math.random()*0.5, (Math.random()-0.5)*0.2);
+      n.rotation.x = (Math.random()-0.5)*0.3; n.rotation.z = (Math.random()-0.5)*0.3;
+      g.add(n);
+    }
   }
 
   g.scale.setScalar(l.scale || 1);
@@ -455,17 +571,22 @@ function createLeaf(l) {
 // ===== Build plant mesh =====
 function buildPlantPartMesh(part) {
   const group = new THREE.Group();
+  // Stems as translucent glass tubes
   for (const stemData of part.stems) {
     if (stemData.length < 2) continue;
     const pts = stemData.map(p => new THREE.Vector3(p.x, p.y, p.z))
       .filter((p,i,arr) => i===0 || p.distanceToSquared(arr[i-1]) > 0.0001);
     if (pts.length < 2) continue;
     const curve = new THREE.CatmullRomCurve3(pts);
-    const radius = Math.max(0.05, 0.18 - part.stems.length * 0.008);
+    const radius = Math.max(0.04, 0.15 - part.stems.length * 0.006);
     const mesh = new THREE.Mesh(new THREE.TubeGeometry(curve, 48, radius, 8, false), glassMat(part.stemColor));
     mesh.castShadow = true;
     mesh.userData.entryText = part.textInput;
     group.add(mesh);
+    // Inner glow tube for ethereal look
+    const innerMesh = new THREE.Mesh(new THREE.TubeGeometry(curve, 24, radius*0.3, 4, false),
+      new THREE.MeshStandardMaterial({ color:part.stemColor, emissive:part.stemColor, emissiveIntensity:0.8, transparent:true, opacity:0.4 }));
+    group.add(innerMesh);
   }
   for (const f of part.fruits) {
     const pos = new THREE.Vector3(f.position?.x||0, f.position?.y||0, f.position?.z||0);
@@ -517,8 +638,8 @@ const progressBarEl = document.getElementById('progress-bar');
 const progressPctEl = document.getElementById('progress-pct');
 const loadingDiv = document.getElementById('loading');
 
-const assetProg = { buildingObj:0, charIdle:0, charJump:0, charDrink:0, charTex:0 };
-const assetWeight = { buildingObj:0.55, charIdle:0.05, charJump:0.05, charDrink:0.30, charTex:0.05 };
+const assetProg = { building:0, charIdle:0, charJump:0, charDrink:0, charWalk:0, charTex:0 };
+const assetWeight = { building:0.30, charIdle:0.08, charJump:0.08, charDrink:0.22, charWalk:0.22, charTex:0.10 };
 function updateProgress() {
   let total = 0;
   for (const k of Object.keys(assetProg)) total += assetProg[k] * (assetWeight[k]||0);
@@ -530,45 +651,43 @@ function onProg(key) {
   return xhr => { if (xhr.lengthComputable) assetProg[key] = xhr.loaded / xhr.total; updateProgress(); };
 }
 
-// ===== Building =====
+// ===== Building (GLB - much smaller than OBJ) =====
 let building = null;
 let rooftopY = 4;
 let rooftopBounds = { minX:-1.5, maxX:1.5, minZ:-1.5, maxZ:1.5 };
 const buildingGroup = new THREE.Group();
 scene.add(buildingGroup);
 
-// Fallback box (shown while loading / if OBJ fails)
+// Fallback box
 const fallbackBldg = new THREE.Mesh(new THREE.BoxGeometry(3, 4, 3),
   new THREE.MeshStandardMaterial({ color:0x1a1a2e, roughness:0.9 }));
 fallbackBldg.position.y = 2;
 buildingGroup.add(fallbackBldg);
 
 const buildingPromise = new Promise(resolve => {
-  const ml = new MTLLoader(); const ol = new OBJLoader();
-  ml.setPath('./building/'); ol.setPath('./building/');
-  ml.load('tripo_convert_81a5c880-066d-4bf1-9436-48ff4ce267bf.mtl', mtl => {
-    mtl.preload(); ol.setMaterials(mtl);
-    ol.load('tripo_convert_81a5c880-066d-4bf1-9436-48ff4ce267bf.obj', obj => {
-      building = obj;
-      buildingGroup.remove(fallbackBldg);
-      const box = new THREE.Box3().setFromObject(obj);
-      const maxDim = Math.max(box.getSize(new THREE.Vector3()).x, box.getSize(new THREE.Vector3()).z);
-      const scale = 4 / maxDim;
-      obj.scale.setScalar(scale);
-      const box2 = new THREE.Box3().setFromObject(obj);
-      obj.position.y = -box2.min.y;
-      buildingGroup.add(obj);
-      const box3 = new THREE.Box3().setFromObject(obj);
-      rooftopY = box3.max.y + 0.02;
-      rooftopBounds = { minX:box3.min.x+0.15, maxX:box3.max.x-0.15, minZ:box3.min.z+0.15, maxZ:box3.max.z-0.15 };
-      assetProg.buildingObj = 1; updateProgress(); resolve();
-    }, onProg('buildingObj'), err => {
-      console.warn('OBJ load error:', err);
-      assetProg.buildingObj = 1; updateProgress(); resolve();
-    });
-  }, undefined, err => {
-    console.warn('MTL load error:', err);
-    assetProg.buildingObj = 1; updateProgress(); resolve();
+  const gl = new GLTFLoader();
+  const dr = new DRACOLoader();
+  dr.setDecoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/draco/');
+  gl.setDRACOLoader(dr);
+  gl.load('./building/building.glb', gltf => {
+    const obj = gltf.scene;
+    building = obj;
+    buildingGroup.remove(fallbackBldg);
+    const box = new THREE.Box3().setFromObject(obj);
+    const sz = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(sz.x, sz.z);
+    const scale = 4 / maxDim;
+    obj.scale.setScalar(scale);
+    const box2 = new THREE.Box3().setFromObject(obj);
+    obj.position.y = -box2.min.y;
+    buildingGroup.add(obj);
+    const box3 = new THREE.Box3().setFromObject(obj);
+    rooftopY = box3.max.y;
+    rooftopBounds = { minX:box3.min.x+0.15, maxX:box3.max.x-0.15, minZ:box3.min.z+0.15, maxZ:box3.max.z-0.15 };
+    assetProg.building = 1; updateProgress(); resolve();
+  }, onProg('building'), err => {
+    console.warn('Building load error:', err);
+    assetProg.building = 1; updateProgress(); resolve();
   });
 });
 
@@ -637,6 +756,15 @@ class GameCharacter {
         this.drinkDuration = drinkFbx.animations[0].duration || this.drinkDuration;
       }
     } catch { assetProg.charDrink = 1; updateProgress(); }
+
+    try {
+      const walkFbx = await new Promise((r,j) => fbx.load('./playermodel/Walking.fbx', r, onProg('charWalk'), j));
+      assetProg.charWalk = 1; updateProgress();
+      if (walkFbx.animations?.length) {
+        strip(walkFbx.animations[0]);
+        this.anims['WALK'] = this.mixer.clipAction(walkFbx.animations[0]);
+      }
+    } catch { assetProg.charWalk = 1; updateProgress(); }
 
     this.loaded = true;
   }
@@ -728,7 +856,7 @@ function spawnLightRing(pos) {
 }
 
 // ===== Camera =====
-let orbitYaw = 0, orbitPitch = 0.25, orbitRadius = 6;
+let orbitYaw = 0, orbitPitch = 0.15, orbitRadius = 0.3;
 let orbitTarget = new THREE.Vector3(0, 4, 0);
 let userInteracting = false, interactionTimer = 0;
 const pointers = new Map();
@@ -892,23 +1020,24 @@ function tick() {
 
   // Camera per phase
   if (phase === 'INTRO' || phase === 'UI_SHRINK' || phase === 'DRINK') {
-    orbitTarget.copy(character.root.position).add(new THREE.Vector3(0, 0.05, 0));
-    if (!userInteracting) { orbitPitch += (0.25-orbitPitch)*0.05; orbitRadius += (6-orbitRadius)*0.05; }
+    // Over-shoulder close-up on rooftop
+    orbitTarget.copy(character.root.position).add(new THREE.Vector3(0, 0.04, 0));
+    if (!userInteracting) { orbitPitch += (0.15-orbitPitch)*0.05; orbitRadius += (0.3-orbitRadius)*0.05; }
   } else if (phase === 'WALK') {
     orbitTarget.copy(character.root.position).add(new THREE.Vector3(0, 0.04, 0));
-    if (!userInteracting) { orbitPitch += (0.2-orbitPitch)*0.03; orbitRadius += (5-orbitRadius)*0.03; }
+    if (!userInteracting) { orbitPitch += (0.18-orbitPitch)*0.03; orbitRadius += (0.4-orbitRadius)*0.03; }
   } else if (phase === 'FALLING') {
     orbitTarget.copy(character.root.position);
-    if (!userInteracting) { orbitPitch += (-0.1-orbitPitch)*0.05; orbitRadius += (7-orbitRadius)*0.05; }
+    if (!userInteracting) { orbitPitch += (-0.1-orbitPitch)*0.05; orbitRadius += (5-orbitRadius)*0.05; }
   } else if (phase === 'IMPACT') {
     orbitTarget.lerp(character.root.position.clone().add(new THREE.Vector3(0,0.5,0)), 0.05);
-    if (!userInteracting) { orbitPitch += (0.15-orbitPitch)*0.05; orbitRadius += (5-orbitRadius)*0.05; }
+    if (!userInteracting) { orbitPitch += (0.15-orbitPitch)*0.05; orbitRadius += (3-orbitRadius)*0.05; }
   } else if (phase === 'PLANT_VIEW') {
     if (plantParts.length) {
       const lp = plantParts[plantParts.length-1].mesh;
       orbitTarget.lerp(lp.position.clone().add(new THREE.Vector3(0,0.5,0)), 0.03);
     }
-    if (!userInteracting) { orbitPitch += (0.2-orbitPitch)*0.03; orbitRadius += (4-orbitRadius)*0.03; orbitYaw += dt*0.15; }
+    if (!userInteracting) { orbitPitch += (0.2-orbitPitch)*0.03; orbitRadius += (3-orbitRadius)*0.03; orbitYaw += dt*0.15; }
   }
 
   // State machine
@@ -935,7 +1064,8 @@ function tick() {
     if (keys[' ']) startJump();
     dx += walkDelta.x; dz += walkDelta.y;
 
-    if (Math.abs(dx) > 0.05 || Math.abs(dz) > 0.05) {
+    const isMoving = Math.abs(dx) > 0.05 || Math.abs(dz) > 0.05;
+    if (isMoving) {
       const forward = new THREE.Vector3();
       camera.getWorldDirection(forward); forward.y = 0; forward.normalize();
       const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0,1,0));
@@ -949,7 +1079,12 @@ function tick() {
         character.root.position.z = clamp(character.root.position.z, rooftopBounds.minZ, rooftopBounds.maxZ);
         character.root.rotation.y = Math.atan2(move.x, move.z);
       }
+      character.setState(character.anims['WALK'] ? 'WALK' : 'IDLE');
+    } else {
+      character.setState('IDLE');
     }
+    // Keep character on rooftop surface
+    character.root.position.y = rooftopY;
     // Pulse jump button near edge
     const atEdge =
       Math.abs(character.root.position.x-rooftopBounds.minX)<0.3 ||
@@ -1004,7 +1139,7 @@ function tick() {
     character.root.rotation.y = 0;
     character.setState('IDLE');
     orbitTarget.copy(character.root.position);
-    orbitYaw = 0; orbitPitch = 0.25; orbitRadius = 6;
+    orbitYaw = 0; orbitPitch = 0.15; orbitRadius = 0.3;
     uiPanel.classList.remove('hidden');
     uiPanel.classList.remove('leaving');
     leaveBtn.disabled = true;
