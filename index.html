@@ -47,19 +47,44 @@ const neon = ['#ff00ff','#ff3388','#ffaa00','#00ff88','#00ddff','#ff4466','#88ff
 
 // ===== Persistence =====
 const STORAGE_KEY = 'urban_legend_plants_v2';
+// Hardcoded Render API — always try server first, fallback to localStorage
+const API_DEFAULT = 'https://urban-legend-api.onrender.com';
 const apiP = new URLSearchParams(location.search).get('api');
 if (apiP) localStorage.setItem('PLANT_API', apiP.replace(/\/$/,''));
-const API = localStorage.getItem('PLANT_API') || '';
+const API = localStorage.getItem('PLANT_API') || API_DEFAULT;
 
 async function loadEntries() {
-  if (API) { try { const r = await fetch(API+'/api/entries'); if (r.ok) return await r.json(); } catch{} }
+  // Try API with timeout (Render free tier cold starts ~30s)
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    const res = await fetch(API+'/api/entries', { signal: ctrl.signal });
+    clearTimeout(timer);
+    if (res.ok) {
+      const data = await res.json();
+      // Sync API data to localStorage as cache
+      if (data.length > 0) localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      return data;
+    }
+  } catch {}
+  // Fallback to localStorage
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]'); } catch { return []; }
 }
+
 function saveEntry(text) {
+  // Always save to localStorage immediately
   const list = JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');
-  list.push({ text, id: Date.now(), t: new Date().toISOString() });
+  list.push({ text, id: Date.now().toString(), t: new Date().toISOString() });
   localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-  if (API) fetch(API+'/api/entries',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})}).catch(()=>{});
+  // Also send to API (fire and forget, with retry)
+  const body = JSON.stringify({ text, id: Date.now().toString() });
+  fetch(API+'/api/entries', { method:'POST', headers:{'Content-Type':'application/json'}, body })
+    .catch(() => {
+      // Retry once after 5s (in case of cold start)
+      setTimeout(() => {
+        fetch(API+'/api/entries', { method:'POST', headers:{'Content-Type':'application/json'}, body }).catch(()=>{});
+      }, 5000);
+    });
 }
 
 // ===== Seeded random =====
