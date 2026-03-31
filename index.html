@@ -7,10 +7,10 @@
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
     html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:"Courier New",monospace}
-    #canvas3d{position:absolute;inset:0;width:100%;height:100%;z-index:2;pointer-events:auto}
+    #canvas3d{position:absolute;inset:0;width:100%;height:100%;z-index:2;pointer-events:auto;touch-action:none}
     #vhs-scanlines{position:absolute;inset:0;z-index:3;pointer-events:none;
       background:repeating-linear-gradient(0deg,transparent 0px,transparent 2px,rgba(0,0,0,0.15) 2px,rgba(0,0,0,0.15) 4px)}
-    #vhs-noise{position:absolute;inset:0;z-index:4;pointer-events:none;opacity:0.25}
+    #vhs-noise{position:absolute;inset:0;width:100%;height:100%;z-index:4;pointer-events:none;opacity:0.25}
 
     #ui-panel{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
       width:min(80vw,520px);background:rgba(0,0,0,0.45);border:1px solid rgba(0,255,180,0.25);
@@ -277,7 +277,7 @@ function buildPlantCloud(plantData, text) {
 // ===== 3D Scene =====
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#050810');
-const camera = new THREE.PerspectiveCamera(60, W()/H(), 0.1, 200);
+const camera = new THREE.PerspectiveCamera(60, W()/H(), 0.1, 500);
 const isMobile = /Mobi|Android/i.test(navigator.userAgent);
 const renderer = new THREE.WebGLRenderer({ antialias: !isMobile });
 renderer.setSize(W(), H());
@@ -292,7 +292,7 @@ scene.add(new THREE.AmbientLight(0xffffff, 0.3));
 {
   const pts = [], cols = [];
   for (let i = 0; i < 800; i++) {
-    pts.push((Math.random()-0.5)*40, Math.random()*0.2, (Math.random()-0.5)*40);
+    pts.push((Math.random()-0.5)*80, Math.random()*0.3, (Math.random()-0.5)*80);
     const c = new THREE.Color(neonColors[Math.floor(Math.random()*neonColors.length)]);
     cols.push(c.r, c.g, c.b);
   }
@@ -306,7 +306,7 @@ scene.add(new THREE.AmbientLight(0xffffff, 0.3));
 const plantRoot = new THREE.Group();
 scene.add(plantRoot);
 const plantEntries = []; // { mesh, text }
-const PLANT_SCALE = 0.08;
+const PLANT_SCALE = 1.0;
 
 function addPlant(text, grow = true) {
   const plantData = generatePlant(text);
@@ -316,7 +316,7 @@ function addPlant(text, grow = true) {
   const idx = plantEntries.length;
   const col = (idx % 5) - 2;
   const row = Math.floor(idx / 5);
-  mesh.position.set(col * 2.5, 0, row * 2.5);
+  mesh.position.set(col * 12, 0, row * 12);
 
   if (grow) { mesh.userData.growT = 0; mesh.scale.setScalar(0.001); }
   else mesh.scale.setScalar(PLANT_SCALE);
@@ -330,8 +330,8 @@ function addPlant(text, grow = true) {
 }
 
 // ===== Camera orbit =====
-let orbitYaw = 0, orbitPitch = 0.4, orbitRadius = 8;
-let orbitTarget = new THREE.Vector3(0, 2, 0);
+let orbitYaw = 0, orbitPitch = 0.4, orbitRadius = 20;
+let orbitTarget = new THREE.Vector3(0, 5, 0);
 let userInteracting = false, interactionTimer = 0;
 const pointers = new Map();
 let dragStart = { x:0, y:0, yaw:0, pitch:0 };
@@ -358,7 +358,7 @@ renderer.domElement.addEventListener('pointermove', e => {
   } else if (pointers.size >= 2) {
     const pts = [...pointers.values()];
     const d = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y);
-    if (pinchStartDist > 0) orbitRadius = clamp(pinchStartRadius * (pinchStartDist / d), 2, 25);
+    if (pinchStartDist > 0) orbitRadius = clamp(pinchStartRadius * (pinchStartDist / d), 5, 60);
   }
 });
 renderer.domElement.addEventListener('pointerup', e => pointers.delete(e.pointerId));
@@ -414,8 +414,8 @@ submitBtn.addEventListener('click', () => {
 
   const mesh = addPlant(text, true);
   // Focus camera on new plant
-  orbitTarget.copy(mesh.position).add(new THREE.Vector3(0, 1.5, 0));
-  orbitRadius = 5;
+  orbitTarget.copy(mesh.position).add(new THREE.Vector3(0, 5, 0));
+  orbitRadius = 18;
 });
 
 writeBtn.addEventListener('click', () => {
@@ -433,7 +433,7 @@ async function loadSaved() {
       const mesh = buildPlantCloud(plantData, entry.text);
       const col = (i % 5) - 2;
       const row = Math.floor(i / 5);
-      mesh.position.set(col * 2.5, 0, row * 2.5);
+      mesh.position.set(col * 12, 0, row * 12);
       mesh.scale.setScalar(PLANT_SCALE);
       plantRoot.add(mesh);
       plantEntries.push({ mesh, text: entry.text });
