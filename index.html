@@ -7,7 +7,6 @@
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
     html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:"Courier New",monospace}
-    body{background:#050810}
     #canvas3d{position:absolute;inset:0;width:100%;height:100%;z-index:2;pointer-events:auto}
     #vhs-scanlines{position:absolute;inset:0;z-index:3;pointer-events:none;
       background:repeating-linear-gradient(0deg,transparent 0px,transparent 2px,rgba(0,0,0,0.15) 2px,rgba(0,0,0,0.15) 4px)}
@@ -15,61 +14,40 @@
 
     #ui-panel{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
       width:min(80vw,520px);background:rgba(0,0,0,0.45);border:1px solid rgba(0,255,180,0.25);
-      padding:24px;z-index:10;color:#dff;backdrop-filter:blur(6px);transition:transform 0.6s ease, opacity 0.6s ease;}
+      padding:24px;z-index:10;color:#dff;backdrop-filter:blur(6px);transition:opacity 0.4s ease;}
     #ui-panel.hidden{opacity:0;pointer-events:none}
-    #ui-panel.leaving{opacity:0;transform:translate(calc(-50% + var(--to-x)), calc(-50% + var(--to-y))) scale(0.08)}
     #ui-panel h2{font-size:14px;letter-spacing:6px;color:#9ff;margin-bottom:10px}
-    #ui-panel textarea{width:100%;height:120px;background:rgba(0,0,0,0.6);border:1px solid rgba(0,255,180,0.25);
+    #ui-panel textarea{width:100%;height:100px;background:rgba(0,0,0,0.6);border:1px solid rgba(0,255,180,0.25);
       color:#e8ffff;padding:12px;font-size:14px;resize:none;outline:none}
-    #leave-btn{margin-top:14px;width:100%;height:44px;background:rgba(0,255,180,0.12);
-      border:1px solid rgba(0,255,180,0.4);color:#bff;text-transform:uppercase;letter-spacing:6px;cursor:pointer}
-    #leave-btn:disabled{opacity:0.4;cursor:not-allowed}
+    #submit-btn{margin-top:14px;width:100%;height:44px;background:rgba(0,255,180,0.12);
+      border:1px solid rgba(0,255,180,0.4);color:#bff;text-transform:uppercase;letter-spacing:6px;cursor:pointer;font-family:inherit}
+    #submit-btn:disabled{opacity:0.4;cursor:not-allowed}
 
     #text-popup{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);
-      max-width:min(90vw,600px);background:rgba(0,0,0,0.6);color:#e8ffff;border:1px solid rgba(0,255,180,0.25);
-      padding:12px 16px;z-index:12;display:none}
+      max-width:min(90vw,600px);background:rgba(0,0,0,0.7);color:#e8ffff;border:1px solid rgba(0,255,180,0.3);
+      padding:12px 16px;z-index:12;display:none;font-size:13px;letter-spacing:1px}
     #text-popup.show{display:block}
 
-    #loading{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
-      color:#9ff;letter-spacing:4px;font-size:12px;z-index:20;background:#000}
-    #progress-wrap{width:min(60vw,300px);height:4px;background:rgba(0,255,180,0.1);margin-top:16px;border-radius:2px;overflow:hidden}
-    #progress-bar{width:0%;height:100%;background:rgba(0,255,180,0.7);transition:width 0.3s}
-    #progress-pct{margin-top:8px;font-size:10px;color:rgba(0,255,180,0.5)}
-
-
-    #fade-overlay{position:absolute;inset:0;background:#000;z-index:18;pointer-events:none;opacity:0;transition:opacity 0.8s}
+    #write-btn{display:none;position:absolute;bottom:30px;right:20px;
+      background:rgba(0,255,180,0.12);border:1px solid rgba(0,255,180,0.4);color:#bff;padding:10px 20px;
+      text-transform:uppercase;letter-spacing:4px;cursor:pointer;z-index:14;font-family:inherit;font-size:11px}
   </style>
-  <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
-  <script type="importmap">{"imports":{
-    "three":"https://unpkg.com/three@0.160.0/build/three.module.js",
-    "three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"
-  }}</script>
 </head>
 <body>
   <canvas id="vhs-noise"></canvas>
   <div id="vhs-scanlines"></div>
 
-  <div id="ui-panel" class="hidden">
+  <div id="ui-panel">
     <h2>WRITE</h2>
-    <textarea id="text-input" placeholder="Type your words..."></textarea>
-    <button id="leave-btn" disabled>LEAVE</button>
+    <textarea id="text-input" placeholder="留下你的話..."></textarea>
+    <button id="submit-btn" disabled>PLANT</button>
   </div>
-  <button id="write-more-btn" style="display:none;position:absolute;bottom:30px;left:50%;transform:translateX(-50%);
-    background:rgba(0,255,180,0.12);border:1px solid rgba(0,255,180,0.4);color:#bff;padding:10px 30px;
-    text-transform:uppercase;letter-spacing:4px;cursor:pointer;z-index:14;font-family:inherit;font-size:11px">WRITE MORE</button>
 
   <div id="text-popup"></div>
-  <div id="fade-overlay"></div>
-  <div id="loading">
-    LOADING
-    <div id="progress-wrap"><div id="progress-bar"></div></div>
-    <div id="progress-pct">0%</div>
-  </div>
+  <button id="write-btn">WRITE</button>
 
 <script type="module">
 import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
-import { GLTFLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
-import { DRACOLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/DRACOLoader.js';
 
 const W = () => window.innerWidth;
 const H = () => window.innerHeight;
@@ -93,7 +71,7 @@ function updateNoise() {
   noiseCtx.putImageData(img, 0, 0);
 }
 
-// ===== Persistence / API =====
+// ===== Persistence =====
 const apiParam = new URLSearchParams(location.search).get('api');
 if (apiParam) localStorage.setItem('PLANT_API_URL', apiParam.replace(/\/$/,''));
 const API_BASE = localStorage.getItem('PLANT_API_URL') || '';
@@ -101,47 +79,24 @@ const STORAGE_KEY = 'urban_legend_plants_v1';
 
 async function loadEntries() {
   if (API_BASE) {
-    try {
-      const res = await fetch(API_BASE + '/api/entries');
-      if (res.ok) return await res.json();
-    } catch (e) {}
+    try { const res = await fetch(API_BASE + '/api/entries'); if (res.ok) return await res.json(); } catch {}
   }
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) return [];
-  try { return JSON.parse(raw); } catch { return []; }
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch { return []; }
 }
-async function createEntry(text) {
-  if (API_BASE) {
-    try {
-      const res = await fetch(API_BASE + '/api/entries', {
-        method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ text })
-      });
-      if (res.ok) { const d = await res.json(); return d.id || null; }
-    } catch (e) {}
-  }
-  const list = await loadEntries();
+async function saveEntry(text, part) {
   const id = Date.now().toString();
-  list.push({ id, text, part: null, createdAt: new Date().toISOString() });
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-  return id;
-}
-async function finalizeEntry(id, part, text) {
   if (API_BASE) {
     try {
-      await fetch(API_BASE + `/api/entries/${id}`, {
-        method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ part, text })
-      });
-      return;
-    } catch (e) {}
+      const res = await fetch(API_BASE + '/api/entries', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ text }) });
+      if (res.ok) { const d = await res.json(); if (d.id) { await fetch(API_BASE+`/api/entries/${d.id}`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ part, text }) }); return; } }
+    } catch {}
   }
   const list = await loadEntries();
-  const idx = list.findIndex(e => e.id === id);
-  if (idx >= 0) { list[idx].part = part; list[idx].text = text || list[idx].text; }
-  else list.push({ id, text: text||'', part, createdAt: new Date().toISOString() });
+  list.push({ id, text, part, createdAt: new Date().toISOString() });
   localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
 }
 
-// ===== Text -> DNA =====
+// ===== Text -> deterministic random =====
 function hashString(str) {
   let h = 2166136261;
   for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h += (h<<1)+(h<<4)+(h<<7)+(h<<8)+(h<<24); }
@@ -151,262 +106,160 @@ function seededRandom(seed) {
   let s = seed >>> 0;
   return () => { s = (s * 1664525 + 1013904223) >>> 0; return (s & 0xffffffff) / 0x100000000; };
 }
-function pick(arr, r) { return arr[Math.floor(r() * arr.length)]; }
-function randColor(r) {
-  return `hsl(${Math.floor(r()*360)},${60+Math.floor(r()*30)}%,${40+Math.floor(r()*30)}%)`;
-}
-
-function generateDNAFromText(text) {
-  const seed = hashString(text);
-  const r = seededRandom(seed);
-  return {
-    name:'Mutation', description:'',
-    plantType: pick(['vine','fern','fungus','flower_stalk','bush'], r),
-    complexity: 2 + Math.floor(r()*8),
-    growthDirection: { x: r()*2-1, y: r()*0.8+0.2, z: r()*2-1 },
-    stemColor: randColor(r), leafColor: randColor(r), fruitColor: randColor(r),
-    hasLeaves: true, hasFruits: true,
-    fruitType: pick(['balloon_flower','lotus_flower','tubular_flower','jellyfish_flower','daisy_flower','fungus_cap','giant_flower'], r),
-    leafType: pick(['glass_leaf','wire_leaf','fern','broad','needle'], r),
-    growthStyle: pick(['straight','twining','erratic','drooping'], r)
-  };
-}
 
 // ===== Procedural plant generation =====
-function generateProceduralPlant(dna) {
-  const stems = [], fruits = [], leaves = [];
-  const startPt = new THREE.Vector3(0,0,0);
-  const gx = Number(dna.growthDirection?.x)||0, gy = Number(dna.growthDirection?.y)||1, gz = Number(dna.growthDirection?.z)||0;
-  const dir = new THREE.Vector3(gx,gy,gz).normalize();
-  if (isNaN(dir.x)||isNaN(dir.y)||isNaN(dir.z)||dir.lengthSq()===0) dir.set(0,1,0);
-  const length = 10 + dna.complexity * 1.5;
-  let endPt = startPt.clone();
-  const style = dna.growthStyle || 'straight';
+function generatePlant(text) {
+  const seed = hashString(text);
+  const r = seededRandom(seed);
+  const pick = arr => arr[Math.floor(r() * arr.length)];
 
-  const generateCurve = (start, direction, len, waviness, segments, curveStyle='straight') => {
-    const curve = [];
-    let current = start.clone();
-    curve.push({ x:current.x, y:current.y, z:current.z });
-    const step = len / segments;
+  const plantType = pick(['vine','bush','fern','fungus','stalk']);
+  const complexity = 2 + Math.floor(r() * 8);
+  const dir = new THREE.Vector3(r()*2-1, r()*0.8+0.2, r()*2-1).normalize();
+  const length = 8 + complexity * 1.2;
+  const style = pick(['straight','twining','erratic','drooping']);
+
+  const stems = [], fruits = [], leaves = [];
+  const startPt = new THREE.Vector3(0, 0, 0);
+
+  // Generate curve
+  const genCurve = (start, direction, len, waviness, segs) => {
+    const pts = [start.clone()];
+    let cur = start.clone();
+    const step = len / segs;
     let perp1 = new THREE.Vector3(1,0,0).cross(direction).normalize();
     if (perp1.lengthSq() < 0.1) perp1 = new THREE.Vector3(0,1,0).cross(direction).normalize();
     const perp2 = direction.clone().cross(perp1).normalize();
-    for (let i = 1; i <= segments; i++) {
-      const t = i / segments;
-      current.add(direction.clone().multiplyScalar(step));
-      let pt = current.clone();
-      if (curveStyle === 'twining') {
-        const radius = waviness * 2;
-        const angle = t * Math.PI * 10;
-        pt.add(perp1.clone().multiplyScalar(Math.cos(angle)*radius).add(perp2.clone().multiplyScalar(Math.sin(angle)*radius)));
-      } else if (curveStyle === 'erratic') {
-        pt.add(perp1.clone().multiplyScalar((Math.random()-0.5)*waviness*4).add(perp2.clone().multiplyScalar((Math.random()-0.5)*waviness*4)));
+    for (let i = 1; i <= segs; i++) {
+      const t = i / segs;
+      cur.add(direction.clone().multiplyScalar(step));
+      const pt = cur.clone();
+      if (style === 'twining') {
+        const a = t * Math.PI * 10, rad = waviness * 2;
+        pt.add(perp1.clone().multiplyScalar(Math.cos(a)*rad).add(perp2.clone().multiplyScalar(Math.sin(a)*rad)));
+      } else if (style === 'erratic') {
+        pt.add(perp1.clone().multiplyScalar((r()-0.5)*waviness*4).add(perp2.clone().multiplyScalar((r()-0.5)*waviness*4)));
       } else {
-        const w1 = Math.sin(t*Math.PI*4)*waviness*(1-t);
-        const w2 = Math.cos(t*Math.PI*3)*waviness*(1-t);
-        pt.add(perp1.clone().multiplyScalar(w1).add(perp2.clone().multiplyScalar(w2)));
+        pt.add(perp1.clone().multiplyScalar(Math.sin(t*Math.PI*4)*waviness*(1-t)).add(perp2.clone().multiplyScalar(Math.cos(t*Math.PI*3)*waviness*(1-t))));
       }
-      if (curveStyle === 'drooping' || direction.y < 0.2) pt.y -= t*t*len*0.5;
-      curve.push({ x:pt.x, y:pt.y, z:pt.z });
+      if (style === 'drooping') pt.y -= t*t*len*0.5;
+      pts.push(pt);
     }
-    return { curve, end: current };
+    return { pts, end: cur };
   };
 
-  if (dna.plantType === 'vine' || dna.plantType === 'flower_stalk') {
-    const { curve, end } = generateCurve(startPt, dir, length, 2, 20, style);
-    stems.push(curve); endPt = end;
-    const numLeaves = Math.floor(dna.complexity * 1.5);
-    for (let i = 0; i < numLeaves; i++) {
-      const t = 0.1 + Math.random()*0.8;
-      const idx = Math.floor(t * curve.length);
-      if (idx < curve.length) {
-        const p = curve[idx];
-        leaves.push({ position:p, direction:{ x:Math.random()-0.5, y:Math.random()-0.5, z:Math.random()-0.5 }, type:dna.leafType, color:dna.leafColor, scale:0.8+Math.random()*0.4 });
-      }
-    }
-    const numBranches = Math.floor(dna.complexity / 2);
-    for (let i = 0; i < numBranches; i++) {
-      const t = 0.2 + Math.random()*0.6;
-      const idx = Math.floor(t * curve.length);
-      const bs = new THREE.Vector3(curve[idx].x, curve[idx].y, curve[idx].z);
-      let axis = new THREE.Vector3(Math.random(), Math.random(), Math.random()).normalize();
-      if (axis.lengthSq() < 0.001) axis.set(0,1,0);
-      const bDir = dir.clone().applyAxisAngle(axis, Math.PI/3).normalize();
-      const { curve:bC, end:bE } = generateCurve(bs, bDir, length*0.4*Math.random(), 1, 10, style==='twining'?'straight':style);
-      stems.push(bC);
-      if (Math.random()>0.1) leaves.push({ position:bE, direction:bDir, type:dna.leafType, color:dna.leafColor, scale:1 });
-      if (Math.random()>0.2) fruits.push({ position:bE, direction:bDir, type:dna.fruitType, color:dna.fruitColor, scale:0.8 });
-    }
-    fruits.push({ position:endPt, direction:dir, type:dna.fruitType, color:dna.fruitColor, scale:1.5 });
-  } else if (dna.plantType === 'bush' || dna.plantType === 'fern') {
-    const numStems = 3 + Math.floor(dna.complexity/2);
-    let highestY = -Infinity;
-    for (let i = 0; i < numStems; i++) {
-      const spreadDir = dir.clone().applyAxisAngle(new THREE.Vector3(0,1,0), (i/numStems)*Math.PI*2+Math.random()*0.5);
-      spreadDir.y += 0.5; spreadDir.normalize();
-      const { curve, end } = generateCurve(startPt, spreadDir, length*(0.6+Math.random()*0.4), 1.5, 15, style);
-      stems.push(curve);
-      if (end.y > highestY) { highestY = end.y; endPt = end; }
-      if (dna.plantType === 'fern') {
-        for (let j = 2; j < curve.length-1; j += 2) {
-          const p = curve[j];
-          const pDir = new THREE.Vector3(p.x-curve[j-1].x, p.y-curve[j-1].y, p.z-curve[j-1].z).normalize();
-          let s1 = pDir.clone().cross(new THREE.Vector3(0,1,0)).normalize();
-          if (s1.lengthSq()<0.001) s1 = pDir.clone().cross(new THREE.Vector3(1,0,0)).normalize();
-          if (s1.lengthSq()<0.001) s1.set(1,0,0);
-          leaves.push({ position:p, direction:s1, type:'fern', color:dna.leafColor, scale:0.5*(1-j/curve.length) });
-          leaves.push({ position:p, direction:{x:-s1.x,y:-s1.y,z:-s1.z}, type:'fern', color:dna.leafColor, scale:0.5*(1-j/curve.length) });
-        }
-      } else {
-        leaves.push({ position:end, direction:spreadDir, type:dna.leafType, color:dna.leafColor, scale:1.2 });
-      }
-      if (Math.random()>0.3) fruits.push({ position:end, direction:spreadDir, type:dna.fruitType, color:dna.fruitColor, scale:1 });
-    }
-  } else if (dna.plantType === 'fungus') {
-    const { curve, end } = generateCurve(startPt, dir, length*0.5, 0.5, 10, style);
-    stems.push(curve); endPt = end;
-    fruits.push({ position:end, direction:dir, type:'fungus_cap', color:dna.fruitColor, scale:2+dna.complexity*0.2 });
-    for (let i = 0; i < Math.floor(dna.complexity/3); i++) {
-      const off = new THREE.Vector3((Math.random()-0.5)*4, 0, (Math.random()-0.5)*4);
-      const { curve:sc, end:se } = generateCurve(startPt.clone().add(off), new THREE.Vector3(0,1,0), length*0.2, 0.2, 5, style);
-      stems.push(sc);
-      fruits.push({ position:se, direction:{x:0,y:1,z:0}, type:'fungus_cap', color:dna.fruitColor, scale:0.8 });
-    }
+  const { pts: mainPts, end: mainEnd } = genCurve(startPt, dir, length, 2, 20);
+  stems.push(mainPts);
+
+  // Branches
+  const nBranch = Math.floor(complexity / 2);
+  for (let i = 0; i < nBranch; i++) {
+    const t = 0.2 + r() * 0.6;
+    const idx = Math.floor(t * mainPts.length);
+    const bs = mainPts[idx].clone();
+    const bDir = dir.clone().applyAxisAngle(new THREE.Vector3(r(),r(),r()).normalize(), Math.PI/3).normalize();
+    const { pts: bPts, end: bEnd } = genCurve(bs, bDir, length * 0.4 * r(), 1, 10);
+    stems.push(bPts);
+    if (r() > 0.2) leaves.push(bEnd.clone());
+    if (r() > 0.3) fruits.push(bEnd.clone());
   }
-  return { stems, fruits, leaves, endPoint:{ x:endPt.x, y:endPt.y, z:endPt.z } };
+
+  // Leaves along main stem
+  for (let i = 0; i < complexity; i++) {
+    const idx = Math.floor((0.1 + r() * 0.8) * mainPts.length);
+    if (idx < mainPts.length) leaves.push(mainPts[idx].clone());
+  }
+
+  // Top fruit
+  fruits.push(mainEnd.clone());
+
+  return { stems, fruits, leaves, seed };
 }
 
-// ===== POINT CLOUD PLANT SYSTEM =====
-// Sample points along a curve
-function sampleCurve(curve, n) {
-  const pts = [];
-  for (let i = 0; i <= n; i++) pts.push(curve.getPoint(i/n));
-  return pts;
-}
-
-// 10 flower shapes (point cloud)
-const flowerShapes = [
-  // 0: spiral bloom - concentric spirals
-  (r,sc) => { const p=[]; for(let s=0;s<3;s++) for(let i=0;i<80;i++){const t=i/80,a=t*Math.PI*6+s*2.1,rad=t*1.5*sc; p.push(new THREE.Vector3(Math.cos(a)*rad,t*0.5*sc+s*0.2,Math.sin(a)*rad));} return p; },
-  // 1: loop cluster - overlapping circles
-  (r,sc) => { const p=[]; for(let c=0;c<6;c++){const ca=c*Math.PI/3,cx=Math.cos(ca)*0.6*sc,cz=Math.sin(ca)*0.6*sc; for(let i=0;i<40;i++){const a=i/40*Math.PI*2,rad=0.5*sc+r()*0.2*sc; p.push(new THREE.Vector3(cx+Math.cos(a)*rad,r()*0.3*sc,cz+Math.sin(a)*rad));}} return p; },
-  // 2: helix - DNA double helix
-  (r,sc) => { const p=[]; for(let s=0;s<2;s++) for(let i=0;i<100;i++){const t=i/100,a=t*Math.PI*8+s*Math.PI,rad=0.8*sc; p.push(new THREE.Vector3(Math.cos(a)*rad,t*3*sc,Math.sin(a)*rad));} return p; },
-  // 3: dandelion - sphere of radiating dots
-  (r,sc) => { const p=[]; for(let i=0;i<150;i++){const phi=Math.acos(2*r()-1),theta=r()*Math.PI*2,rad=(0.5+r()*1.0)*sc; p.push(new THREE.Vector3(Math.sin(phi)*Math.cos(theta)*rad,Math.sin(phi)*Math.sin(theta)*rad+0.5*sc,Math.cos(phi)*rad));} return p; },
-  // 4: pinwheel - rotating arms
-  (r,sc) => { const p=[]; for(let arm=0;arm<5;arm++){const base=arm*Math.PI*2/5; for(let i=0;i<50;i++){const t=i/50,a=base+t*Math.PI*1.5,rad=t*1.5*sc; p.push(new THREE.Vector3(Math.cos(a)*rad,t*0.4*sc,Math.sin(a)*rad));}} return p; },
-  // 5: chrysanthemum - layered curves
-  (r,sc) => { const p=[]; for(let layer=0;layer<4;layer++) for(let arm=0;arm<8;arm++){const base=arm*Math.PI/4+layer*0.2; for(let i=0;i<20;i++){const t=i/20,rad=t*(1.5-layer*0.3)*sc; p.push(new THREE.Vector3(Math.cos(base)*rad,(layer*0.3+t*0.2)*sc,Math.sin(base)*rad));}} return p; },
-  // 6: firework - explosion
-  (r,sc) => { const p=[]; for(let ray=0;ray<12;ray++){const phi=Math.acos(2*r()-1),theta=r()*Math.PI*2; for(let i=0;i<20;i++){const t=i/20*sc*1.5; p.push(new THREE.Vector3(Math.sin(phi)*Math.cos(theta)*t,Math.sin(phi)*Math.sin(theta)*t+0.3*sc,Math.cos(phi)*t));}} return p; },
-  // 7: corona - ring with spikes
-  (r,sc) => { const p=[]; for(let i=0;i<60;i++){const a=i/60*Math.PI*2,rad=1.0*sc; p.push(new THREE.Vector3(Math.cos(a)*rad,0,Math.sin(a)*rad));} for(let i=0;i<20;i++){const a=i/20*Math.PI*2; for(let j=0;j<8;j++){const t=j/8,rad=1.0*sc+t*0.8*sc; p.push(new THREE.Vector3(Math.cos(a)*rad,t*0.6*sc,Math.sin(a)*rad));}} return p; },
-  // 8: nest - tangled loops
-  (r,sc) => { const p=[]; for(let c=0;c<5;c++){const tiltX=r()*2-1,tiltZ=r()*2-1; for(let i=0;i<50;i++){const a=i/50*Math.PI*2,rad=(0.6+r()*0.4)*sc; p.push(new THREE.Vector3(Math.cos(a)*rad+tiltX*0.3*sc,Math.sin(a)*rad*0.5+r()*0.2*sc,Math.sin(a)*rad+tiltZ*0.3*sc));}} return p; },
-  // 9: orchid - flowing S-curves
-  (r,sc) => { const p=[]; for(let arm=0;arm<6;arm++){const base=arm*Math.PI/3; for(let i=0;i<40;i++){const t=i/40,s=Math.sin(t*Math.PI*2)*0.5*sc,rad=t*1.2*sc; p.push(new THREE.Vector3(Math.cos(base)*rad+s*Math.sin(base),t*0.8*sc,Math.sin(base)*rad-s*Math.cos(base)));}} return p; },
-];
-
-// 10 leaf shapes (point cloud)
-const leafShapes = [
-  // 0: fern frond
-  (r,sc) => { const p=[]; for(let i=0;i<30;i++){const t=i/30; p.push(new THREE.Vector3(0,t*2*sc,0)); for(let s of[-1,1]){const len=(1-t)*0.6*sc; for(let j=0;j<6;j++){const jt=j/6; p.push(new THREE.Vector3(s*jt*len,t*2*sc+jt*0.1*sc,jt*0.1*sc));}}} return p; },
-  // 1: vine curl
-  (r,sc) => { const p=[]; for(let i=0;i<60;i++){const t=i/60,a=t*Math.PI*4,rad=0.3*sc*(1+t); p.push(new THREE.Vector3(Math.cos(a)*rad,t*2*sc,Math.sin(a)*rad));} return p; },
-  // 2: spiral leaf
-  (r,sc) => { const p=[]; for(let i=0;i<50;i++){const t=i/50,a=t*Math.PI*3,rad=t*0.8*sc; p.push(new THREE.Vector3(Math.cos(a)*rad,0.05*sc,Math.sin(a)*rad));} return p; },
-  // 3: branch
-  (r,sc) => { const p=[]; for(let i=0;i<20;i++) p.push(new THREE.Vector3(0,i/20*2*sc,0)); for(let b=0;b<4;b++){const y=0.4+b*0.4,ang=(r()*2-1)*0.8; for(let i=0;i<12;i++){const t=i/12; p.push(new THREE.Vector3(Math.cos(ang)*t*0.8*sc,y*sc+t*0.3*sc,Math.sin(ang)*t*0.8*sc));}} return p; },
-  // 4: wave
-  (r,sc) => { const p=[]; for(let i=0;i<60;i++){const t=i/60; p.push(new THREE.Vector3(t*2*sc-sc,Math.sin(t*Math.PI*4)*0.3*sc,0));} return p; },
-  // 5: zigzag
-  (r,sc) => { const p=[]; for(let i=0;i<40;i++){const t=i/40,x=(i%2===0?0.3:-0.3)*sc; p.push(new THREE.Vector3(x,t*2*sc,0));} return p; },
-  // 6: arc fan
-  (r,sc) => { const p=[]; for(let arm=0;arm<5;arm++){const base=-0.4+arm*0.2; for(let i=0;i<15;i++){const t=i/15,a=base+t*0.3; p.push(new THREE.Vector3(Math.sin(a)*t*1.5*sc,Math.cos(a)*t*1.5*sc,0));}} return p; },
-  // 7: tendril
-  (r,sc) => { const p=[]; for(let i=0;i<50;i++){const t=i/50,a=t*Math.PI*5,rad=t*t*0.6*sc; p.push(new THREE.Vector3(Math.cos(a)*rad,t*1.5*sc,Math.sin(a)*rad));} return p; },
-  // 8: spine with dots
-  (r,sc) => { const p=[]; for(let i=0;i<25;i++){const t=i/25; p.push(new THREE.Vector3(0,t*2*sc,0)); p.push(new THREE.Vector3(0.15*sc,t*2*sc,0)); p.push(new THREE.Vector3(-0.15*sc,t*2*sc,0));} return p; },
-  // 9: scatter cloud
-  (r,sc) => { const p=[]; for(let i=0;i<60;i++) p.push(new THREE.Vector3((r()-0.5)*sc,(r()-0.5)*sc+0.5*sc,(r()-0.5)*0.3*sc)); return p; },
-];
-
-// 10 fruit shapes (point cloud)
-const fruitShapes = [
-  // 0: dotted sphere
-  (r,sc) => { const p=[]; for(let i=0;i<80;i++){const phi=Math.acos(2*r()-1),theta=r()*Math.PI*2,rad=0.5*sc; p.push(new THREE.Vector3(Math.sin(phi)*Math.cos(theta)*rad,Math.sin(phi)*Math.sin(theta)*rad,Math.cos(phi)*rad));} return p; },
-  // 1: star burst
-  (r,sc) => { const p=[]; for(let arm=0;arm<8;arm++){const a=arm*Math.PI/4; for(let i=0;i<12;i++){const t=i/12*sc; p.push(new THREE.Vector3(Math.cos(a)*t,Math.sin(a)*t,0));}} return p; },
-  // 2: dotted ring
-  (r,sc) => { const p=[]; for(let i=0;i<50;i++){const a=i/50*Math.PI*2,rad=0.6*sc; p.push(new THREE.Vector3(Math.cos(a)*rad,0,Math.sin(a)*rad));} return p; },
-  // 3: grape cluster
-  (r,sc) => { const p=[]; for(let i=0;i<40;i++){const a=r()*Math.PI*2,y=-r()*sc,rad=0.3*sc*(1-y/sc*0.5); p.push(new THREE.Vector3(Math.cos(a)*rad,y,Math.sin(a)*rad));} return p; },
-  // 4: teardrop
-  (r,sc) => { const p=[]; for(let i=0;i<50;i++){const t=i/50,rad=Math.sin(t*Math.PI)*0.4*sc,a=r()*Math.PI*2; p.push(new THREE.Vector3(Math.cos(a)*rad,t*sc-0.5*sc,Math.sin(a)*rad));} return p; },
-  // 5: crystal facets
-  (r,sc) => { const p=[]; const verts=[[0,1,0],[1,0,0],[-1,0,0],[0,0,1],[0,0,-1],[0,-1,0]]; for(const v of verts){for(let i=0;i<8;i++){const t=i/8*sc*0.5; p.push(new THREE.Vector3(v[0]*t,v[1]*t,v[2]*t));}} for(let i=0;i<30;i++){const a=r()*Math.PI*2,y=(r()-0.5)*sc*0.4; p.push(new THREE.Vector3(Math.cos(a)*0.35*sc,y,Math.sin(a)*0.35*sc));} return p; },
-  // 6: eye / iris
-  (r,sc) => { const p=[]; for(let ring=0;ring<3;ring++){const rad=(0.2+ring*0.2)*sc; for(let i=0;i<20+ring*10;i++){const a=i/(20+ring*10)*Math.PI*2; p.push(new THREE.Vector3(Math.cos(a)*rad,0,Math.sin(a)*rad));}} p.push(new THREE.Vector3(0,0,0)); return p; },
-  // 7: heart curve
-  (r,sc) => { const p=[]; for(let i=0;i<60;i++){const t=i/60*Math.PI*2; const x=0.4*sc*(16*Math.pow(Math.sin(t),3))/16; const y=0.4*sc*(13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t))/16; p.push(new THREE.Vector3(x,y,0));} return p; },
-  // 8: dotted torus
-  (r,sc) => { const p=[]; for(let i=0;i<80;i++){const u=r()*Math.PI*2,v=r()*Math.PI*2,R=0.5*sc,rr=0.2*sc; p.push(new THREE.Vector3((R+rr*Math.cos(v))*Math.cos(u),(R+rr*Math.cos(v))*Math.sin(u),rr*Math.sin(v)));} return p; },
-  // 9: double spiral
-  (r,sc) => { const p=[]; for(let s=0;s<2;s++) for(let i=0;i<50;i++){const t=i/50,a=t*Math.PI*4+s*Math.PI,rad=t*0.6*sc; p.push(new THREE.Vector3(Math.cos(a)*rad,t*0.5*sc,Math.sin(a)*rad));} return p; },
-];
-
-// Neon color palette
+// ===== Neon palette =====
 const neonColors = ['#ff00ff','#ff3388','#ffaa00','#00ff88','#00ddff','#ff4466','#88ff00','#ff00aa','#44ffcc','#ffdd00'];
 
-// Build point cloud plant
-function buildPlantPartMesh(part) {
+// ===== 10 flower point-cloud shapes =====
+const flowerShapes = [
+  (r,s) => { const p=[]; for(let k=0;k<3;k++) for(let i=0;i<80;i++){const t=i/80,a=t*Math.PI*6+k*2.1,R=t*1.5*s; p.push(new THREE.Vector3(Math.cos(a)*R,t*0.5*s+k*0.2,Math.sin(a)*R));} return p; },
+  (r,s) => { const p=[]; for(let c=0;c<6;c++){const ca=c*Math.PI/3,cx=Math.cos(ca)*0.6*s,cz=Math.sin(ca)*0.6*s; for(let i=0;i<40;i++){const a=i/40*Math.PI*2,R=0.5*s; p.push(new THREE.Vector3(cx+Math.cos(a)*R,r()*0.3*s,cz+Math.sin(a)*R));}} return p; },
+  (r,s) => { const p=[]; for(let k=0;k<2;k++) for(let i=0;i<100;i++){const t=i/100,a=t*Math.PI*8+k*Math.PI,R=0.8*s; p.push(new THREE.Vector3(Math.cos(a)*R,t*3*s,Math.sin(a)*R));} return p; },
+  (r,s) => { const p=[]; for(let i=0;i<150;i++){const phi=Math.acos(2*r()-1),th=r()*Math.PI*2,R=(0.5+r())*s; p.push(new THREE.Vector3(Math.sin(phi)*Math.cos(th)*R,Math.sin(phi)*Math.sin(th)*R+0.5*s,Math.cos(phi)*R));} return p; },
+  (r,s) => { const p=[]; for(let a=0;a<5;a++){const b=a*Math.PI*2/5; for(let i=0;i<50;i++){const t=i/50,ang=b+t*Math.PI*1.5,R=t*1.5*s; p.push(new THREE.Vector3(Math.cos(ang)*R,t*0.4*s,Math.sin(ang)*R));}} return p; },
+  (r,s) => { const p=[]; for(let l=0;l<4;l++) for(let a=0;a<8;a++){const b=a*Math.PI/4+l*0.2; for(let i=0;i<20;i++){const t=i/20,R=t*(1.5-l*0.3)*s; p.push(new THREE.Vector3(Math.cos(b)*R,(l*0.3+t*0.2)*s,Math.sin(b)*R));}} return p; },
+  (r,s) => { const p=[]; for(let ray=0;ray<12;ray++){const phi=Math.acos(2*r()-1),th=r()*Math.PI*2; for(let i=0;i<20;i++){const t=i/20*s*1.5; p.push(new THREE.Vector3(Math.sin(phi)*Math.cos(th)*t,Math.sin(phi)*Math.sin(th)*t,Math.cos(phi)*t));}} return p; },
+  (r,s) => { const p=[]; for(let i=0;i<60;i++){const a=i/60*Math.PI*2,R=s; p.push(new THREE.Vector3(Math.cos(a)*R,0,Math.sin(a)*R));} for(let i=0;i<20;i++){const a=i/20*Math.PI*2; for(let j=0;j<8;j++){const t=j/8,R=s+t*0.8*s; p.push(new THREE.Vector3(Math.cos(a)*R,t*0.6*s,Math.sin(a)*R));}} return p; },
+  (r,s) => { const p=[]; for(let c=0;c<5;c++){const tx=r()*2-1,tz=r()*2-1; for(let i=0;i<50;i++){const a=i/50*Math.PI*2,R=(0.6+r()*0.4)*s; p.push(new THREE.Vector3(Math.cos(a)*R+tx*0.3*s,Math.sin(a)*R*0.5,Math.sin(a)*R+tz*0.3*s));}} return p; },
+  (r,s) => { const p=[]; for(let a=0;a<6;a++){const b=a*Math.PI/3; for(let i=0;i<40;i++){const t=i/40,sw=Math.sin(t*Math.PI*2)*0.5*s,R=t*1.2*s; p.push(new THREE.Vector3(Math.cos(b)*R+sw*Math.sin(b),t*0.8*s,Math.sin(b)*R-sw*Math.cos(b)));}} return p; },
+];
+
+// ===== 10 leaf point-cloud shapes =====
+const leafShapes = [
+  (r,s) => { const p=[]; for(let i=0;i<30;i++){const t=i/30; p.push(new THREE.Vector3(0,t*2*s,0)); for(let d of[-1,1]) for(let j=0;j<5;j++){const jt=j/5; p.push(new THREE.Vector3(d*jt*(1-t)*0.6*s,t*2*s,jt*0.1*s));}} return p; },
+  (r,s) => { const p=[]; for(let i=0;i<60;i++){const t=i/60,a=t*Math.PI*4,R=0.3*s*(1+t); p.push(new THREE.Vector3(Math.cos(a)*R,t*2*s,Math.sin(a)*R));} return p; },
+  (r,s) => { const p=[]; for(let i=0;i<50;i++){const t=i/50,a=t*Math.PI*3,R=t*0.8*s; p.push(new THREE.Vector3(Math.cos(a)*R,0.05*s,Math.sin(a)*R));} return p; },
+  (r,s) => { const p=[]; for(let i=0;i<20;i++) p.push(new THREE.Vector3(0,i/20*2*s,0)); for(let b=0;b<4;b++){const y=0.4+b*0.4,ang=r()*Math.PI*2; for(let i=0;i<10;i++){const t=i/10; p.push(new THREE.Vector3(Math.cos(ang)*t*0.8*s,y*s+t*0.3*s,Math.sin(ang)*t*0.8*s));}} return p; },
+  (r,s) => { const p=[]; for(let i=0;i<60;i++){const t=i/60; p.push(new THREE.Vector3(t*2*s-s,Math.sin(t*Math.PI*4)*0.3*s,0));} return p; },
+  (r,s) => { const p=[]; for(let i=0;i<40;i++){const t=i/40; p.push(new THREE.Vector3((i%2?0.3:-0.3)*s,t*2*s,0));} return p; },
+  (r,s) => { const p=[]; for(let a=0;a<5;a++){const b=-0.4+a*0.2; for(let i=0;i<15;i++){const t=i/15; p.push(new THREE.Vector3(Math.sin(b+t*0.3)*t*1.5*s,Math.cos(b+t*0.3)*t*1.5*s,0));}} return p; },
+  (r,s) => { const p=[]; for(let i=0;i<50;i++){const t=i/50,a=t*Math.PI*5,R=t*t*0.6*s; p.push(new THREE.Vector3(Math.cos(a)*R,t*1.5*s,Math.sin(a)*R));} return p; },
+  (r,s) => { const p=[]; for(let i=0;i<25;i++){const t=i/25; p.push(new THREE.Vector3(0,t*2*s,0),new THREE.Vector3(0.15*s,t*2*s,0),new THREE.Vector3(-0.15*s,t*2*s,0));} return p; },
+  (r,s) => { const p=[]; for(let i=0;i<60;i++) p.push(new THREE.Vector3((r()-0.5)*s,r()*s,(r()-0.5)*0.3*s)); return p; },
+];
+
+// ===== 10 fruit point-cloud shapes =====
+const fruitShapes = [
+  (r,s) => { const p=[]; for(let i=0;i<80;i++){const phi=Math.acos(2*r()-1),th=r()*Math.PI*2,R=0.5*s; p.push(new THREE.Vector3(Math.sin(phi)*Math.cos(th)*R,Math.sin(phi)*Math.sin(th)*R,Math.cos(phi)*R));} return p; },
+  (r,s) => { const p=[]; for(let a=0;a<8;a++){const ang=a*Math.PI/4; for(let i=0;i<12;i++){const t=i/12*s; p.push(new THREE.Vector3(Math.cos(ang)*t,Math.sin(ang)*t,0));}} return p; },
+  (r,s) => { const p=[]; for(let i=0;i<50;i++){const a=i/50*Math.PI*2,R=0.6*s; p.push(new THREE.Vector3(Math.cos(a)*R,0,Math.sin(a)*R));} return p; },
+  (r,s) => { const p=[]; for(let i=0;i<40;i++){const a=r()*Math.PI*2,y=-r()*s,R=0.3*s*(1-y/s*0.5); p.push(new THREE.Vector3(Math.cos(a)*R,y,Math.sin(a)*R));} return p; },
+  (r,s) => { const p=[]; for(let i=0;i<50;i++){const t=i/50,R=Math.sin(t*Math.PI)*0.4*s,a=r()*Math.PI*2; p.push(new THREE.Vector3(Math.cos(a)*R,t*s-0.5*s,Math.sin(a)*R));} return p; },
+  (r,s) => { const p=[]; for(const v of [[0,1,0],[1,0,0],[-1,0,0],[0,0,1],[0,0,-1],[0,-1,0]]) for(let i=0;i<8;i++){const t=i/8*s*0.5; p.push(new THREE.Vector3(v[0]*t,v[1]*t,v[2]*t));} return p; },
+  (r,s) => { const p=[]; for(let ring=0;ring<3;ring++){const R=(0.2+ring*0.2)*s; for(let i=0;i<20+ring*10;i++){const a=i/(20+ring*10)*Math.PI*2; p.push(new THREE.Vector3(Math.cos(a)*R,0,Math.sin(a)*R));}} return p; },
+  (r,s) => { const p=[]; for(let i=0;i<60;i++){const t=i/60*Math.PI*2,x=0.4*s*(16*Math.pow(Math.sin(t),3))/16,y=0.4*s*(13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t))/16; p.push(new THREE.Vector3(x,y,0));} return p; },
+  (r,s) => { const p=[]; for(let i=0;i<80;i++){const u=r()*Math.PI*2,v=r()*Math.PI*2,R=0.5*s,rr=0.2*s; p.push(new THREE.Vector3((R+rr*Math.cos(v))*Math.cos(u),(R+rr*Math.cos(v))*Math.sin(u),rr*Math.sin(v)));} return p; },
+  (r,s) => { const p=[]; for(let k=0;k<2;k++) for(let i=0;i<50;i++){const t=i/50,a=t*Math.PI*4+k*Math.PI,R=t*0.6*s; p.push(new THREE.Vector3(Math.cos(a)*R,t*0.5*s,Math.sin(a)*R));} return p; },
+];
+
+// ===== Build point-cloud mesh from plant data =====
+function buildPlantCloud(plantData, text) {
   const group = new THREE.Group();
-  const allPts = [];
-  const allCols = [];
-  const r = seededRandom(hashString(part.textInput || 'default'));
-  const col = new THREE.Color(part.stemColor || neonColors[Math.floor(r()*neonColors.length)]);
-
-  // Stems as dotted curves
-  for (const stemData of part.stems) {
-    if (stemData.length < 2) continue;
-    const pts = stemData.map(p => new THREE.Vector3(p.x, p.y, p.z))
-      .filter((p,i,arr) => i===0 || p.distanceToSquared(arr[i-1]) > 0.0001);
-    if (pts.length < 2) continue;
-    const curve = new THREE.CatmullRomCurve3(pts);
-    const sampled = sampleCurve(curve, 60);
-    const stemCol = new THREE.Color(neonColors[Math.floor(r()*neonColors.length)]);
-    for (const p of sampled) { allPts.push(p.x, p.y, p.z); allCols.push(stemCol.r, stemCol.g, stemCol.b); }
-  }
-
-  // Pick shape indices from text hash
+  const allPts = [], allCols = [];
+  const r = seededRandom(plantData.seed);
   const flowerIdx = Math.floor(r() * 10);
   const leafIdx = Math.floor(r() * 10);
   const fruitIdx = Math.floor(r() * 10);
 
-  // Fruits/flowers
-  for (const f of part.fruits) {
-    const pos = new THREE.Vector3(f.position?.x||0, f.position?.y||0, f.position?.z||0);
-    const sc = (f.scale || 1) * 0.8;
-    const shapeFn = flowerShapes[flowerIdx];
-    const fCol = new THREE.Color(f.color || neonColors[Math.floor(r()*neonColors.length)]);
-    const pts = shapeFn(r, sc);
-    for (const p of pts) { allPts.push(p.x+pos.x, p.y+pos.y, p.z+pos.z); allCols.push(fCol.r, fCol.g, fCol.b); }
-    // Add a fruit shape overlay
-    const fruitFn = fruitShapes[fruitIdx];
-    const fCol2 = new THREE.Color(neonColors[Math.floor(r()*neonColors.length)]);
-    const fpts = fruitFn(r, sc*0.6);
-    for (const p of fpts) { allPts.push(p.x+pos.x, p.y+pos.y+0.2*sc, p.z+pos.z); allCols.push(fCol2.r, fCol2.g, fCol2.b); }
+  // Stems as dotted curves
+  for (const stemPts of plantData.stems) {
+    if (stemPts.length < 2) continue;
+    const curve = new THREE.CatmullRomCurve3(stemPts);
+    const col = new THREE.Color(neonColors[Math.floor(r() * neonColors.length)]);
+    for (let i = 0; i <= 60; i++) {
+      const p = curve.getPoint(i / 60);
+      allPts.push(p.x, p.y, p.z);
+      allCols.push(col.r, col.g, col.b);
+    }
+  }
+
+  // Flowers at fruit positions
+  for (const pos of plantData.fruits) {
+    const sc = 0.6 + r() * 0.4;
+    const col = new THREE.Color(neonColors[Math.floor(r() * neonColors.length)]);
+    const pts = flowerShapes[flowerIdx](r, sc);
+    for (const p of pts) { allPts.push(p.x+pos.x, p.y+pos.y, p.z+pos.z); allCols.push(col.r, col.g, col.b); }
+    // Overlay fruit shape
+    const col2 = new THREE.Color(neonColors[Math.floor(r() * neonColors.length)]);
+    const fpts = fruitShapes[fruitIdx](r, sc * 0.5);
+    for (const p of fpts) { allPts.push(p.x+pos.x, p.y+pos.y+0.2, p.z+pos.z); allCols.push(col2.r, col2.g, col2.b); }
   }
 
   // Leaves
-  for (const l of part.leaves) {
-    const pos = new THREE.Vector3(l.position?.x||0, l.position?.y||0, l.position?.z||0);
-    const sc = (l.scale || 1) * 0.6;
-    const shapeFn = leafShapes[leafIdx];
-    const lCol = new THREE.Color(l.color || neonColors[Math.floor(r()*neonColors.length)]);
-    const pts = shapeFn(r, sc);
-    for (const p of pts) { allPts.push(p.x+pos.x, p.y+pos.y, p.z+pos.z); allCols.push(lCol.r, lCol.g, lCol.b); }
+  for (const pos of plantData.leaves) {
+    const sc = 0.3 + r() * 0.3;
+    const col = new THREE.Color(neonColors[Math.floor(r() * neonColors.length)]);
+    const pts = leafShapes[leafIdx](r, sc);
+    for (const p of pts) { allPts.push(p.x+pos.x, p.y+pos.y, p.z+pos.z); allCols.push(col.r, col.g, col.b); }
   }
 
   if (allPts.length === 0) return group;
@@ -414,9 +267,9 @@ function buildPlantPartMesh(part) {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(allPts, 3));
   geo.setAttribute('color', new THREE.Float32BufferAttribute(allCols, 3));
-  const mat = new THREE.PointsMaterial({ size:0.12, vertexColors:true, transparent:true, opacity:0.9, depthWrite:false, sizeAttenuation:true });
+  const mat = new THREE.PointsMaterial({ size: 0.12, vertexColors: true, transparent: true, opacity: 0.9, depthWrite: false, sizeAttenuation: true });
   const points = new THREE.Points(geo, mat);
-  points.userData.entryText = part.textInput;
+  points.userData.entryText = text;
   group.add(points);
   return group;
 }
@@ -424,277 +277,65 @@ function buildPlantPartMesh(part) {
 // ===== 3D Scene =====
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#050810');
-const camera = new THREE.PerspectiveCamera(60, W()/H(), 0.01, 200);
+const camera = new THREE.PerspectiveCamera(60, W()/H(), 0.1, 200);
 const isMobile = /Mobi|Android/i.test(navigator.userAgent);
-const renderer = new THREE.WebGLRenderer({ alpha:true, antialias:!isMobile });
+const renderer = new THREE.WebGLRenderer({ antialias: !isMobile });
 renderer.setSize(W(), H());
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.5 : 2));
-renderer.setClearColor(0x000000, 0);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.1;
 renderer.domElement.id = 'canvas3d';
 document.body.appendChild(renderer.domElement);
 
-scene.add(new THREE.AmbientLight(0xcccccc, 0.6));
-const dirLight = new THREE.DirectionalLight(0xffffff, 1.6);
-dirLight.position.set(5, 8, 5); scene.add(dirLight);
+scene.add(new THREE.AmbientLight(0xffffff, 0.3));
 
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(80, 80, 1, 1),
-  new THREE.MeshStandardMaterial({ color:0x0a0f14, roughness:0.8, flatShading:true }));
-ground.rotation.x = -Math.PI/2; ground.receiveShadow = true; scene.add(ground);
-
-// ===== Progress tracking =====
-const progressBarEl = document.getElementById('progress-bar');
-const progressPctEl = document.getElementById('progress-pct');
-const loadingDiv = document.getElementById('loading');
-
-const assetProg = { building:0, charIdle:0, charJump:0, charDrink:0, charTex:0 };
-const assetWeight = { building:0.60, charIdle:0.18, charJump:0.10, charDrink:0.05, charTex:0.07 };
-function updateProgress() {
-  let total = 0;
-  for (const k of Object.keys(assetProg)) total += assetProg[k] * (assetWeight[k]||0);
-  const pct = Math.min(100, Math.floor(total * 100));
-  progressBarEl.style.width = pct + '%';
-  progressPctEl.textContent = pct + '%';
-}
-function onProg(key) {
-  return xhr => { if (xhr.lengthComputable) assetProg[key] = xhr.loaded / xhr.total; updateProgress(); };
-}
-
-// ===== Building (GLB - much smaller than OBJ) =====
-let building = null;
-let rooftopY = 4;
-let rooftopBounds = { minX:-1.5, maxX:1.5, minZ:-1.5, maxZ:1.5 };
-const buildingGroup = new THREE.Group();
-scene.add(buildingGroup);
-
-// Fallback box
-const fallbackBldg = new THREE.Mesh(new THREE.BoxGeometry(3, 4, 3),
-  new THREE.MeshStandardMaterial({ color:0x1a1a2e, roughness:0.9 }));
-fallbackBldg.position.y = 2;
-buildingGroup.add(fallbackBldg);
-
-const buildingPromise = new Promise(resolve => {
-  const gl = new GLTFLoader();
-  const dr = new DRACOLoader();
-  dr.setDecoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/draco/');
-  gl.setDRACOLoader(dr);
-  gl.load('./building/building.glb', gltf => {
-    const obj = gltf.scene;
-    building = obj;
-    buildingGroup.remove(fallbackBldg);
-    const box = new THREE.Box3().setFromObject(obj);
-    const sz = box.getSize(new THREE.Vector3());
-    const maxDim = Math.max(sz.x, sz.z);
-    const scale = 4 / maxDim;
-    obj.scale.setScalar(scale);
-    const box2 = new THREE.Box3().setFromObject(obj);
-    obj.position.y = -box2.min.y;
-    // Decimate building meshes to reduce poly count
-    obj.traverse(c => {
-      if (c.isMesh && c.geometry) {
-        const geo = c.geometry;
-        const pos = geo.attributes.position;
-        if (pos && pos.count > 5000) {
-          // Simple vertex decimation: keep every Nth vertex via new indexed geometry
-          const stride = Math.ceil(pos.count / 3000);
-          if (stride > 1 && geo.index) {
-            // Just use flat shading to give low-poly look without losing shape
-            if (c.material) {
-              if (Array.isArray(c.material)) c.material.forEach(m => { m.flatShading = true; m.needsUpdate = true; });
-              else { c.material.flatShading = true; c.material.needsUpdate = true; }
-            }
-          }
-        }
-        // Apply flat shading to all building meshes for consistent low-poly look
-        if (c.material) {
-          if (Array.isArray(c.material)) c.material.forEach(m => { m.flatShading = true; m.needsUpdate = true; });
-          else { c.material.flatShading = true; c.material.needsUpdate = true; }
-        }
-      }
-    });
-    buildingGroup.add(obj);
-    const box3 = new THREE.Box3().setFromObject(obj);
-    rooftopY = box3.max.y;
-    rooftopBounds = { minX:box3.min.x+0.15, maxX:box3.max.x-0.15, minZ:box3.min.z+0.15, maxZ:box3.max.z-0.15 };
-    assetProg.building = 1; updateProgress(); resolve();
-  }, onProg('building'), err => {
-    console.warn('Building load error:', err);
-    assetProg.building = 1; updateProgress(); resolve();
-  });
-});
-
-// ===== Character =====
-class GameCharacter {
-  constructor(scene) {
-    this.scene = scene; this.root = new THREE.Group(); scene.add(this.root);
-    this.mixer = null; this.anims = {}; this.curAction = null; this.curState = 'IDLE';
-    this.charHeight = 0.066; this.loaded = false; this.drinkDuration = 1.0;
-  }
-  async load() {
-    const gl = new GLTFLoader();
-    const dr = new DRACOLoader();
-    dr.setDecoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/draco/');
-    gl.setDRACOLoader(dr);
-    const texLoader = new THREE.TextureLoader();
-
-    let skinTex = null;
-    try {
-      skinTex = await new Promise((r,j) => texLoader.load('./playermodel/tripo_model_basecolor.JPEG', r, onProg('charTex'), j));
-      assetProg.charTex = 1; updateProgress();
-    } catch { assetProg.charTex = 1; updateProgress(); }
-    if (skinTex) { skinTex.flipY = false; skinTex.colorSpace = THREE.SRGBColorSpace; }
-
-    const loadG = (url, key) => new Promise((r,j) => {
-      const timeout = setTimeout(() => { assetProg[key] = 1; updateProgress(); j(new Error('Timeout: '+url)); }, 10000);
-      gl.load(url, g => {
-        clearTimeout(timeout); assetProg[key] = 1; updateProgress(); r(g);
-      }, onProg(key), e => { clearTimeout(timeout); assetProg[key] = 1; updateProgress(); j(e); });
-    });
-
-    const idleG = await loadG('./playermodel/idle.glb', 'charIdle');
-    const model = idleG.scene;
-    const box = new THREE.Box3().setFromObject(model);
-    const sc = this.charHeight / box.getSize(new THREE.Vector3()).y;
-    model.scale.setScalar(sc);
-    const box2 = new THREE.Box3().setFromObject(model);
-    model.position.y = -box2.min.y;
-    model.traverse(c => {
-      if (c.isMesh) {
-        c.material = new THREE.MeshStandardMaterial({ map:skinTex||null, roughness:0.8, metalness:0.1, flatShading:true });
-        c.frustumCulled = false;
-      }
-    });
-    this.model3D = model; this.root.add(model);
-    this.mixer = new THREE.AnimationMixer(model);
-    const strip = clip => { clip.tracks = clip.tracks.filter(t => !/(Hips|RootNode)\.(position|quaternion)/i.test(t.name)); };
-
-    if (idleG.animations.length) {
-      strip(idleG.animations[0]);
-      this.anims['IDLE'] = this.mixer.clipAction(idleG.animations[0]);
-      this.anims['IDLE'].play(); this.curAction = this.anims['IDLE'];
-    }
-
-    // Load all other animations as GLB (tiny files, all in parallel)
-    const animLoads = [
-      loadG('./playermodel/jump.glb', 'charJump').then(g => {
-        if (g.animations.length) {
-          strip(g.animations[0]);
-          this.anims['JUMP'] = this.mixer.clipAction(g.animations[0]);
-          this.anims['JUMP'].setLoop(THREE.LoopOnce); this.anims['JUMP'].clampWhenFinished = true;
-        }
-      }).catch(() => {}),
-      loadG('./playermodel/drinking.glb', 'charDrink').then(g => {
-        if (g.animations.length) {
-          const clip = g.animations[0];
-          strip(clip);
-          // Remap track names to match the model's bone structure
-          // The drinking.glb was exported from FBX via Blender, bone names may have "Armature|" prefix or differ
-          const modelBones = new Set();
-          this.model3D.traverse(c => { if (c.isBone) modelBones.add(c.name); });
-          clip.tracks = clip.tracks.filter(track => {
-            const boneName = track.name.split('.')[0];
-            // Check if bone exists in model
-            return modelBones.has(boneName) || boneName === '' ;
-          });
-          // Trim to second half only (hand raising part)
-          const halfTime = clip.duration * 0.5;
-          clip.tracks.forEach(track => {
-            const times = track.times;
-            const values = track.values;
-            const stride = values.length / times.length;
-            let startIdx = 0;
-            for (let i = 0; i < times.length; i++) {
-              if (times[i] >= halfTime) { startIdx = i; break; }
-            }
-            track.times = Float32Array.from(Array.from(times).slice(startIdx).map(t => t - halfTime));
-            track.values = Float32Array.from(Array.from(values).slice(startIdx * stride));
-          });
-          clip.duration = clip.duration - halfTime;
-          if (clip.tracks.length > 0) {
-            this.anims['DRINK'] = this.mixer.clipAction(clip);
-            this.anims['DRINK'].setLoop(THREE.LoopOnce); this.anims['DRINK'].clampWhenFinished = true;
-            this.drinkDuration = clip.duration;
-          }
-        }
-      }).catch(() => {}),
-    ];
-    await Promise.all(animLoads);
-    // Walking animation no longer needed (auto-jump flow)
-
-    this.loaded = true;
-  }
-  setState(s) {
-    if (this.curState === s) return;
-    this.curState = s;
-    if (!this.mixer) return;
-    const next = this.anims[s];
-    if (!next) return;
-    if (this.curAction && this.curAction !== next) { next.reset().play(); next.crossFadeFrom(this.curAction, 0.2, true); }
-    else next.reset().play();
-    this.curAction = next;
-  }
-  update(dt) { if (this.mixer) this.mixer.update(dt); }
-}
-const character = new GameCharacter(scene);
-
-// ===== Plant system =====
-const plantRoot = new THREE.Group();
-scene.add(plantRoot);
-const plantParts = [];
-const PLANT_SCALE = 0.06;
-
-function addPlantPart(part, grow=true) {
-  const mesh = buildPlantPartMesh(part);
-  mesh.userData.partId = part.id;
-  mesh.userData.entryText = part.textInput;
-  mesh.position.set(part.worldX||0, part.worldY||0, part.worldZ||0);
-  if (grow) { mesh.userData.grow = 0; mesh.scale.setScalar(0.001); }
-  else mesh.scale.setScalar(PLANT_SCALE);
-  plantRoot.add(mesh);
-  plantParts.push({ data:part, mesh });
-}
-
-async function loadSavedPlants() {
-  const entries = await loadEntries();
-  const spacing = 1.8;
-  entries.forEach((entry, i) => {
-    if (!entry.part) return;
-    const col = (i % 5) - 2;
-    const row = Math.floor(i / 5);
-    entry.part.worldX = col * spacing;
-    entry.part.worldY = 0;
-    entry.part.worldZ = 4 + row * spacing;
-    addPlantPart(entry.part, false);
-  });
-}
-
-// ===== Ambient graffiti scatter (chaotic background dots) =====
-function addGraffitiScatter() {
+// Ground scatter (chaotic graffiti feel)
+{
   const pts = [], cols = [];
-  for (let i = 0; i < 500; i++) {
-    const x = (Math.random()-0.5)*30, z = (Math.random()-0.5)*30 + 5, y = Math.random()*0.3;
-    pts.push(x, y, z);
+  for (let i = 0; i < 800; i++) {
+    pts.push((Math.random()-0.5)*40, Math.random()*0.2, (Math.random()-0.5)*40);
     const c = new THREE.Color(neonColors[Math.floor(Math.random()*neonColors.length)]);
     cols.push(c.r, c.g, c.b);
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
   geo.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
-  const mat = new THREE.PointsMaterial({ size:0.04, vertexColors:true, transparent:true, opacity:0.3, depthWrite:false });
-  scene.add(new THREE.Points(geo, mat));
+  scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ size:0.04, vertexColors:true, transparent:true, opacity:0.2, depthWrite:false })));
 }
-addGraffitiScatter();
 
-// ===== Camera =====
-let orbitYaw = 0, orbitPitch = 0.15, orbitRadius = 0.3;
-let orbitTarget = new THREE.Vector3(0, 4, 0);
+// ===== Plant container =====
+const plantRoot = new THREE.Group();
+scene.add(plantRoot);
+const plantEntries = []; // { mesh, text }
+const PLANT_SCALE = 0.08;
+
+function addPlant(text, grow = true) {
+  const plantData = generatePlant(text);
+  const mesh = buildPlantCloud(plantData, text);
+
+  // Place in a grid around origin
+  const idx = plantEntries.length;
+  const col = (idx % 5) - 2;
+  const row = Math.floor(idx / 5);
+  mesh.position.set(col * 2.5, 0, row * 2.5);
+
+  if (grow) { mesh.userData.growT = 0; mesh.scale.setScalar(0.001); }
+  else mesh.scale.setScalar(PLANT_SCALE);
+
+  plantRoot.add(mesh);
+  plantEntries.push({ mesh, text });
+
+  // Save
+  saveEntry(text, { seed: plantData.seed }).catch(() => {});
+  return mesh;
+}
+
+// ===== Camera orbit =====
+let orbitYaw = 0, orbitPitch = 0.4, orbitRadius = 8;
+let orbitTarget = new THREE.Vector3(0, 2, 0);
 let userInteracting = false, interactionTimer = 0;
 const pointers = new Map();
 let dragStart = { x:0, y:0, yaw:0, pitch:0 };
-let pinchStartDist = 0, pinchStartRadius = 6;
-function pDist(a,b) { return Math.hypot(a.x-b.x, a.y-b.y); }
+let pinchStartDist = 0, pinchStartRadius = 8;
 
 renderer.domElement.addEventListener('pointerdown', e => {
   pointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
@@ -703,7 +344,8 @@ renderer.domElement.addEventListener('pointerdown', e => {
   if (pointers.size === 1) dragStart = { x:e.clientX, y:e.clientY, yaw:orbitYaw, pitch:orbitPitch };
   else if (pointers.size === 2) {
     const pts = [...pointers.values()];
-    pinchStartDist = pDist(pts[0], pts[1]); pinchStartRadius = orbitRadius;
+    pinchStartDist = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y);
+    pinchStartRadius = orbitRadius;
   }
 });
 renderer.domElement.addEventListener('pointermove', e => {
@@ -711,92 +353,36 @@ renderer.domElement.addEventListener('pointermove', e => {
   pointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
   userInteracting = true; interactionTimer = 0;
   if (pointers.size === 1) {
-    orbitYaw = dragStart.yaw + (e.clientX - dragStart.x)/W()*2.2;
-    orbitPitch = clamp(dragStart.pitch + (e.clientY - dragStart.y)/H()*1.4, -0.2, 1.2);
+    orbitYaw = dragStart.yaw + (e.clientX - dragStart.x) / W() * 3;
+    orbitPitch = clamp(dragStart.pitch + (e.clientY - dragStart.y) / H() * 2, 0.05, 1.4);
   } else if (pointers.size >= 2) {
     const pts = [...pointers.values()];
-    const d = pDist(pts[0], pts[1]);
-    if (pinchStartDist > 0) orbitRadius = clamp(pinchStartRadius*(pinchStartDist/d), 3.5, 12);
+    const d = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y);
+    if (pinchStartDist > 0) orbitRadius = clamp(pinchStartRadius * (pinchStartDist / d), 2, 25);
   }
 });
-renderer.domElement.addEventListener('pointerup', e => { pointers.delete(e.pointerId); });
-renderer.domElement.addEventListener('pointercancel', e => { pointers.delete(e.pointerId); });
+renderer.domElement.addEventListener('pointerup', e => pointers.delete(e.pointerId));
+renderer.domElement.addEventListener('pointercancel', e => pointers.delete(e.pointerId));
 
 function updateCamera() {
-  const cx = orbitTarget.x + orbitRadius*Math.cos(orbitPitch)*Math.sin(orbitYaw);
-  const cz = orbitTarget.z + orbitRadius*Math.cos(orbitPitch)*Math.cos(orbitYaw);
-  const cy = orbitTarget.y + orbitRadius*Math.sin(orbitPitch);
+  const cx = orbitTarget.x + orbitRadius * Math.cos(orbitPitch) * Math.sin(orbitYaw);
+  const cz = orbitTarget.z + orbitRadius * Math.cos(orbitPitch) * Math.cos(orbitYaw);
+  const cy = orbitTarget.y + orbitRadius * Math.sin(orbitPitch);
   camera.position.set(cx, cy, cz);
   camera.lookAt(orbitTarget);
 }
 
-// ===== Game flow =====
-const uiPanel = document.getElementById('ui-panel');
-const leaveBtn = document.getElementById('leave-btn');
-const textInput = document.getElementById('text-input');
-const popup = document.getElementById('text-popup');
-const fadeOverlay = document.getElementById('fade-overlay');
-const writeMoreBtn = document.getElementById('write-more-btn');
-
-let phase = 'LOADING';
-let timer = 0;
-let pendingText = '';
-let pendingEntryId = null;
-let jumpVel = new THREE.Vector3();
-
-function worldToScreen(p) {
-  const v = p.clone().project(camera);
-  return { x:(v.x*0.5+0.5)*W(), y:(-v.y*0.5+0.5)*H() };
-}
-
-function startLeave() {
-  const text = textInput.value.trim();
-  if (!text) return;
-  pendingText = text; textInput.value = '';
-  createEntry(pendingText).then(id => { pendingEntryId = id; });
-  const handPos = character.root.position.clone().add(new THREE.Vector3(0, character.charHeight*0.7, 0));
-  const scr = worldToScreen(handPos);
-  uiPanel.style.setProperty('--to-x', `${scr.x-W()/2}px`);
-  uiPanel.style.setProperty('--to-y', `${scr.y-H()/2}px`);
-  uiPanel.classList.add('leaving');
-  phase = 'UI_SHRINK'; timer = 0;
-}
-leaveBtn.addEventListener('click', startLeave);
-textInput.addEventListener('input', () => { leaveBtn.disabled = !textInput.value.trim(); });
-
-// "Write More" returns to intro
-writeMoreBtn.addEventListener('click', () => {
-  writeMoreBtn.style.display = 'none';
-  character.root.visible = true;
-  character.root.position.set(0, rooftopY, 0);
-  character.root.rotation.y = 0;
-  character.setState('IDLE');
-  orbitTarget.copy(character.root.position);
-  orbitYaw = 0; orbitPitch = 0.15; orbitRadius = 0.3;
-  uiPanel.classList.remove('hidden');
-  uiPanel.classList.remove('leaving');
-  leaveBtn.disabled = true;
-  phase = 'INTRO'; timer = 0;
-  pendingText = ''; pendingEntryId = null;
-});
-
-function startFall() {
-  phase = 'FALLING'; timer = 0;
-  character.setState(character.anims['JUMP'] ? 'JUMP' : 'IDLE');
-  // Jump forward off the building edge toward the landing zone
-  const facing = new THREE.Vector3(0, 0, 1); // always jump toward +Z
-  jumpVel.copy(facing).multiplyScalar(2); jumpVel.y = 1;
-}
-
-// Plant raycasting
+// ===== Click to read plant text =====
 const raycaster = new THREE.Raycaster();
-renderer.domElement.addEventListener('pointerdown', e => {
-  if (phase !== 'PLANT_VIEW' && phase !== 'INTRO') return;
+raycaster.params.Points.threshold = 0.3;
+const popup = document.getElementById('text-popup');
+
+renderer.domElement.addEventListener('click', e => {
   if (!plantRoot.children.length) return;
   const rect = renderer.domElement.getBoundingClientRect();
   raycaster.setFromCamera({
-    x:((e.clientX-rect.left)/rect.width)*2-1,
-    y:-((e.clientY-rect.top)/rect.height)*2+1
+    x: ((e.clientX - rect.left) / rect.width) * 2 - 1,
+    y: -((e.clientY - rect.top) / rect.height) * 2 + 1
   }, camera);
   const hits = raycaster.intersectObjects(plantRoot.children, true);
   if (hits.length) {
@@ -810,30 +396,49 @@ renderer.domElement.addEventListener('pointerdown', e => {
   }
 });
 
-// ===== Init =====
-function startGame() {
-  if (phase !== 'LOADING') return; // already started
-  character.root.position.set(0, rooftopY, 0);
-  orbitTarget.copy(character.root.position);
-  loadingDiv.style.display = 'none';
-  phase = 'INTRO';
+// ===== UI =====
+const uiPanel = document.getElementById('ui-panel');
+const submitBtn = document.getElementById('submit-btn');
+const textInput = document.getElementById('text-input');
+const writeBtn = document.getElementById('write-btn');
+
+textInput.addEventListener('input', () => { submitBtn.disabled = !textInput.value.trim(); });
+
+submitBtn.addEventListener('click', () => {
+  const text = textInput.value.trim();
+  if (!text) return;
+  textInput.value = '';
+  submitBtn.disabled = true;
+  uiPanel.classList.add('hidden');
+  writeBtn.style.display = 'block';
+
+  const mesh = addPlant(text, true);
+  // Focus camera on new plant
+  orbitTarget.copy(mesh.position).add(new THREE.Vector3(0, 1.5, 0));
+  orbitRadius = 5;
+});
+
+writeBtn.addEventListener('click', () => {
+  writeBtn.style.display = 'none';
   uiPanel.classList.remove('hidden');
-  uiPanel.classList.remove('leaving');
-  tick();
-}
+});
 
-async function init() {
-  // Safety timeout: force start after 15s no matter what
-  const safetyTimer = setTimeout(() => { console.warn('Safety timeout — forcing game start'); startGame(); }, 15000);
-
+// ===== Load saved plants =====
+async function loadSaved() {
   try {
-    await Promise.all([buildingPromise, character.load()]);
-  } catch (err) { console.error('Asset load error:', err); }
-
-  try { await loadSavedPlants(); } catch (err) { console.error('Load saved plants error:', err); }
-
-  clearTimeout(safetyTimer);
-  startGame();
+    const entries = await loadEntries();
+    entries.forEach((entry, i) => {
+      if (!entry.text) return;
+      const plantData = generatePlant(entry.text);
+      const mesh = buildPlantCloud(plantData, entry.text);
+      const col = (i % 5) - 2;
+      const row = Math.floor(i / 5);
+      mesh.position.set(col * 2.5, 0, row * 2.5);
+      mesh.scale.setScalar(PLANT_SCALE);
+      plantRoot.add(mesh);
+      plantEntries.push({ mesh, text: entry.text });
+    });
+  } catch (err) { console.error('Load saved error:', err); }
 }
 
 // ===== Game loop =====
@@ -841,108 +446,42 @@ const clock = new THREE.Clock();
 function tick() {
   requestAnimationFrame(tick);
   const dt = Math.min(clock.getDelta(), 0.05);
-  timer += dt;
   interactionTimer += dt;
-  if (interactionTimer > 1.2) userInteracting = false;
+  if (interactionTimer > 1.5) userInteracting = false;
 
-  // Camera per phase
-  if (phase === 'INTRO' || phase === 'UI_SHRINK' || phase === 'DRINK') {
-    // Over-shoulder close-up on rooftop
-    orbitTarget.copy(character.root.position).add(new THREE.Vector3(0, 0.04, 0));
-    if (!userInteracting) { orbitPitch += (0.15-orbitPitch)*0.05; orbitRadius += (0.3-orbitRadius)*0.05; }
-  } else if (phase === 'TURN') {
-    orbitTarget.copy(character.root.position).add(new THREE.Vector3(0, 0.04, 0));
-    if (!userInteracting) { orbitPitch += (0.1-orbitPitch)*0.05; orbitRadius += (0.5-orbitRadius)*0.05; }
-  } else if (phase === 'FALLING') {
-    orbitTarget.copy(character.root.position);
-    if (!userInteracting) { orbitPitch += (-0.1-orbitPitch)*0.05; orbitRadius += (5-orbitRadius)*0.05; }
-  } else if (phase === 'IMPACT') {
-    orbitTarget.lerp(character.root.position.clone().add(new THREE.Vector3(0,0.5,0)), 0.05);
-    if (!userInteracting) { orbitPitch += (0.15-orbitPitch)*0.05; orbitRadius += (3-orbitRadius)*0.05; }
-  } else if (phase === 'PLANT_VIEW') {
-    if (plantParts.length) {
-      const lp = plantParts[plantParts.length-1].mesh;
-      orbitTarget.lerp(lp.position.clone().add(new THREE.Vector3(0,0.5,0)), 0.03);
-    }
-    if (!userInteracting) { orbitPitch += (0.2-orbitPitch)*0.03; orbitRadius += (3-orbitRadius)*0.03; orbitYaw += dt*0.15; }
-  }
+  // Auto-rotate when not interacting
+  if (!userInteracting) orbitYaw += dt * 0.1;
 
-  // State machine
-  if (phase === 'UI_SHRINK' && timer > 0.6) {
-    uiPanel.classList.add('hidden');
-    phase = 'DRINK'; timer = 0;
-    character.setState(character.anims['DRINK'] ? 'DRINK' : 'IDLE');
-  }
-
-  if (phase === 'DRINK' && timer > (character.drinkDuration||1)) {
-    // After drinking, character turns toward edge and auto-falls
-    phase = 'TURN'; timer = 0;
-    character.setState('IDLE');
-    // Turn to face +Z (toward the jump edge)
-    character.root.rotation.y = Math.PI;
-  }
-
-  if (phase === 'TURN') {
-    // Brief pause while turning, then jump off
-    if (timer > 0.6) {
-      // Move character to the edge before falling
-      character.root.position.z = rooftopBounds.maxZ + 0.1;
-      startFall();
+  // Grow animation
+  for (const entry of plantEntries) {
+    const m = entry.mesh;
+    if (m.userData.growT !== undefined) {
+      m.userData.growT = Math.min(1, m.userData.growT + dt * 0.6);
+      m.scale.setScalar(0.001 + m.userData.growT * (PLANT_SCALE - 0.001));
+      if (m.userData.growT >= 1) delete m.userData.growT;
     }
   }
 
-  if (phase === 'FALLING') {
-    jumpVel.y -= 12*dt;
-    character.root.position.add(jumpVel.clone().multiplyScalar(dt));
-    if (character.root.position.y <= 0.02) {
-      character.root.position.y = 0.02;
-      // Generate plant at fixed landing zone
-      const LANDING_X = 0, LANDING_Z = 5;
-      character.root.position.set(LANDING_X, 0.02, LANDING_Z);
-      character.root.visible = false; // hide character
-      const dna = generateDNAFromText(pendingText);
-      const gen = generateProceduralPlant(dna);
-      const part = {
-        id: Date.now().toString(), textInput: pendingText,
-        stems:gen.stems, fruits:gen.fruits, leaves:gen.leaves, stemColor:dna.stemColor,
-        startX:0, startY:0, startZ:0, endPoint:gen.endPoint,
-        worldX:LANDING_X, worldY:0, worldZ:LANDING_Z
-      };
-      addPlantPart(part, true);
-      if (!pendingEntryId) pendingEntryId = Date.now().toString();
-      finalizeEntry(pendingEntryId, part, pendingText);
-      phase = 'PLANT_VIEW'; timer = 0;
-      writeMoreBtn.style.display = 'block';
-    }
-  }
-
-  // PLANT_VIEW: stay here, let user orbit and click plants
-
-  // Grow plants
-  for (const p of plantParts) {
-    if (p.mesh.userData.grow !== undefined) {
-      p.mesh.userData.grow = Math.min(1, p.mesh.userData.grow + dt*0.5);
-      p.mesh.scale.setScalar(0.001 + p.mesh.userData.grow*(PLANT_SCALE-0.001));
-      if (p.mesh.userData.grow >= 1) delete p.mesh.userData.grow;
-    }
-  }
-
-  character.update(dt);
   updateCamera();
   updateNoise();
   renderer.setSize(W(), H());
-  camera.aspect = W()/H();
+  camera.aspect = W() / H();
   camera.updateProjectionMatrix();
   renderer.render(scene, camera);
 }
 
+// ===== Start =====
+async function init() {
+  await loadSaved();
+  tick();
+}
+init();
+
 window.addEventListener('resize', () => {
   renderer.setSize(W(), H());
-  camera.aspect = W()/H();
+  camera.aspect = W() / H();
   camera.updateProjectionMatrix();
 });
-
-init();
 </script>
 </body>
 </html>
