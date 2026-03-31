@@ -77,7 +77,6 @@
 import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
 import { GLTFLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/DRACOLoader.js';
-import { FBXLoader } from 'https://unpkg.com/three@0.160.0/examples/jsm/loaders/FBXLoader.js';
 
 const W = () => window.innerWidth;
 const H = () => window.innerHeight;
@@ -566,7 +565,7 @@ const progressPctEl = document.getElementById('progress-pct');
 const loadingDiv = document.getElementById('loading');
 
 const assetProg = { building:0, charIdle:0, charJump:0, charDrink:0, charWalk:0, charTex:0 };
-const assetWeight = { building:0.30, charIdle:0.08, charJump:0.08, charDrink:0.22, charWalk:0.22, charTex:0.10 };
+const assetWeight = { building:0.60, charIdle:0.15, charJump:0.08, charDrink:0.05, charWalk:0.05, charTex:0.07 };
 function updateProgress() {
   let total = 0;
   for (const k of Object.keys(assetProg)) total += assetProg[k] * (assetWeight[k]||0);
@@ -653,7 +652,6 @@ class GameCharacter {
     const dr = new DRACOLoader();
     dr.setDecoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/draco/');
     gl.setDRACOLoader(dr);
-    const fbx = new FBXLoader();
     const texLoader = new THREE.TextureLoader();
 
     let skinTex = null;
@@ -665,7 +663,7 @@ class GameCharacter {
 
     const loadG = (url, key) => new Promise((r,j) => gl.load(url, g => {
       assetProg[key] = 1; updateProgress(); r(g);
-    }, onProg(key), e => j(e)));
+    }, onProg(key), e => { assetProg[key] = 1; updateProgress(); j(e); }));
 
     const idleG = await loadG('./playermodel/idle.glb', 'charIdle');
     const model = idleG.scene;
@@ -675,7 +673,10 @@ class GameCharacter {
     const box2 = new THREE.Box3().setFromObject(model);
     model.position.y = -box2.min.y;
     model.traverse(c => {
-      if (c.isMesh) { c.material = new THREE.MeshStandardMaterial({ map:skinTex||null, roughness:0.8, metalness:0.1 }); c.frustumCulled = false; }
+      if (c.isMesh) {
+        c.material = new THREE.MeshStandardMaterial({ map:skinTex||null, roughness:0.8, metalness:0.1, flatShading:true });
+        c.frustumCulled = false;
+      }
     });
     this.model3D = model; this.root.add(model);
     this.mixer = new THREE.AnimationMixer(model);
@@ -687,34 +688,31 @@ class GameCharacter {
       this.anims['IDLE'].play(); this.curAction = this.anims['IDLE'];
     }
 
-    try {
-      const jumpG = await loadG('./playermodel/jump.glb', 'charJump');
-      if (jumpG.animations.length) {
-        strip(jumpG.animations[0]);
-        this.anims['JUMP'] = this.mixer.clipAction(jumpG.animations[0]);
-        this.anims['JUMP'].setLoop(THREE.LoopOnce); this.anims['JUMP'].clampWhenFinished = true;
-      }
-    } catch { assetProg.charJump = 1; updateProgress(); }
-
-    try {
-      const drinkFbx = await new Promise((r,j) => fbx.load('./playermodel/Drinking.fbx', r, onProg('charDrink'), j));
-      assetProg.charDrink = 1; updateProgress();
-      if (drinkFbx.animations?.length) {
-        strip(drinkFbx.animations[0]);
-        this.anims['DRINK'] = this.mixer.clipAction(drinkFbx.animations[0]);
-        this.anims['DRINK'].setLoop(THREE.LoopOnce); this.anims['DRINK'].clampWhenFinished = true;
-        this.drinkDuration = drinkFbx.animations[0].duration || this.drinkDuration;
-      }
-    } catch { assetProg.charDrink = 1; updateProgress(); }
-
-    try {
-      const walkFbx = await new Promise((r,j) => fbx.load('./playermodel/Walking.fbx', r, onProg('charWalk'), j));
-      assetProg.charWalk = 1; updateProgress();
-      if (walkFbx.animations?.length) {
-        strip(walkFbx.animations[0]);
-        this.anims['WALK'] = this.mixer.clipAction(walkFbx.animations[0]);
-      }
-    } catch { assetProg.charWalk = 1; updateProgress(); }
+    // Load all other animations as GLB (tiny files, all in parallel)
+    const animLoads = [
+      loadG('./playermodel/jump.glb', 'charJump').then(g => {
+        if (g.animations.length) {
+          strip(g.animations[0]);
+          this.anims['JUMP'] = this.mixer.clipAction(g.animations[0]);
+          this.anims['JUMP'].setLoop(THREE.LoopOnce); this.anims['JUMP'].clampWhenFinished = true;
+        }
+      }).catch(() => {}),
+      loadG('./playermodel/drinking.glb', 'charDrink').then(g => {
+        if (g.animations.length) {
+          strip(g.animations[0]);
+          this.anims['DRINK'] = this.mixer.clipAction(g.animations[0]);
+          this.anims['DRINK'].setLoop(THREE.LoopOnce); this.anims['DRINK'].clampWhenFinished = true;
+          this.drinkDuration = g.animations[0].duration || this.drinkDuration;
+        }
+      }).catch(() => {}),
+      loadG('./playermodel/walking.glb', 'charWalk').then(g => {
+        if (g.animations.length) {
+          strip(g.animations[0]);
+          this.anims['WALK'] = this.mixer.clipAction(g.animations[0]);
+        }
+      }).catch(() => {}),
+    ];
+    await Promise.all(animLoads);
 
     this.loaded = true;
   }

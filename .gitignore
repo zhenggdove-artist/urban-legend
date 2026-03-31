@@ -4,5 +4,4 @@ dist/
 .env.local
 *.fbx
 *.obj
-!playermodel/Drinking.fbx
-!playermodel/Walking.fbx
+*.py
