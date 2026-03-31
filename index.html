@@ -36,14 +36,6 @@
     #progress-bar{width:0%;height:100%;background:rgba(0,255,180,0.7);transition:width 0.3s}
     #progress-pct{margin-top:8px;font-size:10px;color:rgba(0,255,180,0.5)}
 
-    #edge-warn{display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-      color:rgba(255,60,60,0.7);font-size:11px;letter-spacing:4px;z-index:14;pointer-events:none;
-      text-transform:uppercase;animation:pulse-warn 0.6s infinite alternate}
-    @keyframes pulse-warn{0%{opacity:0.4}100%{opacity:1}}
-
-    #walk-hint{display:none;position:absolute;top:40%;left:50%;transform:translate(-50%,-50%);
-      color:rgba(0,255,180,0.5);font-size:11px;letter-spacing:4px;z-index:14;pointer-events:none;
-      text-transform:uppercase}
 
     #fade-overlay{position:absolute;inset:0;background:#000;z-index:18;pointer-events:none;opacity:0;transition:opacity 0.8s}
   </style>
@@ -65,8 +57,6 @@
 
   <div id="text-popup"></div>
   <div id="fade-overlay"></div>
-  <div id="edge-warn">!! EDGE !!</div>
-  <div id="walk-hint">DRAG TO WALK</div>
   <div id="loading">
     LOADING
     <div id="progress-wrap"><div id="progress-bar"></div></div>
@@ -564,8 +554,8 @@ const progressBarEl = document.getElementById('progress-bar');
 const progressPctEl = document.getElementById('progress-pct');
 const loadingDiv = document.getElementById('loading');
 
-const assetProg = { building:0, charIdle:0, charJump:0, charDrink:0, charWalk:0, charTex:0 };
-const assetWeight = { building:0.60, charIdle:0.15, charJump:0.08, charDrink:0.05, charWalk:0.05, charTex:0.07 };
+const assetProg = { building:0, charIdle:0, charJump:0, charDrink:0, charTex:0 };
+const assetWeight = { building:0.60, charIdle:0.18, charJump:0.10, charDrink:0.05, charTex:0.07 };
 function updateProgress() {
   let total = 0;
   for (const k of Object.keys(assetProg)) total += assetProg[k] * (assetWeight[k]||0);
@@ -699,20 +689,30 @@ class GameCharacter {
       }).catch(() => {}),
       loadG('./playermodel/drinking.glb', 'charDrink').then(g => {
         if (g.animations.length) {
-          strip(g.animations[0]);
-          this.anims['DRINK'] = this.mixer.clipAction(g.animations[0]);
+          const clip = g.animations[0];
+          strip(clip);
+          // Trim to second half only (hand raising part)
+          const halfTime = clip.duration * 0.5;
+          clip.tracks.forEach(track => {
+            const times = track.times;
+            const values = track.values;
+            const stride = values.length / times.length;
+            let startIdx = 0;
+            for (let i = 0; i < times.length; i++) {
+              if (times[i] >= halfTime) { startIdx = i; break; }
+            }
+            track.times = Float32Array.from(Array.from(times).slice(startIdx).map(t => t - halfTime));
+            track.values = Float32Array.from(Array.from(values).slice(startIdx * stride));
+          });
+          clip.duration = clip.duration - halfTime;
+          this.anims['DRINK'] = this.mixer.clipAction(clip);
           this.anims['DRINK'].setLoop(THREE.LoopOnce); this.anims['DRINK'].clampWhenFinished = true;
-          this.drinkDuration = g.animations[0].duration || this.drinkDuration;
-        }
-      }).catch(() => {}),
-      loadG('./playermodel/walking.glb', 'charWalk').then(g => {
-        if (g.animations.length) {
-          strip(g.animations[0]);
-          this.anims['WALK'] = this.mixer.clipAction(g.animations[0]);
+          this.drinkDuration = clip.duration;
         }
       }).catch(() => {}),
     ];
     await Promise.all(animLoads);
+    // Walking animation no longer needed (auto-jump flow)
 
     this.loaded = true;
   }
@@ -812,20 +812,7 @@ let dragStart = { x:0, y:0, yaw:0, pitch:0 };
 let pinchStartDist = 0, pinchStartRadius = 6;
 function pDist(a,b) { return Math.hypot(a.x-b.x, a.y-b.y); }
 
-// Walk input
-let walkTouchId = -1, walkTouchStart = {x:0,y:0}, walkDelta = {x:0,y:0};
-const keys = {};
-window.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; if (e.key === ' ') e.preventDefault(); });
-window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
-
 renderer.domElement.addEventListener('pointerdown', e => {
-  if (phase === 'WALK') {
-    walkTouchId = e.pointerId;
-    walkTouchStart = { x:e.clientX, y:e.clientY };
-    walkDelta = { x:0, y:0 };
-    renderer.domElement.setPointerCapture(e.pointerId);
-    return;
-  }
   pointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
   renderer.domElement.setPointerCapture(e.pointerId);
   userInteracting = true; interactionTimer = 0;
@@ -836,11 +823,6 @@ renderer.domElement.addEventListener('pointerdown', e => {
   }
 });
 renderer.domElement.addEventListener('pointermove', e => {
-  if (phase === 'WALK' && e.pointerId === walkTouchId) {
-    walkDelta.x = clamp((e.clientX - walkTouchStart.x)/60, -1, 1);
-    walkDelta.y = clamp((e.clientY - walkTouchStart.y)/60, -1, 1);
-    return;
-  }
   if (!pointers.has(e.pointerId)) return;
   pointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
   userInteracting = true; interactionTimer = 0;
@@ -853,14 +835,8 @@ renderer.domElement.addEventListener('pointermove', e => {
     if (pinchStartDist > 0) orbitRadius = clamp(pinchStartRadius*(pinchStartDist/d), 3.5, 12);
   }
 });
-renderer.domElement.addEventListener('pointerup', e => {
-  if (e.pointerId === walkTouchId) { walkTouchId = -1; walkDelta = {x:0,y:0}; }
-  pointers.delete(e.pointerId);
-});
-renderer.domElement.addEventListener('pointercancel', e => {
-  if (e.pointerId === walkTouchId) { walkTouchId = -1; walkDelta = {x:0,y:0}; }
-  pointers.delete(e.pointerId);
-});
+renderer.domElement.addEventListener('pointerup', e => { pointers.delete(e.pointerId); });
+renderer.domElement.addEventListener('pointercancel', e => { pointers.delete(e.pointerId); });
 
 function updateCamera() {
   const cx = orbitTarget.x + orbitRadius*Math.cos(orbitPitch)*Math.sin(orbitYaw);
@@ -875,8 +851,6 @@ const uiPanel = document.getElementById('ui-panel');
 const leaveBtn = document.getElementById('leave-btn');
 const textInput = document.getElementById('text-input');
 const popup = document.getElementById('text-popup');
-const edgeWarn = document.getElementById('edge-warn');
-const walkHint = document.getElementById('walk-hint');
 const fadeOverlay = document.getElementById('fade-overlay');
 
 let phase = 'LOADING';
@@ -906,11 +880,10 @@ leaveBtn.addEventListener('click', startLeave);
 textInput.addEventListener('input', () => { leaveBtn.disabled = !textInput.value.trim(); });
 
 function startFall() {
-  if (phase !== 'WALK') return;
   phase = 'FALLING'; timer = 0;
   character.setState(character.anims['JUMP'] ? 'JUMP' : 'IDLE');
-  edgeWarn.style.display = 'none'; walkHint.style.display = 'none';
-  const facing = new THREE.Vector3(Math.sin(character.root.rotation.y), 0, Math.cos(character.root.rotation.y));
+  // Jump forward off the building edge toward the landing zone
+  const facing = new THREE.Vector3(0, 0, 1); // always jump toward +Z
   jumpVel.copy(facing).multiplyScalar(2); jumpVel.y = 1;
 }
 
@@ -969,9 +942,9 @@ function tick() {
     // Over-shoulder close-up on rooftop
     orbitTarget.copy(character.root.position).add(new THREE.Vector3(0, 0.04, 0));
     if (!userInteracting) { orbitPitch += (0.15-orbitPitch)*0.05; orbitRadius += (0.3-orbitRadius)*0.05; }
-  } else if (phase === 'WALK') {
+  } else if (phase === 'TURN') {
     orbitTarget.copy(character.root.position).add(new THREE.Vector3(0, 0.04, 0));
-    if (!userInteracting) { orbitPitch += (0.18-orbitPitch)*0.03; orbitRadius += (0.4-orbitRadius)*0.03; }
+    if (!userInteracting) { orbitPitch += (0.1-orbitPitch)*0.05; orbitRadius += (0.5-orbitRadius)*0.05; }
   } else if (phase === 'FALLING') {
     orbitTarget.copy(character.root.position);
     if (!userInteracting) { orbitPitch += (-0.1-orbitPitch)*0.05; orbitRadius += (5-orbitRadius)*0.05; }
@@ -994,51 +967,19 @@ function tick() {
   }
 
   if (phase === 'DRINK' && timer > (character.drinkDuration||1)) {
-    phase = 'WALK'; timer = 0;
+    // After drinking, character turns toward edge and auto-falls
+    phase = 'TURN'; timer = 0;
     character.setState('IDLE');
-    walkHint.style.display = 'block';
-    setTimeout(() => { walkHint.style.display = 'none'; }, 3000);
+    // Turn to face +Z (toward the jump edge)
+    character.root.rotation.y = Math.PI;
   }
 
-  if (phase === 'WALK') {
-    let dx = 0, dz = 0;
-    if (keys['w'] || keys['arrowup']) dz -= 1;
-    if (keys['s'] || keys['arrowdown']) dz += 1;
-    if (keys['a'] || keys['arrowleft']) dx -= 1;
-    if (keys['d'] || keys['arrowright']) dx += 1;
-    dx += walkDelta.x; dz += walkDelta.y;
-
-    const isMoving = Math.abs(dx) > 0.05 || Math.abs(dz) > 0.05;
-    if (isMoving) {
-      const forward = new THREE.Vector3();
-      camera.getWorldDirection(forward); forward.y = 0; forward.normalize();
-      const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0,1,0));
-      const move = forward.clone().multiplyScalar(-dz).add(right.clone().multiplyScalar(dx));
-      if (move.lengthSq() > 0.001) {
-        move.normalize();
-        const speed = 1.5;
-        character.root.position.x += move.x*speed*dt;
-        character.root.position.z += move.z*speed*dt;
-        character.root.rotation.y = Math.atan2(move.x, move.z);
-      }
-      character.setState(character.anims['WALK'] ? 'WALK' : 'IDLE');
-    } else {
-      character.setState('IDLE');
-    }
-    character.root.position.y = rooftopY;
-
-    // Check if character stepped off the rooftop edge → auto fall
-    const px = character.root.position.x, pz = character.root.position.z;
-    const offEdge = px < rooftopBounds.minX || px > rooftopBounds.maxX ||
-                    pz < rooftopBounds.minZ || pz > rooftopBounds.maxZ;
-    if (offEdge) {
+  if (phase === 'TURN') {
+    // Brief pause while turning, then jump off
+    if (timer > 0.6) {
+      // Move character to the edge before falling
+      character.root.position.z = rooftopBounds.maxZ + 0.1;
       startFall();
-    } else {
-      // Show warning when near edge
-      const nearEdge =
-        Math.abs(px-rooftopBounds.minX)<0.2 || Math.abs(px-rooftopBounds.maxX)<0.2 ||
-        Math.abs(pz-rooftopBounds.minZ)<0.2 || Math.abs(pz-rooftopBounds.maxZ)<0.2;
-      edgeWarn.style.display = nearEdge ? 'block' : 'none';
     }
   }
 
@@ -1050,15 +991,16 @@ function tick() {
       phase = 'IMPACT'; timer = 0;
       lightBurst.burst(character.root.position.clone());
       spawnLightRing(character.root.position.clone().add(new THREE.Vector3(0,0.05,0)));
-      // Generate plant at landing
-      const lp = character.root.position.clone();
+      // Generate plant at fixed landing zone (always same spot in front of building)
+      const LANDING_X = 0, LANDING_Z = 5;
+      character.root.position.set(LANDING_X, 0.02, LANDING_Z);
       const dna = generateDNAFromText(pendingText);
       const gen = generateProceduralPlant(dna);
       const part = {
         id: Date.now().toString(), textInput: pendingText,
         stems:gen.stems, fruits:gen.fruits, leaves:gen.leaves, stemColor:dna.stemColor,
         startX:0, startY:0, startZ:0, endPoint:gen.endPoint,
-        worldX:lp.x, worldY:0, worldZ:lp.z
+        worldX:LANDING_X, worldY:0, worldZ:LANDING_Z
       };
       addPlantPart(part, true);
       if (!pendingEntryId) pendingEntryId = Date.now().toString();
