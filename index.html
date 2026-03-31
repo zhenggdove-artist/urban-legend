@@ -546,9 +546,12 @@ class GameCharacter {
     } catch { assetProg.charTex = 1; updateProgress(); }
     if (skinTex) { skinTex.flipY = false; skinTex.colorSpace = THREE.SRGBColorSpace; }
 
-    const loadG = (url, key) => new Promise((r,j) => gl.load(url, g => {
-      assetProg[key] = 1; updateProgress(); r(g);
-    }, onProg(key), e => { assetProg[key] = 1; updateProgress(); j(e); }));
+    const loadG = (url, key) => new Promise((r,j) => {
+      const timeout = setTimeout(() => { assetProg[key] = 1; updateProgress(); j(new Error('Timeout: '+url)); }, 10000);
+      gl.load(url, g => {
+        clearTimeout(timeout); assetProg[key] = 1; updateProgress(); r(g);
+      }, onProg(key), e => { clearTimeout(timeout); assetProg[key] = 1; updateProgress(); j(e); });
+    });
 
     const idleG = await loadG('./playermodel/idle.glb', 'charIdle');
     const model = idleG.scene;
@@ -808,22 +811,29 @@ renderer.domElement.addEventListener('pointerdown', e => {
 });
 
 // ===== Init =====
-async function init() {
-  try {
-    await Promise.all([buildingPromise, character.load()]);
-  } catch (err) { console.error('Asset load error:', err); }
-
-  await loadSavedPlants();
-
+function startGame() {
+  if (phase !== 'LOADING') return; // already started
   character.root.position.set(0, rooftopY, 0);
   orbitTarget.copy(character.root.position);
-
   loadingDiv.style.display = 'none';
   phase = 'INTRO';
   uiPanel.classList.remove('hidden');
   uiPanel.classList.remove('leaving');
-
   tick();
+}
+
+async function init() {
+  // Safety timeout: force start after 15s no matter what
+  const safetyTimer = setTimeout(() => { console.warn('Safety timeout — forcing game start'); startGame(); }, 15000);
+
+  try {
+    await Promise.all([buildingPromise, character.load()]);
+  } catch (err) { console.error('Asset load error:', err); }
+
+  try { await loadSavedPlants(); } catch (err) { console.error('Load saved plants error:', err); }
+
+  clearTimeout(safetyTimer);
+  startGame();
 }
 
 // ===== Game loop =====
