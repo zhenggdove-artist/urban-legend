@@ -8,9 +8,6 @@
     *{margin:0;padding:0;box-sizing:border-box}
     html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:"Courier New",monospace}
     #canvas3d{position:absolute;inset:0;width:100%;height:100%;z-index:2;pointer-events:auto;touch-action:none}
-    #vhs-scanlines{position:absolute;inset:0;z-index:3;pointer-events:none;
-      background:repeating-linear-gradient(0deg,transparent 0px,transparent 2px,rgba(0,0,0,0.15) 2px,rgba(0,0,0,0.15) 4px)}
-    #vhs-noise{position:absolute;inset:0;width:100%;height:100%;z-index:4;pointer-events:none;opacity:0.25}
 
     #ui-panel{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
       width:min(80vw,520px);background:rgba(0,0,0,0.45);border:1px solid rgba(0,255,180,0.25);
@@ -34,9 +31,6 @@
   </style>
 </head>
 <body>
-  <canvas id="vhs-noise"></canvas>
-  <div id="vhs-scanlines"></div>
-
   <div id="ui-panel">
     <h2>WRITE</h2>
     <textarea id="text-input" placeholder="留下你的話..."></textarea>
@@ -52,24 +46,6 @@ import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
 const W = () => window.innerWidth;
 const H = () => window.innerHeight;
 const clamp = (v,lo,hi) => Math.max(lo, Math.min(hi, v));
-
-// ===== VHS noise =====
-const noiseCanvas = document.getElementById('vhs-noise');
-const noiseCtx = noiseCanvas.getContext('2d');
-let noiseFrame = 0;
-function updateNoise() {
-  noiseFrame++;
-  if (noiseFrame % 3 !== 0) return;
-  const w = 64, h = 64;
-  noiseCanvas.width = w; noiseCanvas.height = h;
-  const img = noiseCtx.createImageData(w, h);
-  const d = img.data;
-  for (let i = 0; i < d.length; i += 4) {
-    const v = Math.random() * 255;
-    d[i] = d[i+1] = d[i+2] = v; d[i+3] = 50;
-  }
-  noiseCtx.putImageData(img, 0, 0);
-}
 
 // ===== Persistence =====
 const apiParam = new URLSearchParams(location.search).get('api');
@@ -267,7 +243,7 @@ function buildPlantCloud(plantData, text) {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(allPts, 3));
   geo.setAttribute('color', new THREE.Float32BufferAttribute(allCols, 3));
-  const mat = new THREE.PointsMaterial({ size: 0.12, vertexColors: true, transparent: true, opacity: 0.9, depthWrite: false, sizeAttenuation: true });
+  const mat = new THREE.PointsMaterial({ size: 0.25, vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false, sizeAttenuation: true });
   const points = new THREE.Points(geo, mat);
   points.userData.entryText = text;
   group.add(points);
@@ -463,10 +439,6 @@ function tick() {
   }
 
   updateCamera();
-  updateNoise();
-  renderer.setSize(W(), H());
-  camera.aspect = W() / H();
-  camera.updateProjectionMatrix();
   renderer.render(scene, camera);
 }
 
