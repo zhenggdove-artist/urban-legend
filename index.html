@@ -9,22 +9,25 @@
     html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:"Courier New",monospace}
     #c{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
     #ui{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-      width:min(80vw,520px);background:rgba(0,0,0,0.5);border:1px solid rgba(0,255,180,0.25);
-      padding:24px;z-index:10;color:#dff;backdrop-filter:blur(6px);transition:opacity 0.4s}
+      width:min(80vw,520px);background:rgba(205,180,219,0.25);border:1px solid rgba(255,200,221,0.35);
+      padding:24px;z-index:10;color:#f5d6d6;backdrop-filter:blur(8px);transition:opacity 0.4s;border-radius:8px}
     #ui.hidden{opacity:0;pointer-events:none}
-    #ui h2{font-size:14px;letter-spacing:6px;color:#9ff;margin-bottom:10px}
-    #ui textarea{width:100%;height:90px;background:rgba(0,0,0,0.6);border:1px solid rgba(0,255,180,0.25);
-      color:#e8ffff;padding:12px;font-size:14px;resize:none;outline:none}
-    #go{margin-top:14px;width:100%;height:44px;background:rgba(0,255,180,0.12);
-      border:1px solid rgba(0,255,180,0.4);color:#bff;text-transform:uppercase;letter-spacing:6px;cursor:pointer;font-family:inherit}
+    #ui h2{font-size:14px;letter-spacing:6px;color:#ffc8dd;margin-bottom:10px}
+    #ui textarea{width:100%;height:90px;background:rgba(0,0,0,0.25);border:1px solid rgba(255,200,221,0.25);
+      color:#f5d6d6;padding:12px;font-size:14px;resize:none;outline:none;border-radius:4px}
+    #go{margin-top:14px;width:100%;height:44px;background:rgba(255,175,204,0.12);
+      border:1px solid rgba(255,175,204,0.35);color:#ffc8dd;text-transform:uppercase;letter-spacing:6px;
+      cursor:pointer;font-family:inherit;border-radius:4px}
     #go:disabled{opacity:0.4;cursor:not-allowed}
     #pop{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);
-      max-width:min(90vw,600px);background:rgba(0,0,0,0.7);color:#e8ffff;border:1px solid rgba(0,255,180,0.3);
-      padding:12px 16px;z-index:12;display:none;font-size:13px;letter-spacing:1px}
+      max-width:min(90vw,600px);background:rgba(205,180,219,0.35);color:#f5d6d6;
+      border:1px solid rgba(255,200,221,0.3);padding:12px 16px;z-index:12;display:none;
+      font-size:13px;letter-spacing:1px;border-radius:6px;backdrop-filter:blur(6px)}
     #pop.show{display:block}
     #wb{display:none;position:absolute;bottom:30px;right:20px;
-      background:rgba(0,255,180,0.12);border:1px solid rgba(0,255,180,0.4);color:#bff;padding:10px 20px;
-      text-transform:uppercase;letter-spacing:4px;cursor:pointer;z-index:14;font-family:inherit;font-size:11px}
+      background:rgba(255,175,204,0.12);border:1px solid rgba(255,175,204,0.35);color:#ffc8dd;
+      padding:10px 20px;text-transform:uppercase;letter-spacing:4px;cursor:pointer;
+      z-index:14;font-family:inherit;font-size:11px;border-radius:4px}
   </style>
 </head>
 <body>
@@ -40,553 +43,491 @@
 <script type="module">
 import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
 
-// ===== Globals =====
-const W = () => window.innerWidth, H = () => window.innerHeight;
-const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-const neon = ['#ff00ff','#ff3388','#ffaa00','#00ff88','#00ddff','#ff4466','#88ff00','#ff00aa','#44ffcc','#ffdd00'];
+const W=()=>window.innerWidth, H=()=>window.innerHeight;
+const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+
+// ===== Dreamcore Pastel Palette =====
+const PASTEL_PINK = ['#FFA6C9','#FFB7B2','#E8A0BF','#FFC8DD','#FFAFCC','#DB7093','#F08080'];
+const PASTEL_PURPLE = ['#E6A8D7','#DDA0DD','#CDB4DB','#D7C0D0','#C08497'];
+const PASTEL_BLUE = ['#B2D8D8','#B5E2FA','#A2D2FF','#BDE0FE'];
+const PASTEL_SOFT = ['#F5D6D6','#FDFD96','#EAEAEA','#D3D3D3'];
+const ALL_PASTEL = [...PASTEL_PINK,...PASTEL_PURPLE,...PASTEL_BLUE,...PASTEL_SOFT];
 
 // ===== Persistence (Supabase) =====
-const STORAGE_KEY = 'urban_legend_plants_v2';
-const SUPABASE_URL = 'https://mmhoohddrmguxnmtvgwz.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_Aig1UQpR4iYyaeArWCG5IQ_XGhTXzsq';
-const SB_HEADERS = {
-  'apikey': SUPABASE_KEY,
-  'Authorization': 'Bearer ' + SUPABASE_KEY,
-  'Content-Type': 'application/json'
-};
+const STORAGE_KEY='urban_legend_plants_v2';
+const SUPABASE_URL='https://mmhoohddrmguxnmtvgwz.supabase.co';
+const SUPABASE_KEY='sb_publishable_Aig1UQpR4iYyaeArWCG5IQ_XGhTXzsq';
+const SB_HEADERS={'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY,'Content-Type':'application/json'};
 
-async function loadEntries() {
-  try {
-    const res = await fetch(SUPABASE_URL + '/rest/v1/entries?order=created_at.asc', { headers: SB_HEADERS });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.length > 0) localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      return data;
-    }
-  } catch {}
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]'); } catch { return []; }
+async function loadEntries(){
+  try{
+    const res=await fetch(SUPABASE_URL+'/rest/v1/entries?order=created_at.asc',{headers:SB_HEADERS});
+    if(res.ok){const data=await res.json();if(data.length>0)localStorage.setItem(STORAGE_KEY,JSON.stringify(data));return data;}
+  }catch{}
+  try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]')}catch{return[]}
 }
-
-function saveEntry(text) {
-  const id = Date.now().toString();
-  const list = JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');
-  list.push({ text, id, created_at: new Date().toISOString() });
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-  fetch(SUPABASE_URL + '/rest/v1/entries', {
-    method: 'POST',
-    headers: { ...SB_HEADERS, 'Prefer': 'return=minimal' },
-    body: JSON.stringify({ id, text })
+function saveEntry(text){
+  const id=Date.now().toString();
+  const list=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');
+  list.push({text,id,created_at:new Date().toISOString()});
+  localStorage.setItem(STORAGE_KEY,JSON.stringify(list));
+  fetch(SUPABASE_URL+'/rest/v1/entries',{
+    method:'POST',headers:{...SB_HEADERS,'Prefer':'return=minimal'},
+    body:JSON.stringify({id,text})
   }).catch(()=>{});
 }
 
-// ===== Seeded random =====
-function hash(s) { let h=2166136261; for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h+=(h<<1)+(h<<4)+(h<<7)+(h<<8)+(h<<24)} return h>>>0; }
-function srand(seed) { let s=seed>>>0; return()=>{s=(s*1664525+1013904223)>>>0;return s/0x100000000}; }
+// ===== Seeded Random =====
+function hash(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h+=(h<<1)+(h<<4)+(h<<7)+(h<<8)+(h<<24)}return h>>>0}
+function srand(seed){let s=seed>>>0;return()=>{s=(s*1664525+1013904223)>>>0;return s/0x100000000}}
 
-// ===== Ring helper =====
-function addRing(arr, col, cx, cy, cz, tx, ty, tz, radius, n) {
-  let ux, uy, uz, vx, vy, vz;
-  // Build perpendicular basis from tangent (tx,ty,tz)
-  if (Math.abs(ty) < 0.9) {
-    // cross(tangent, up)
-    ux = tz; uy = 0; uz = -tx;
-  } else {
-    ux = 0; uy = -tz; uz = ty;
+// ===== L-System Core =====
+const PLANT_RULES=[
+  {axiom:'X',rules:{X:'F-[[X]+X]+F[+FX]-X',F:'FF'},angle:25,iters:5,step:0.22,width:0.055},
+  {axiom:'F',rules:{F:'FF+[+F-F-F]-[-F+F+F]'},angle:22,iters:3,step:0.32,width:0.07},
+  {axiom:'F',rules:{F:'F[+&F][-&F][&F]'},angle:25,iters:5,step:0.35,width:0.09},
+  {axiom:'F',rules:{F:'F[+F]F[-F]F'},angle:25.7,iters:4,step:0.18,width:0.045},
+  {axiom:'F',rules:{F:'FF-[-F+F]+[+F-F]'},angle:22,iters:4,step:0.28,width:0.065},
+  {axiom:'X',rules:{X:'F[+X][-X]FX',F:'FF'},angle:28,iters:4,step:0.26,width:0.05},
+  {axiom:'F',rules:{F:'F[+F[-F]]F[-F[+F]]'},angle:20,iters:4,step:0.24,width:0.06},
+  {axiom:'F',rules:{F:'F[++F][-FF]F[+F][-F]'},angle:18,iters:3,step:0.35,width:0.08},
+];
+
+function lsysGen(axiom,rules,iters){
+  let s=axiom;
+  for(let i=0;i<iters;i++){
+    let n='';for(const ch of s)n+=rules[ch]||ch;
+    s=n;if(s.length>12000)break;
   }
-  const ulen = Math.sqrt(ux*ux+uy*uy+uz*uz) || 1;
-  ux/=ulen; uy/=ulen; uz/=ulen;
-  // v = cross(tangent, u)
-  vx = ty*uz-tz*uy; vy = tz*ux-tx*uz; vz = tx*uy-ty*ux;
-  for (let i = 0; i < n; i++) {
-    const a = (i/n)*Math.PI*2;
-    const ca = Math.cos(a), sa = Math.sin(a);
-    arr.push(cx+(ca*ux+sa*vx)*radius, cy+(ca*uy+sa*vy)*radius, cz+(ca*uz+sa*vz)*radius);
-    col.push(col._r, col._g, col._b);
-  }
+  return s;
 }
 
-// Simpler addRing that works with color arrays directly
-function pushRing(pts, cols, cx, cy, cz, tx, ty, tz, radius, n, cr, cg, cb) {
-  let ux, uy, uz;
-  if (Math.abs(ty) < 0.9) { ux=tz; uy=0; uz=-tx; }
-  else { ux=0; uy=-tz; uz=ty; }
-  const ulen = Math.sqrt(ux*ux+uy*uy+uz*uz)||1;
-  ux/=ulen; uy/=ulen; uz/=ulen;
-  const vx=ty*uz-tz*uy, vy=tz*ux-tx*uz, vz=tx*uy-ty*ux;
-  for (let i=0; i<n; i++) {
-    const a=(i/n)*Math.PI*2, ca=Math.cos(a), sa=Math.sin(a);
-    pts.push(cx+(ca*ux+sa*vx)*radius, cy+(ca*uy+sa*vy)*radius, cz+(ca*uz+sa*vz)*radius);
-    cols.push(cr, cg, cb);
-  }
-}
+function interpretLS(str,cfg,rng){
+  const segs=[],leaves=[],flowers=[];
+  let pos=new THREE.Vector3(0,0,0);
+  let hd=new THREE.Vector3(0,1,0);
+  let lt=new THREE.Vector3(1,0,0);
+  let up=new THREE.Vector3(0,0,1);
+  let w=cfg.width,d=0,st=cfg.step;
+  const stack=[];
+  const rad=Math.PI/180;
+  const MAX=500;
 
-// ===== Generate plant structure =====
-function generatePlant(text) {
-  const seed = hash(text);
-  const r = srand(seed);
-
-  // Plant style
-  const height = 4 + r()*6;
-  const nBranches = 2 + Math.floor(r()*5);
-  const curviness = 0.3 + r()*1.5;
-  const branchSpread = 0.3 + r()*0.7;
-
-  // Main stem: spine points going upward with some curve
-  const mainSpine = [];
-  const segs = 30;
-  let cx=0, cy=0, cz=0;
-  let dx=(r()-0.5)*0.3, dz=(r()-0.5)*0.3;
-  for (let i=0; i<=segs; i++) {
-    mainSpine.push({x:cx, y:cy, z:cz});
-    const t = i/segs;
-    cy += height/segs;
-    cx += Math.sin(t*Math.PI*3+seed)*curviness*0.15;
-    cz += Math.cos(t*Math.PI*2.5+seed*0.7)*curviness*0.15;
-    cx += dx*0.1; cz += dz*0.1;
-  }
-
-  // Branches from main stem
-  const branches = [];
-  for (let b=0; b<nBranches; b++) {
-    const startT = 0.2 + r()*0.6;
-    const startIdx = Math.floor(startT*segs);
-    const sp = mainSpine[startIdx];
-    const bLen = (1+r()*3) * branchSpread;
-    const bSegs = 12 + Math.floor(r()*8);
-    const bDir = {x:(r()-0.5)*2, y:0.3+r()*0.7, z:(r()-0.5)*2};
-    const bSpine = [];
-    let bx=sp.x, by=sp.y, bz=sp.z;
-    for (let i=0; i<=bSegs; i++) {
-      bSpine.push({x:bx, y:by, z:bz});
-      const t=i/bSegs;
-      bx += bDir.x*bLen/bSegs + Math.sin(t*Math.PI*4+b)*curviness*0.1;
-      by += bDir.y*bLen/bSegs;
-      bz += bDir.z*bLen/bSegs + Math.cos(t*Math.PI*3+b)*curviness*0.1;
-    }
-    branches.push({spine: bSpine, startT, radius: 0.06+r()*0.06});
-
-    // Sub-branches
-    if (r() > 0.4) {
-      const subIdx = Math.floor(0.4*bSegs + r()*0.4*bSegs);
-      const subSp = bSpine[Math.min(subIdx, bSpine.length-1)];
-      const subLen = bLen*0.4;
-      const subSegs = 6+Math.floor(r()*4);
-      const subSpine = [];
-      let sx=subSp.x, sy=subSp.y, sz=subSp.z;
-      const sd = {x:(r()-0.5)*2, y:0.2+r()*0.5, z:(r()-0.5)*2};
-      for(let i=0;i<=subSegs;i++){
-        subSpine.push({x:sx,y:sy,z:sz});
-        sx+=sd.x*subLen/subSegs; sy+=sd.y*subLen/subSegs; sz+=sd.z*subLen/subSegs;
+  for(const ch of str){
+    if(segs.length>=MAX)break;
+    const av=1+(rng()-0.5)*0.3;
+    const a=cfg.angle*rad*av;
+    switch(ch){
+      case 'F':case 'G':{
+        const s0=pos.clone();
+        const tmpH=hd.clone();
+        tmpH.applyAxisAngle(lt,(rng()-0.5)*6*rad);
+        pos=pos.clone().addScaledVector(tmpH,st);
+        segs.push({start:s0,end:pos.clone(),width:w,depth:d});
+        break;
       }
-      branches.push({spine:subSpine, startT:startT+0.1, radius:0.03+r()*0.03});
+      case '+':hd.applyAxisAngle(up,a);lt.applyAxisAngle(up,a);break;
+      case '-':hd.applyAxisAngle(up,-a);lt.applyAxisAngle(up,-a);break;
+      case '&':hd.applyAxisAngle(lt,a);up.applyAxisAngle(lt,a);break;
+      case '^':hd.applyAxisAngle(lt,-a);up.applyAxisAngle(lt,-a);break;
+      case '[':{
+        stack.push({pos:pos.clone(),hd:hd.clone(),lt:lt.clone(),up:up.clone(),w,d,st});
+        d++;w*=0.62;st*=0.82;
+        break;
+      }
+      case ']':{
+        if(d>1&&rng()>0.25)leaves.push({p:pos.clone(),dir:hd.clone(),left:lt.clone()});
+        if(d>2&&rng()>0.65)flowers.push({p:pos.clone(),dir:hd.clone()});
+        const sv=stack.pop();
+        if(!sv)break;
+        pos=sv.pos;hd=sv.hd;lt=sv.lt;up=sv.up;w=sv.w;d=sv.d;st=sv.st;
+        break;
+      }
     }
   }
-
-  // Roots
-  const roots = [];
-  const nRoots = 2+Math.floor(r()*3);
-  for (let i=0; i<nRoots; i++) {
-    const rLen = 1+r()*2;
-    const rSegs = 8;
-    const rSpine = [];
-    let rx=0, ry=0, rz=0;
-    const rd = {x:(r()-0.5)*2, y:-0.5-r()*0.5, z:(r()-0.5)*2};
-    for(let j=0;j<=rSegs;j++){
-      rSpine.push({x:rx,y:ry,z:rz});
-      rx+=rd.x*rLen/rSegs; ry+=rd.y*rLen/rSegs; rz+=rd.z*rLen/rSegs;
-    }
-    roots.push({spine:rSpine, radius:0.08+r()*0.06});
-  }
-
-  return { mainSpine, branches, roots, seed, height, nBranches };
+  if(segs.length>0)flowers.push({p:segs[segs.length-1].end.clone(),dir:hd.clone()});
+  return{segs,leaves,flowers};
 }
 
-// ===== Build point cloud — points ordered base-to-tip for progressive growth =====
-function buildPlantCloud(plantData, text) {
-  const pts = [], cols = [];
-  const r = srand(plantData.seed);
-
-  // Pick colors
-  const stemC = new THREE.Color(neon[Math.floor(r()*neon.length)]);
-  const flowerC = new THREE.Color(neon[Math.floor(r()*neon.length)]);
-  const leafC = new THREE.Color(neon[Math.floor(r()*neon.length)]);
-  const fruitC = new THREE.Color(neon[Math.floor(r()*neon.length)]);
-  const flowerType = Math.floor(r()*10);
-  const leafType = Math.floor(r()*10);
-
-  const RING_N = 8;
-
-  // Helper: add spine as tube (rings along spine)
-  function addTube(spine, baseR, tipR, cr, cg, cb) {
-    for (let i=0; i<spine.length; i++) {
-      const t = i/(spine.length-1);
-      const p = spine[i];
-      // Tangent
-      let tx, ty, tz;
-      if (i < spine.length-1) {
-        tx=spine[i+1].x-p.x; ty=spine[i+1].y-p.y; tz=spine[i+1].z-p.z;
-      } else {
-        tx=p.x-spine[i-1].x; ty=p.y-spine[i-1].y; tz=p.z-spine[i-1].z;
+// ===== Root Generation =====
+function genRoots(rng,baseW){
+  const segs=[];
+  const nR=3+Math.floor(rng()*4);
+  for(let r=0;r<nR;r++){
+    const ang=(r/nR)*Math.PI*2+rng()*0.5;
+    const rLen=0.8+rng()*1.2;
+    const nS=5+Math.floor(rng()*4);
+    let pos=new THREE.Vector3(0,0,0);
+    let dir=new THREE.Vector3(Math.cos(ang)*0.5,-0.85,Math.sin(ang)*0.5).normalize();
+    let w=baseW*0.75;
+    for(let i=0;i<nS;i++){
+      const s=pos.clone();
+      pos=pos.clone().addScaledVector(dir,rLen/nS);
+      segs.push({start:s,end:pos.clone(),width:w,depth:0});
+      w*=0.76;
+      dir.x+=(rng()-0.5)*0.2;dir.y-=0.02;dir.z+=(rng()-0.5)*0.2;
+      dir.normalize();
+    }
+    if(rng()>0.5){
+      const splitI=Math.floor(segs.length*0.3+rng()*segs.length*0.3);
+      const sp=segs[Math.min(splitI,segs.length-1)];
+      let sP=sp.end.clone();
+      let sD=new THREE.Vector3((rng()-0.5)*0.6,-0.5,(rng()-0.5)*0.6).normalize();
+      let sW=sp.width*0.45;
+      for(let i=0;i<3;i++){
+        const ss=sP.clone();
+        sP=sP.clone().addScaledVector(sD,rLen/nS*0.5);
+        segs.push({start:ss,end:sP.clone(),width:sW,depth:1});
+        sW*=0.7;
       }
-      const tlen = Math.sqrt(tx*tx+ty*ty+tz*tz)||1;
-      tx/=tlen; ty/=tlen; tz/=tlen;
-      const radius = baseR*(1-t) + tipR*t;
-      pushRing(pts, cols, p.x, p.y, p.z, tx, ty, tz, radius, RING_N, cr, cg, cb);
-      // Center spine point
-      pts.push(p.x, p.y, p.z);
-      cols.push(cr, cg, cb);
+    }
+  }
+  return segs;
+}
+
+// ===== Geometry Builder =====
+function buildPlantGeo(allSegs,leaves,flowers,stemCol,leafCol,flowerCol,rng){
+  const pos=[],nrm=[],col=[],idx=[];
+  const RN=5;
+
+  function tube(start,end,w,cr,cg,cb){
+    const dir=new THREE.Vector3().subVectors(end,start);
+    if(dir.lengthSq()<0.0001)return;
+    dir.normalize();
+    const p1=new THREE.Vector3();
+    if(Math.abs(dir.y)<0.9)p1.crossVectors(dir,new THREE.Vector3(0,1,0)).normalize();
+    else p1.crossVectors(dir,new THREE.Vector3(1,0,0)).normalize();
+    const p2=new THREE.Vector3().crossVectors(dir,p1);
+    const bi=pos.length/3;
+    const ew=w*0.8;
+    for(let ring=0;ring<2;ring++){
+      const c=ring===0?start:end;
+      const r=ring===0?w:ew;
+      for(let i=0;i<RN;i++){
+        const a=(i/RN)*Math.PI*2,ca=Math.cos(a),sa=Math.sin(a);
+        pos.push(c.x+(ca*p1.x+sa*p2.x)*r,c.y+(ca*p1.y+sa*p2.y)*r,c.z+(ca*p1.z+sa*p2.z)*r);
+        nrm.push(ca*p1.x+sa*p2.x,ca*p1.y+sa*p2.y,ca*p1.z+sa*p2.z);
+        col.push(cr,cg,cb);
+      }
+    }
+    for(let i=0;i<RN;i++){
+      const a0=bi+i,a1=bi+(i+1)%RN,b0=bi+RN+i,b1=bi+RN+(i+1)%RN;
+      idx.push(a0,b0,a1,a1,b0,b1);
     }
   }
 
-  // 1. Roots (grow first, underground)
-  for (const root of plantData.roots) {
-    const rc = new THREE.Color(stemC).offsetHSL(0, 0, -0.1);
-    addTube(root.spine, root.radius, 0.02, rc.r, rc.g, rc.b);
+  // Stems
+  const sc=new THREE.Color(stemCol);
+  for(const s of allSegs){
+    const vary=0.92+rng()*0.16;
+    tube(s.start,s.end,s.width,sc.r*vary,sc.g*vary,sc.b*vary);
   }
 
-  // 2. Main stem (grows upward)
-  addTube(plantData.mainSpine, 0.18, 0.04, stemC.r, stemC.g, stemC.b);
+  // Leaves (diamond quads)
+  const lc=new THREE.Color(leafCol);
+  for(const lf of leaves){
+    const sz=0.1+rng()*0.2;
+    const bi=pos.length/3;
+    const fwd=lf.dir.clone().multiplyScalar(sz);
+    const side=lf.left.clone().multiplyScalar(sz*0.45);
+    const n=new THREE.Vector3().crossVectors(fwd,side).normalize();
+    const p=lf.p;
+    pos.push(p.x,p.y,p.z);
+    pos.push(p.x+side.x+fwd.x*0.4,p.y+side.y+fwd.y*0.4,p.z+side.z+fwd.z*0.4);
+    pos.push(p.x+fwd.x,p.y+fwd.y,p.z+fwd.z);
+    pos.push(p.x-side.x+fwd.x*0.4,p.y-side.y+fwd.y*0.4,p.z-side.z+fwd.z*0.4);
+    for(let i=0;i<4;i++){nrm.push(n.x,n.y,n.z);col.push(lc.r,lc.g,lc.b)}
+    idx.push(bi,bi+1,bi+2,bi,bi+2,bi+3);
+  }
 
-  // 3. Branches with decorations
-  for (const branch of plantData.branches) {
-    const bc = new THREE.Color(stemC).offsetHSL(r()*0.08-0.04, 0, r()*0.06-0.03);
-    addTube(branch.spine, branch.radius, 0.02, bc.r, bc.g, bc.b);
-
-    // Flower at branch tip
-    const tip = branch.spine[branch.spine.length-1];
-    addFlower(pts, cols, tip.x, tip.y, tip.z, flowerType, 0.5+r()*0.8, flowerC.r, flowerC.g, flowerC.b, r);
-
-    // Fruit overlay
-    addFruit(pts, cols, tip.x, tip.y+0.1, tip.z, Math.floor(r()*10), 0.3+r()*0.3, fruitC.r, fruitC.g, fruitC.b, r);
-
-    // Leaves along branch
-    const nLeaves = 1+Math.floor(r()*3);
-    for (let li=0; li<nLeaves; li++) {
-      const lIdx = Math.floor((0.2+r()*0.5)*(branch.spine.length-1));
-      const lp = branch.spine[lIdx];
-      addLeaf(pts, cols, lp.x, lp.y, lp.z, leafType, 0.3+r()*0.4, leafC.r, leafC.g, leafC.b, r);
+  // Flowers (petal fans)
+  const fc=new THREE.Color(flowerCol);
+  for(const fl of flowers){
+    const bi=pos.length/3;
+    const nP=5+Math.floor(rng()*4);
+    const fSz=0.08+rng()*0.14;
+    const c=fl.p;
+    pos.push(c.x,c.y,c.z);nrm.push(0,1,0);col.push(fc.r*1.3,fc.g*1.3,fc.b*1.3);
+    for(let i=0;i<nP;i++){
+      const a1=(i/nP)*Math.PI*2,a2=((i+1)/nP)*Math.PI*2;
+      const vi=pos.length/3;
+      pos.push(c.x+Math.cos(a1)*fSz*0.3,c.y+0.02,c.z+Math.sin(a1)*fSz*0.3);
+      pos.push(c.x+Math.cos((a1+a2)/2)*fSz,c.y+0.04,c.z+Math.sin((a1+a2)/2)*fSz);
+      pos.push(c.x+Math.cos(a2)*fSz*0.3,c.y+0.02,c.z+Math.sin(a2)*fSz*0.3);
+      for(let j=0;j<3;j++){nrm.push(0,1,0);col.push(fc.r,fc.g,fc.b)}
+      idx.push(bi,vi,vi+1);idx.push(bi,vi+1,vi+2);
     }
   }
 
-  // 4. Top flower on main stem
-  const top = plantData.mainSpine[plantData.mainSpine.length-1];
-  addFlower(pts, cols, top.x, top.y, top.z, flowerType, 0.8+r()*0.6, flowerC.r, flowerC.g, flowerC.b, r);
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  geo.setAttribute('normal',new THREE.Float32BufferAttribute(nrm,3));
+  geo.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+  geo.setIndex(idx);
 
-  // 5. Leaves along main stem
-  const nMainLeaves = 3+Math.floor(r()*4);
-  for (let i=0; i<nMainLeaves; i++) {
-    const idx = Math.floor((0.15+r()*0.6)*(plantData.mainSpine.length-1));
-    const lp = plantData.mainSpine[idx];
-    addLeaf(pts, cols, lp.x, lp.y, lp.z, leafType, 0.4+r()*0.5, leafC.r, leafC.g, leafC.b, r);
+  // Sort triangles by Y for growth animation (bottom->top)
+  const posArr=geo.getAttribute('position').array;
+  const idxArr=Array.from(geo.getIndex().array);
+  const tc=idxArr.length/3;
+  const tris=[];
+  for(let i=0;i<tc;i++){
+    const a=idxArr[i*3],b=idxArr[i*3+1],c=idxArr[i*3+2];
+    tris.push({a,b,c,y:(posArr[a*3+1]+posArr[b*3+1]+posArr[c*3+1])/3});
   }
+  tris.sort((a,b)=>a.y-b.y);
+  const sorted=[];
+  for(const t of tris)sorted.push(t.a,t.b,t.c);
+  geo.setIndex(sorted);
 
-  // Build geometry
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-  geo.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
-  geo.setDrawRange(0, 0); // Start hidden for growth animation
+  return geo;
+}
 
-  const mat = new THREE.PointsMaterial({
-    size: 0.12, vertexColors: true, transparent: true,
-    opacity: 0.9, depthWrite: false, sizeAttenuation: true
+// ===== Generate Plant =====
+function makePlant(text){
+  const seed=hash(text);
+  const rng=srand(seed);
+  const type=PLANT_RULES[seed%PLANT_RULES.length];
+  const lStr=lsysGen(type.axiom,type.rules,type.iters);
+  const{segs,leaves,flowers}=interpretLS(lStr,type,rng);
+  const rootSegs=genRoots(rng,type.width);
+  const all=[...rootSegs,...segs];
+
+  // Pick colors from palette
+  const stemCol=PASTEL_PURPLE[Math.floor(rng()*PASTEL_PURPLE.length)];
+  const leafCol=PASTEL_BLUE[Math.floor(rng()*PASTEL_BLUE.length)];
+  const flowerCol=PASTEL_PINK[Math.floor(rng()*PASTEL_PINK.length)];
+
+  const geo=buildPlantGeo(all,leaves,flowers,stemCol,leafCol,flowerCol,rng);
+  const mat=new THREE.MeshStandardMaterial({
+    vertexColors:true,roughness:0.65,metalness:0.05,
+    emissive:new THREE.Color(flowerCol),emissiveIntensity:0.12,
+    side:THREE.DoubleSide
   });
-  const mesh = new THREE.Points(geo, mat);
-  mesh.userData.entryText = text;
-  mesh.userData.totalVerts = pts.length / 3;
-
-  const group = new THREE.Group();
-  group.add(mesh);
-  return group;
-}
-
-// ===== Flower shapes (added at position) =====
-function addFlower(pts, cols, cx, cy, cz, type, scale, cr, cg, cb, r) {
-  const s = scale;
-  switch(type) {
-    case 0: // Rose spiral
-      for(let lay=0;lay<4;lay++){const nP=5+lay*2,R=(0.2+lay*0.3)*s;for(let p=0;p<nP;p++){const ba=(p/nP)*Math.PI*2+lay*0.3;for(let i=0;i<10;i++){const t=i/10,rr=R*(0.3+t*0.7),y=Math.sin(t*Math.PI)*0.2*s-t*t*0.15*s;pts.push(cx+Math.cos(ba+t*0.1)*rr,cy+lay*0.1*s+y,cz+Math.sin(ba+t*0.1)*rr);cols.push(cr,cg,cb)}}}
-      for(let i=0;i<30;i++){const t=i/30,a=t*Math.PI*6,R=t*0.2*s;pts.push(cx+Math.cos(a)*R,cy+0.4*s+t*0.05*s,cz+Math.sin(a)*R);cols.push(cr*1.2,cg*1.2,cb*1.2)}
-      break;
-    case 1: // Sunflower
-      {const g=Math.PI*(3-Math.sqrt(5));for(let i=0;i<60;i++){const R=Math.sqrt(i/60)*0.3*s,a=i*g;pts.push(cx+Math.cos(a)*R,cy+0.2*s,cz+Math.sin(a)*R);cols.push(cr*0.8,cg*0.6,cb*0.2)}
-      for(let p=0;p<14;p++){const ba=(p/14)*Math.PI*2;for(let i=0;i<8;i++){const t=i/8,R=(0.3+t*0.6)*s,w=Math.sin(t*Math.PI)*0.08*s;pts.push(cx+Math.cos(ba)*R,cy+0.15*s-t*t*0.1*s,cz+Math.sin(ba)*R);cols.push(cr,cg,cb)}}} break;
-    case 2: // Lily
-      for(let p=0;p<6;p++){const ba=(p/6)*Math.PI*2;for(let i=0;i<14;i++){const t=i/14,R=t*0.9*s,y=Math.sin(t*Math.PI*0.7)*0.4*s;pts.push(cx+Math.cos(ba)*R,cy+y,cz+Math.sin(ba)*R);cols.push(cr,cg,cb)}}
-      for(let i=0;i<6;i++){const a=(i/6)*Math.PI*2;for(let j=0;j<6;j++){const t=j/6;pts.push(cx+Math.cos(a)*t*0.2*s,cy+t*0.5*s,cz+Math.sin(a)*t*0.2*s);cols.push(cr*1.3,cg*1.3,cb*0.5)}} break;
-    case 3: // Dahlia layers
-      for(let lay=0;lay<5;lay++){const nP=6+lay*3,R=(0.1+lay*0.15)*s;for(let p=0;p<nP;p++){const ba=(p/nP)*Math.PI*2+lay*0.2;for(let i=0;i<6;i++){const t=i/6,rr=R*(0.5+t*0.5);pts.push(cx+Math.cos(ba)*rr,cy+(0.4-lay*0.06)*s-t*lay*0.02*s,cz+Math.sin(ba)*rr);cols.push(cr,cg,cb)}}} break;
-    case 4: // Tulip cup
-      for(let p=0;p<6;p++){const ba=(p/6)*Math.PI*2;for(let i=0;i<12;i++){const t=i/12,R=(0.08+Math.sin(t*Math.PI)*0.35)*s,y=t*0.7*s;for(let d=-1;d<=1;d++){pts.push(cx+Math.cos(ba+d*0.1)*R,cy+y,cz+Math.sin(ba+d*0.1)*R);cols.push(cr,cg,cb)}}} break;
-    case 5: // Dandelion puff
-      for(let ray=0;ray<24;ray++){const phi=Math.acos(2*r()-1),th=r()*Math.PI*2,dx=Math.sin(phi)*Math.cos(th),dy=Math.sin(phi)*Math.sin(th),dz=Math.cos(phi);for(let i=0;i<6;i++){const t=i/6*s*0.6;pts.push(cx+dx*t,cy+0.2*s+dy*t,cz+dz*t);cols.push(cr,cg,cb)}pts.push(cx+dx*0.6*s,cy+0.2*s+dy*0.6*s,cz+dz*0.6*s);cols.push(1,1,1)} break;
-    case 6: // Chrysanthemum
-      for(let p=0;p<20;p++){const ba=(p/20)*Math.PI*2,curl=0.3+r()*0.5;for(let i=0;i<10;i++){const t=i/10,R=t*(0.5+r()*0.3)*s,y=Math.sin(t*Math.PI*0.8)*0.3*s-t*t*curl*0.2*s;pts.push(cx+Math.cos(ba)*R,cy+y,cz+Math.sin(ba)*R);cols.push(cr,cg,cb)}}
-      for(let i=0;i<20;i++){const a=r()*Math.PI*2,rr=r()*0.1*s;pts.push(cx+Math.cos(a)*rr,cy+0.25*s,cz+Math.sin(a)*rr);cols.push(cr*1.3,cg*1.3,cb*0.3)} break;
-    case 7: // Lotus bowl
-      for(let lay=0;lay<3;lay++){const nP=5+lay*2;for(let p=0;p<nP;p++){const ba=(p/nP)*Math.PI*2+lay*0.25;for(let i=0;i<12;i++){const t=i/12,R=(0.15+lay*0.2+t*0.2)*s,y=(0.1+t*0.35-lay*0.04)*s;pts.push(cx+Math.cos(ba)*R,cy+y,cz+Math.sin(ba)*R);cols.push(cr,cg,cb)}}} break;
-    case 8: // Morning glory trumpet
-      for(let ring=0;ring<16;ring++){const t=ring/16,R=(0.04+t*t*0.6)*s,y=t*0.7*s,n=6+Math.floor(t*8);for(let i=0;i<n;i++){const a=(i/n)*Math.PI*2;pts.push(cx+Math.cos(a)*R,cy+y,cz+Math.sin(a)*R);cols.push(cr,cg,cb)}} break;
-    default: // Orchid
-      for(let sep=0;sep<3;sep++){const ba=(sep/3)*Math.PI*2;for(let i=0;i<12;i++){const t=i/12,R=t*0.7*s;pts.push(cx+Math.cos(ba)*R,cy+Math.sin(t*Math.PI)*0.2*s,cz+Math.sin(ba)*R);cols.push(cr,cg,cb)}}
-      for(let i=0;i<15;i++){const t=i/15;pts.push(cx+(r()-0.5)*0.1*s,cy-t*0.3*s,cz+Math.sin(t*Math.PI)*0.25*s);cols.push(cr,cg,cb)}
-  }
-}
-
-// ===== Leaf shapes =====
-function addLeaf(pts, cols, cx, cy, cz, type, scale, cr, cg, cb, r) {
-  const s=scale, dx=(r()-0.5)*2, dz=(r()-0.5)*2;
-  const len = Math.sqrt(dx*dx+dz*dz)||1;
-  const nx=dx/len, nz=dz/len;
-  switch(type%10) {
-    case 0: // Oval with veins
-      for(let i=0;i<20;i++){const t=i/20,w=Math.sin(t*Math.PI)*0.35*s;pts.push(cx+nx*t*1.5*s,cy,cz+nz*t*1.5*s);cols.push(cr,cg,cb);for(let d of[-1,1]){pts.push(cx+nx*t*1.5*s+nz*d*w,cy+0.02*s,cz+nz*t*1.5*s-nx*d*w);cols.push(cr,cg,cb)}} break;
-    case 1: // Fern
-      for(let i=0;i<15;i++){pts.push(cx+nx*i/15*2*s,cy,cz+nz*i/15*2*s);cols.push(cr,cg,cb);const ll=(1-i/15)*0.4*s;for(let d of[-1,1])for(let j=0;j<4;j++){const jt=j/4;pts.push(cx+nx*i/15*2*s+nz*d*jt*ll,cy,cz+nz*i/15*2*s-nx*d*jt*ll);cols.push(cr,cg,cb)}} break;
-    case 2: // Palm fan
-      for(let seg=0;seg<7;seg++){const ba=(seg/7-0.5)*Math.PI*0.6;for(let i=0;i<10;i++){const t=i/10,R=t*1.2*s;pts.push(cx+Math.sin(ba)*R,cy-t*t*0.2*s,cz+Math.cos(ba)*R);cols.push(cr,cg,cb)}} break;
-    case 3: // Needles
-      for(let n=0;n<8+Math.floor(r()*6);n++){const a=r()*Math.PI*2,sp=r()*0.2;for(let i=0;i<6;i++){const t=i/6;pts.push(cx+Math.cos(a)*sp*t*s,cy+t*1.2*s,cz+Math.sin(a)*sp*t*s);cols.push(cr,cg,cb)}} break;
-    case 4: // Heart
-      for(let i=0;i<30;i++){const t=(i/30)*Math.PI*2,x=0.3*s*Math.pow(Math.sin(t),3),z=0.3*s*(13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t))/16;pts.push(cx+x,cy,cz+z);cols.push(cr,cg,cb)} break;
-    case 5: // Serrated
-      for(let i=0;i<25;i++){const t=i/25,w=(Math.sin(t*Math.PI)+Math.sin(t*7*Math.PI)*0.15)*0.3*s;pts.push(cx+nx*t*1.5*s,cy,cz+nz*t*1.5*s);pts.push(cx+nx*t*1.5*s+nz*w,cy,cz+nz*t*1.5*s-nx*w);pts.push(cx+nx*t*1.5*s-nz*w,cy,cz+nz*t*1.5*s+nx*w);cols.push(cr,cg,cb,cr,cg,cb,cr,cg,cb)} break;
-    case 6: // Broad tropical
-      for(let i=0;i<25;i++){const t=i/25,w=Math.sin(t*Math.PI)*0.6*s;for(let d=-3;d<=3;d++){pts.push(cx+nx*t*2*s+nz*(d/3)*w,cy+Math.sin(t*6+d)*0.02*s,cz+nz*t*2*s-nx*(d/3)*w);cols.push(cr,cg,cb)}} break;
-    case 7: // Grass blade
-      for(let i=0;i<20;i++){const t=i/20;pts.push(cx+Math.sin(t*Math.PI*0.4)*0.5*s*nx,cy+t*2*s,cz+Math.sin(t*Math.PI*0.4)*0.5*s*nz);cols.push(cr,cg,cb)} break;
-    case 8: // Compound
-      for(let leaf=0;leaf<4;leaf++){const z=cx+nx*(leaf+1)*0.4*s,zz=cz+nz*(leaf+1)*0.4*s;for(let d of[-1,1])for(let i=0;i<6;i++){const t=i/6,w=Math.sin(t*Math.PI)*0.15*s;pts.push(z+nz*d*t*0.3*s,cy+leaf*0.1*s,zz-nx*d*t*0.3*s);cols.push(cr,cg,cb)}} break;
-    default: // Vine tendril
-      for(let i=0;i<30;i++){const t=i/30,a=t*Math.PI*4,R=(1-t)*0.2*s+0.03*s;pts.push(cx+Math.cos(a)*R,cy+t*1.5*s,cz+Math.sin(a)*R);cols.push(cr,cg,cb)}
-  }
-}
-
-// ===== Fruit shapes =====
-function addFruit(pts, cols, cx, cy, cz, type, scale, cr, cg, cb, r) {
-  const s=scale;
-  switch(type%10) {
-    case 0: // Berry sphere rings
-      for(let ring=0;ring<=8;ring++){const phi=(ring/8)*Math.PI,y=Math.cos(phi)*0.35*s,R=Math.sin(phi)*0.35*s,n=Math.max(3,Math.floor(R/s*16));for(let i=0;i<n;i++){const a=(i/n)*Math.PI*2;pts.push(cx+Math.cos(a)*R,cy+y,cz+Math.sin(a)*R);cols.push(cr,cg,cb)}} break;
-    case 1: // Pod
-      for(let ring=0;ring<=10;ring++){const t=ring/10,y=(t-0.5)*s,R=Math.sin(t*Math.PI)*0.18*s;for(let i=0;i<6;i++){const a=(i/6)*Math.PI*2;pts.push(cx+Math.cos(a)*R,cy+y,cz+Math.sin(a)*R);cols.push(cr,cg,cb)}} break;
-    case 2: // Star
-      for(let ring=0;ring<=6;ring++){const y=(ring/6-0.5)*0.6*s;for(let i=0;i<20;i++){const a=(i/20)*Math.PI*2,R=(0.2+Math.abs(Math.sin(a*2.5))*0.2)*s;pts.push(cx+Math.cos(a)*R,cy+y,cz+Math.sin(a)*R);cols.push(cr,cg,cb)}} break;
-    case 3: // Cluster
-      for(let b=0;b<4;b++){const bx=(r()-0.5)*0.3*s,by=(r()-0.5)*0.3*s,bz=(r()-0.5)*0.3*s,bR=0.08*s;for(let ring=0;ring<4;ring++){const phi=(ring/3)*Math.PI,y=Math.cos(phi)*bR,R=Math.sin(phi)*bR;for(let i=0;i<5;i++){const a=(i/5)*Math.PI*2;pts.push(cx+bx+Math.cos(a)*R,cy+by+y,cz+bz+Math.sin(a)*R);cols.push(cr,cg,cb)}}} break;
-    case 4: // Teardrop
-      for(let ring=0;ring<=10;ring++){const t=ring/10,y=(t-0.3)*0.8*s,R=Math.sin(Math.pow(t,0.7)*Math.PI)*0.25*s;for(let i=0;i<6;i++){const a=(i/6)*Math.PI*2;pts.push(cx+Math.cos(a)*R,cy+y,cz+Math.sin(a)*R);cols.push(cr,cg,cb)}} break;
-    case 5: // Torus
-      {const R=0.25*s,rr=0.08*s;for(let i=0;i<16;i++){const u=(i/16)*Math.PI*2;for(let j=0;j<6;j++){const v=(j/6)*Math.PI*2;pts.push(cx+(R+rr*Math.cos(v))*Math.cos(u),cy+rr*Math.sin(v),cz+(R+rr*Math.cos(v))*Math.sin(u));cols.push(cr,cg,cb)}}} break;
-    default: // Spiky
-      for(let sp=0;sp<8;sp++){const phi=Math.acos(2*r()-1),th=r()*Math.PI*2,dx=Math.sin(phi)*Math.cos(th),dy=Math.cos(phi),dz=Math.sin(phi)*Math.sin(th);for(let i=0;i<4;i++){const t=0.15*s+i/4*0.25*s;pts.push(cx+dx*t,cy+dy*t,cz+dz*t);cols.push(cr,cg,cb)}}
-  }
+  const mesh=new THREE.Mesh(geo,mat);
+  mesh.userData.entryText=text;
+  mesh.userData.totalIdx=geo.getIndex().count;
+  const grp=new THREE.Group();
+  grp.add(mesh);
+  return grp;
 }
 
 // ===== THREE.js Scene =====
-const canvas = document.getElementById('c');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setSize(W(), H());
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.outputColorSpace = THREE.SRGBColorSpace;
+const canvas=document.getElementById('c');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+renderer.setSize(W(),H());
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=1.3;
 
-const scene = new THREE.Scene();
-scene.background = new THREE.Color('#050810');
-const camera = new THREE.PerspectiveCamera(55, W()/H(), 0.1, 200);
+const scene=new THREE.Scene();
 
-scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-
-// Ground scatter
+// Sky gradient
 {
-  const p=[],c=[];
-  for(let i=0;i<400;i++){
-    p.push((Math.random()-0.5)*30,-0.1,(Math.random()-0.5)*30);
-    const col=new THREE.Color(neon[Math.floor(Math.random()*neon.length)]);
-    c.push(col.r,col.g,col.b);
-  }
-  const g=new THREE.BufferGeometry();
-  g.setAttribute('position',new THREE.Float32BufferAttribute(p,3));
-  g.setAttribute('color',new THREE.Float32BufferAttribute(c,3));
-  scene.add(new THREE.Points(g,new THREE.PointsMaterial({size:0.05,vertexColors:true,transparent:true,opacity:0.12,depthWrite:false})));
+  const cv=document.createElement('canvas');cv.width=2;cv.height=512;
+  const ctx=cv.getContext('2d');
+  const g=ctx.createLinearGradient(0,0,0,512);
+  g.addColorStop(0,'#7EC8E3');
+  g.addColorStop(0.35,'#A2D2FF');
+  g.addColorStop(0.6,'#BDE0FE');
+  g.addColorStop(0.85,'#E0F0FF');
+  g.addColorStop(1,'#F0E8F0');
+  ctx.fillStyle=g;ctx.fillRect(0,0,2,512);
+  scene.background=new THREE.CanvasTexture(cv);
 }
 
-// ===== Plant container =====
-const plantRoot = new THREE.Group();
+// Fog for dreamcore depth
+scene.fog=new THREE.FogExp2('#d8e8f0',0.012);
+
+// Ground — glowing green meadow
+{
+  const gGeo=new THREE.PlaneGeometry(200,200,40,40);
+  gGeo.rotateX(-Math.PI/2);
+  const pa=gGeo.getAttribute('position');
+  for(let i=0;i<pa.count;i++){
+    const x=pa.getX(i),z=pa.getZ(i);
+    pa.setY(i,Math.sin(x*0.04)*Math.cos(z*0.05)*0.4-0.1);
+  }
+  gGeo.computeVertexNormals();
+  scene.add(new THREE.Mesh(gGeo,new THREE.MeshStandardMaterial({
+    color:'#5a9e6a',emissive:'#1a5a2a',emissiveIntensity:0.18,roughness:0.92,metalness:0
+  })));
+}
+
+// Grass particle scatter
+{
+  const p=[],c=[];
+  for(let i=0;i<3000;i++){
+    const x=(Math.random()-0.5)*80,z=(Math.random()-0.5)*80;
+    const y=Math.sin(x*0.04)*Math.cos(z*0.05)*0.4+Math.random()*0.25;
+    p.push(x,y,z);
+    const sh=0.35+Math.random()*0.3;
+    c.push(sh*0.45,sh*1.05,sh*0.35);
+  }
+  const gg=new THREE.BufferGeometry();
+  gg.setAttribute('position',new THREE.Float32BufferAttribute(p,3));
+  gg.setAttribute('color',new THREE.Float32BufferAttribute(c,3));
+  scene.add(new THREE.Points(gg,new THREE.PointsMaterial({
+    size:0.07,vertexColors:true,transparent:true,opacity:0.45,depthWrite:false,sizeAttenuation:true
+  })));
+}
+
+// Lighting — soft dreamcore
+scene.add(new THREE.HemisphereLight('#87CEEB','#5a9e6a',0.65));
+const sun=new THREE.DirectionalLight('#fff5e6',0.7);
+sun.position.set(8,18,5);scene.add(sun);
+scene.add(new THREE.AmbientLight('#ffffff',0.35));
+
+const camera=new THREE.PerspectiveCamera(55,W()/H(),0.1,500);
+
+// ===== Plant Container =====
+const plantRoot=new THREE.Group();
 scene.add(plantRoot);
-const plantEntries = [];
+const plantEntries=[];
 
-function addPlant(text, grow=true) {
-  let mesh;
-  try {
-    const data = generatePlant(text);
-    mesh = buildPlantCloud(data, text);
-  } catch(e) {
-    console.error('Plant error:', e);
-    document.getElementById('pop').textContent = 'ERR:'+e.message;
-    document.getElementById('pop').classList.add('show');
-    return null;
+function addPlant(text,grow=true){
+  let grp;
+  try{grp=makePlant(text)}catch(e){console.error('Plant err:',e);return null}
+  const rr=srand(hash(text)+plantEntries.length);
+  grp.position.set((rr()-0.5)*2.5,0,(rr()-0.5)*2.5);
+  const mesh=grp.children[0];
+  if(grow&&mesh){
+    grp.userData.growStart=performance.now();
+    grp.userData.growDur=1500+Math.random()*800;
+    grp.userData.totalIdx=mesh.userData.totalIdx;
+    grp.userData.phase=Math.random()*Math.PI*2;
+    mesh.geometry.setDrawRange(0,3);
+  }else if(mesh){
+    mesh.geometry.setDrawRange(0,mesh.userData.totalIdx);
+    grp.userData.phase=Math.random()*Math.PI*2;
   }
-
-  // ALL plants clustered at center with slight random offset
-  const rr = srand(hash(text)+plantEntries.length);
-  mesh.position.set((rr()-0.5)*1.5, 0, (rr()-0.5)*1.5);
-
-  // Growth animation via setDrawRange
-  const pointsMesh = mesh.children[0];
-  if (grow && pointsMesh) {
-    mesh.userData.growStart = performance.now();
-    mesh.userData.growDuration = 1200 + Math.random()*600; // 1.2-1.8s
-    mesh.userData.totalVerts = pointsMesh.userData.totalVerts;
-    mesh.userData.wigglePhase = Math.random()*Math.PI*2;
-    // DrawRange starts at 0 — immediately visible as it grows
-    pointsMesh.geometry.setDrawRange(0, 1);
-  } else if (pointsMesh) {
-    pointsMesh.geometry.setDrawRange(0, pointsMesh.userData.totalVerts);
-  }
-
-  plantRoot.add(mesh);
-  plantEntries.push({ mesh, text });
-  saveEntry(text);
-  return mesh;
+  plantRoot.add(grp);
+  plantEntries.push({mesh:grp,text});
+  return grp;
 }
 
 // ===== Camera =====
-let camYaw=0.3, camPitch=0.4, camDist=12;
-let camTarget = new THREE.Vector3(0, 3, 0);
-let interacting=false, interTimer=0;
+let camYaw=0.3,camPitch=0.35,camDist=14;
+let camTarget=new THREE.Vector3(0,3,0);
+let interacting=false,interTimer=0;
 const ptrs=new Map();
-let dragS={x:0,y:0,yaw:0,pitch:0}, pinchD0=0, pinchR0=12;
+let dragS={x:0,y:0,yaw:0,pitch:0},pinchD0=0,pinchR0=14;
 
-canvas.addEventListener('pointerdown', e=>{
+canvas.addEventListener('pointerdown',e=>{
   ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
   canvas.setPointerCapture(e.pointerId);
-  interacting=true; interTimer=0;
-  if(ptrs.size===1) dragS={x:e.clientX,y:e.clientY,yaw:camYaw,pitch:camPitch};
+  interacting=true;interTimer=0;
+  if(ptrs.size===1)dragS={x:e.clientX,y:e.clientY,yaw:camYaw,pitch:camPitch};
   else if(ptrs.size===2){const p=[...ptrs.values()];pinchD0=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y);pinchR0=camDist}
 });
-canvas.addEventListener('pointermove', e=>{
+canvas.addEventListener('pointermove',e=>{
   if(!ptrs.has(e.pointerId))return;
   ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
-  interacting=true; interTimer=0;
+  interacting=true;interTimer=0;
   if(ptrs.size===1){
     camYaw=dragS.yaw+(e.clientX-dragS.x)/W()*4;
     camPitch=clamp(dragS.pitch+(e.clientY-dragS.y)/H()*2,-0.3,1.4);
-  } else if(ptrs.size>=2){
+  }else if(ptrs.size>=2){
     const p=[...ptrs.values()],d=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y);
-    if(pinchD0>0) camDist=clamp(pinchR0*(pinchD0/d),3,40);
+    if(pinchD0>0)camDist=clamp(pinchR0*(pinchD0/d),3,50);
   }
 });
-canvas.addEventListener('pointerup', e=>ptrs.delete(e.pointerId));
-canvas.addEventListener('pointercancel', e=>ptrs.delete(e.pointerId));
-canvas.addEventListener('wheel', e=>{e.preventDefault();camDist=clamp(camDist+e.deltaY*0.015,3,40);interacting=true;interTimer=0},{passive:false});
+canvas.addEventListener('pointerup',e=>ptrs.delete(e.pointerId));
+canvas.addEventListener('pointercancel',e=>ptrs.delete(e.pointerId));
+canvas.addEventListener('wheel',e=>{e.preventDefault();camDist=clamp(camDist+e.deltaY*0.015,3,50);interacting=true;interTimer=0},{passive:false});
 
-function updateCam() {
+function updateCam(){
   camera.position.set(
-    camTarget.x + camDist*Math.cos(camPitch)*Math.sin(camYaw),
-    camTarget.y + camDist*Math.sin(camPitch),
-    camTarget.z + camDist*Math.cos(camPitch)*Math.cos(camYaw)
+    camTarget.x+camDist*Math.cos(camPitch)*Math.sin(camYaw),
+    camTarget.y+camDist*Math.sin(camPitch),
+    camTarget.z+camDist*Math.cos(camPitch)*Math.cos(camYaw)
   );
   camera.lookAt(camTarget);
 }
 
-// ===== Click to read =====
-const raycaster = new THREE.Raycaster();
-raycaster.params.Points.threshold = 0.5;
-const pop = document.getElementById('pop');
-canvas.addEventListener('click', e=>{
-  if(!plantRoot.children.length) return;
+// ===== Click to Read =====
+const raycaster=new THREE.Raycaster();
+const pop=document.getElementById('pop');
+canvas.addEventListener('click',e=>{
+  if(!plantRoot.children.length)return;
   const rect=canvas.getBoundingClientRect();
   raycaster.setFromCamera({x:((e.clientX-rect.left)/rect.width)*2-1,y:-((e.clientY-rect.top)/rect.height)*2+1},camera);
   const hits=raycaster.intersectObjects(plantRoot.children,true);
-  if(hits.length){let o=hits[0].object;while(o&&!o.userData.entryText)o=o.parent;if(o?.userData.entryText){pop.textContent=o.userData.entryText;pop.classList.add('show');setTimeout(()=>pop.classList.remove('show'),4000)}}
+  if(hits.length){
+    let o=hits[0].object;
+    while(o&&!o.userData.entryText)o=o.parent;
+    if(o?.userData.entryText){pop.textContent=o.userData.entryText;pop.classList.add('show');setTimeout(()=>pop.classList.remove('show'),4000)}
+  }
 });
 
 // ===== UI =====
-const ui=document.getElementById('ui'), goBtn=document.getElementById('go');
-const ta=document.getElementById('ta'), wb=document.getElementById('wb');
-
-ta.addEventListener('input', ()=>{goBtn.disabled=!ta.value.trim()});
-
-goBtn.addEventListener('click', ()=>{
+const ui=document.getElementById('ui'),goBtn=document.getElementById('go');
+const ta=document.getElementById('ta'),wb=document.getElementById('wb');
+ta.addEventListener('input',()=>{goBtn.disabled=!ta.value.trim()});
+goBtn.addEventListener('click',()=>{
   const text=ta.value.trim();
-  if(!text) return;
-  ta.value=''; goBtn.disabled=true;
-  ui.classList.add('hidden');
-  wb.style.display='block';
-  const mesh = addPlant(text, true);
-  if(mesh){
-    camTarget.set(0, 3, 0);
-    camDist = 10;
-  }
+  if(!text)return;
+  ta.value='';goBtn.disabled=true;
+  ui.classList.add('hidden');wb.style.display='block';
+  addPlant(text,true);
+  saveEntry(text);
+  camTarget.set(0,3,0);camDist=10;
 });
+wb.addEventListener('click',()=>{wb.style.display='none';ui.classList.remove('hidden')});
 
-wb.addEventListener('click', ()=>{wb.style.display='none';ui.classList.remove('hidden')});
-
-// ===== Load saved =====
-async function loadSaved() {
-  try {
-    const entries = await loadEntries();
-    for (const entry of entries) {
-      if (!entry.text) continue;
-      addPlant(entry.text, false);
-    }
-  } catch(e) { console.error('Load error:', e); }
+// ===== Load Saved =====
+async function loadSaved(){
+  try{
+    const entries=await loadEntries();
+    for(const e of entries){if(e.text)addPlant(e.text,false)}
+  }catch(e){console.error('Load err:',e)}
 }
 
-// ===== Game loop =====
-const clock = new THREE.Clock();
-let globalTime = 0;
+// ===== Game Loop =====
+const clock=new THREE.Clock();
+let globalTime=0;
 
-function tick() {
+function tick(){
   requestAnimationFrame(tick);
-  const dt = Math.min(clock.getDelta(), 0.05);
-  globalTime += dt;
-  interTimer += dt;
-  if (interTimer > 2) interacting = false;
-  if (!interacting) camYaw += dt * 0.08;
+  const dt=Math.min(clock.getDelta(),0.05);
+  globalTime+=dt;
+  interTimer+=dt;
+  if(interTimer>2)interacting=false;
+  if(!interacting)camYaw+=dt*0.06;
+  const now=performance.now();
 
-  const now = performance.now();
+  for(const entry of plantEntries){
+    const g=entry.mesh;
+    const m=g.children[0];
+    if(!m||!m.geometry)continue;
 
-  for (const entry of plantEntries) {
-    const m = entry.mesh;
-    const pm = m.children[0];
-    if (!pm || !pm.geometry) continue;
-
-    // Progressive growth via setDrawRange
-    if (m.userData.totalVerts !== undefined) {
-      const elapsed = now - m.userData.growStart;
-      const t = Math.min(1, elapsed / m.userData.growDuration);
-      // Ease-out: fast start, slow finish
-      const ease = 1 - (1 - t) * (1 - t);
-      const count = Math.ceil(ease * m.userData.totalVerts);
-      pm.geometry.setDrawRange(0, count);
-      if (t >= 1) delete m.userData.totalVerts;
+    // Growth via drawRange
+    if(g.userData.totalIdx!==undefined){
+      const elapsed=now-g.userData.growStart;
+      const t=Math.min(1,elapsed/g.userData.growDur);
+      const ease=1-(1-t)*(1-t);
+      const count=Math.ceil(ease*g.userData.totalIdx/3)*3;
+      m.geometry.setDrawRange(0,count);
+      if(t>=1)delete g.userData.totalIdx;
     }
 
-    // Organic wriggle — subtle multi-freq oscillation
-    const phase = m.userData.wigglePhase || 0;
-    m.rotation.x = Math.sin(globalTime*1.2+phase)*0.015 + Math.sin(globalTime*2.5+phase*1.7)*0.008;
-    m.rotation.z = Math.cos(globalTime*0.9+phase*0.8)*0.015 + Math.cos(globalTime*2.1+phase*1.3)*0.008;
+    // Organic wriggle
+    const ph=g.userData.phase||0;
+    g.rotation.x=Math.sin(globalTime*1.1+ph)*0.01+Math.sin(globalTime*2.3+ph*1.7)*0.005;
+    g.rotation.z=Math.cos(globalTime*0.85+ph*0.8)*0.01+Math.cos(globalTime*1.9+ph*1.3)*0.005;
   }
 
-  // Camera target slowly drifts up as more plants are added
-  const maxY = plantEntries.reduce((acc, e) => {
-    const d = e.mesh.children[0]?.userData;
-    return Math.max(acc, d ? 5 : 3);
-  }, 3);
-  camTarget.y += (maxY - camTarget.y) * dt * 0.5;
-
+  const maxY=plantEntries.length>0?4:3;
+  camTarget.y+=(maxY-camTarget.y)*dt*0.5;
   updateCam();
-  renderer.render(scene, camera);
+  renderer.render(scene,camera);
 }
 
 // ===== Init =====
-async function init() {
-  await loadSaved();
-  tick();
-}
+async function init(){await loadSaved();tick()}
 init();
 
-window.addEventListener('resize', ()=>{
+window.addEventListener('resize',()=>{
   renderer.setSize(W(),H());
   camera.aspect=W()/H();
   camera.updateProjectionMatrix();
