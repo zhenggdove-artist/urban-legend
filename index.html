@@ -8,9 +8,12 @@
     *{margin:0;padding:0;box-sizing:border-box}
     html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:"Courier New",monospace}
     #c{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
-    #ui{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+    #ui{position:absolute;bottom:20px;right:20px;
       width:min(80vw,520px);background:rgba(205,180,219,0.25);border:1px solid rgba(255,200,221,0.35);
-      padding:24px;z-index:10;color:#f5d6d6;backdrop-filter:blur(8px);transition:opacity 0.4s;border-radius:8px}
+      padding:24px;z-index:10;color:#f5d6d6;backdrop-filter:blur(8px);transition:all 0.4s;border-radius:8px}
+    #ui.mini{width:auto;padding:10px 18px;cursor:pointer}
+    #ui.mini h2,#ui.mini textarea,#ui.mini button#go{display:none}
+    #ui.mini::after{content:'WRITE';font-size:11px;letter-spacing:4px;color:#ffc8dd;text-transform:uppercase}
     #ui.hidden{opacity:0;pointer-events:none}
     #ui h2{font-size:14px;letter-spacing:6px;color:#ffc8dd;margin-bottom:10px}
     #ui textarea{width:100%;height:90px;background:rgba(0,0,0,0.25);border:1px solid rgba(255,200,221,0.25);
@@ -19,15 +22,31 @@
       border:1px solid rgba(255,175,204,0.35);color:#ffc8dd;text-transform:uppercase;letter-spacing:6px;
       cursor:pointer;font-family:inherit;border-radius:4px}
     #go:disabled{opacity:0.4;cursor:not-allowed}
-    #pop{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);
-      max-width:min(90vw,600px);background:rgba(205,180,219,0.35);color:#f5d6d6;
+    #pop{position:absolute;bottom:80px;left:50%;transform:translateX(-50%);
+      max-width:min(90vw,600px);max-height:40vh;overflow-y:auto;
+      background:rgba(205,180,219,0.35);color:#f5d6d6;
       border:1px solid rgba(255,200,221,0.3);padding:12px 16px;z-index:12;display:none;
-      font-size:13px;letter-spacing:1px;border-radius:6px;backdrop-filter:blur(6px)}
+      font-size:13px;letter-spacing:1px;border-radius:6px;backdrop-filter:blur(6px);
+      white-space:pre-wrap;word-break:break-word;overscroll-behavior:contain}
     #pop.show{display:block}
-    #wb{display:none;position:absolute;bottom:30px;right:20px;
-      background:rgba(255,175,204,0.12);border:1px solid rgba(255,175,204,0.35);color:#ffc8dd;
-      padding:10px 20px;text-transform:uppercase;letter-spacing:4px;cursor:pointer;
-      z-index:14;font-family:inherit;font-size:11px;border-radius:4px}
+    #pop::-webkit-scrollbar{width:4px}
+    #pop::-webkit-scrollbar-thumb{background:rgba(255,200,221,0.4);border-radius:2px}
+    #search-btn{position:absolute;bottom:30px;left:20px;width:44px;height:44px;
+      background:rgba(205,180,219,0.2);border:1px solid rgba(255,200,221,0.35);color:#ffc8dd;
+      border-radius:50%;cursor:pointer;z-index:14;font-family:inherit;font-size:16px;
+      display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+    #search-panel{position:absolute;bottom:80px;left:20px;width:min(70vw,320px);
+      background:rgba(205,180,219,0.3);border:1px solid rgba(255,200,221,0.35);
+      padding:14px;z-index:15;border-radius:8px;backdrop-filter:blur(8px);display:none}
+    #search-panel.show{display:block}
+    #search-panel input{width:100%;height:36px;background:rgba(0,0,0,0.25);border:1px solid rgba(255,200,221,0.25);
+      color:#f5d6d6;padding:0 10px;font-size:13px;outline:none;border-radius:4px;font-family:inherit}
+    #search-results{margin-top:10px;max-height:30vh;overflow-y:auto;overscroll-behavior:contain}
+    #search-results::-webkit-scrollbar{width:4px}
+    #search-results::-webkit-scrollbar-thumb{background:rgba(255,200,221,0.4);border-radius:2px}
+    .sr-item{padding:8px;margin-bottom:6px;background:rgba(0,0,0,0.15);border-radius:4px;
+      color:#f5d6d6;font-size:12px;cursor:pointer;word-break:break-word;border:1px solid transparent}
+    .sr-item:hover{border-color:rgba(255,200,221,0.4)}
   </style>
 </head>
 <body>
@@ -38,7 +57,11 @@
     <button id="go" disabled>PLANT</button>
   </div>
   <div id="pop"></div>
-  <button id="wb">WRITE</button>
+  <button id="search-btn">&#x1F50D;</button>
+  <div id="search-panel">
+    <input id="search-input" placeholder="搜尋植物文字..." />
+    <div id="search-results"></div>
+  </div>
 
 <script type="module">
 import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
@@ -727,10 +750,31 @@ function updateCam(){
   camera.lookAt(camTarget);
 }
 
+// ===== Glow highlight for growing / searched plants =====
+const glowMat=new THREE.MeshBasicMaterial({color:'#ffdd00',wireframe:true,transparent:true,opacity:0.5,depthTest:false});
+let glowMeshes=[];
+function clearGlow(){glowMeshes.forEach(g=>g.parent?.remove(g));glowMeshes=[];}
+function addGlow(grp){
+  const m=grp.children[0];
+  if(!m||!m.geometry)return;
+  const glow=new THREE.Mesh(m.geometry,glowMat);
+  glow.scale.setScalar(1.03);
+  grp.add(glow);
+  glowMeshes.push(glow);
+}
+
 // ===== Click to Read =====
 const raycaster=new THREE.Raycaster();
 const pop=document.getElementById('pop');
 canvas.addEventListener('click',e=>{
+  // If UI is open and click is outside UI, collapse it
+  const ui=document.getElementById('ui');
+  if(!ui.classList.contains('mini')&&!ui.classList.contains('hidden')){
+    const uiR=ui.getBoundingClientRect();
+    if(e.clientX<uiR.left||e.clientX>uiR.right||e.clientY<uiR.top||e.clientY>uiR.bottom){
+      ui.classList.add('mini');return;
+    }
+  }
   if(!plantRoot.children.length)return;
   const rect=canvas.getBoundingClientRect();
   raycaster.setFromCamera({x:((e.clientX-rect.left)/rect.width)*2-1,y:-((e.clientY-rect.top)/rect.height)*2+1},camera);
@@ -744,18 +788,57 @@ canvas.addEventListener('click',e=>{
 
 // ===== UI =====
 const ui=document.getElementById('ui'),goBtn=document.getElementById('go');
-const ta=document.getElementById('ta'),wb=document.getElementById('wb');
+const ta=document.getElementById('ta');
+// Click mini UI to expand
+ui.addEventListener('click',()=>{if(ui.classList.contains('mini'))ui.classList.remove('mini')});
 ta.addEventListener('input',()=>{goBtn.disabled=!ta.value.trim()});
 goBtn.addEventListener('click',()=>{
   const text=ta.value.trim();
   if(!text)return;
   ta.value='';goBtn.disabled=true;
-  ui.classList.add('hidden');wb.style.display='block';
-  addPlant(text,true);
+  ui.classList.add('mini');
+  const planted=addPlant(text,true);
   saveEntry(text);
+  // Glow the growing plant
+  if(planted){clearGlow();addGlow(planted);setTimeout(clearGlow,3000)}
   camTarget.set(0,3,0);camDist=10;
 });
-wb.addEventListener('click',()=>{wb.style.display='none';ui.classList.remove('hidden')});
+
+// ===== Search System =====
+const searchBtn=document.getElementById('search-btn');
+const searchPanel=document.getElementById('search-panel');
+const searchInput=document.getElementById('search-input');
+const searchResults=document.getElementById('search-results');
+
+searchBtn.addEventListener('click',e=>{
+  e.stopPropagation();
+  searchPanel.classList.toggle('show');
+  if(searchPanel.classList.contains('show'))searchInput.focus();
+  else{clearGlow();searchResults.innerHTML=''}
+});
+
+searchInput.addEventListener('input',()=>{
+  const q=searchInput.value.trim().toLowerCase();
+  searchResults.innerHTML='';clearGlow();
+  if(!q)return;
+  const matches=plantEntries.filter(e=>e.text.toLowerCase().includes(q));
+  for(const m of matches){
+    const div=document.createElement('div');
+    div.className='sr-item';div.textContent=m.text;
+    div.addEventListener('click',()=>{
+      clearGlow();addGlow(m.mesh);
+      pop.textContent=m.text;pop.classList.add('show');
+      setTimeout(()=>pop.classList.remove('show'),5000);
+    });
+    searchResults.appendChild(div);
+    addGlow(m.mesh);
+  }
+});
+
+// Close search when clicking outside
+canvas.addEventListener('pointerdown',()=>{
+  if(searchPanel.classList.contains('show')){searchPanel.classList.remove('show');clearGlow();searchResults.innerHTML=''}
+});
 
 // ===== Load Saved =====
 async function loadSaved(){
@@ -799,11 +882,81 @@ function tick(){
     g.rotation.z=Math.cos(globalTime*0.85+ph*0.8)*0.01+Math.cos(globalTime*1.9+ph*1.3)*0.005;
   }
 
+  // Update glow opacity pulse for highlighted plants
+  for(const gm of glowMeshes){
+    if(gm.material)gm.material.opacity=0.3+Math.sin(globalTime*4)*0.2;
+  }
+
+  updateBugs(globalTime);
+
   const maxY=plantEntries.length>0?4:3;
   camTarget.y+=(maxY-camTarget.y)*dt*0.5;
   updateCam();
   renderer.render(scene,camera);
 }
+
+// ===== Flying Bugs — orbit around plants =====
+const BUG_COLORS=['#FDFD96','#FFB7B2','#B5E2FA','#DDA0DD','#FFA6C9','#88ff88'];
+const bugGroup=new THREE.Group();
+scene.add(bugGroup);
+const bugs=[];
+
+function spawnBugs(count){
+  const bugPts=[],bugCols=[];
+  for(let i=0;i<count;i++){
+    bugPts.push(0,0,0);
+    const bc=new THREE.Color(BUG_COLORS[Math.floor(Math.random()*BUG_COLORS.length)]);
+    bugCols.push(bc.r,bc.g,bc.b);
+    bugs.push({
+      orbitR:0.5+Math.random()*2,
+      orbitSpeed:0.5+Math.random()*1.5,
+      orbitPhase:Math.random()*Math.PI*2,
+      yPhase:Math.random()*Math.PI*2,
+      yAmp:0.3+Math.random()*1,
+      yBase:0.5+Math.random()*5,
+      cx:(Math.random()-0.5)*2,
+      cz:(Math.random()-0.5)*2,
+      type:Math.floor(Math.random()*4) // different movement patterns
+    });
+  }
+  const bGeo=new THREE.BufferGeometry();
+  bGeo.setAttribute('position',new THREE.Float32BufferAttribute(bugPts,3));
+  bGeo.setAttribute('color',new THREE.Float32BufferAttribute(bugCols,3));
+  const bMat=new THREE.PointsMaterial({size:0.08,vertexColors:true,transparent:true,opacity:0.85,depthWrite:false,sizeAttenuation:true});
+  bugGroup.add(new THREE.Points(bGeo,bMat));
+}
+
+function updateBugs(t){
+  if(!bugGroup.children.length)return;
+  const posArr=bugGroup.children[0].geometry.getAttribute('position');
+  for(let i=0;i<bugs.length;i++){
+    const b=bugs[i];
+    let x,y,z;
+    const ang=t*b.orbitSpeed+b.orbitPhase;
+    if(b.type===0){ // Circular orbit
+      x=b.cx+Math.cos(ang)*b.orbitR;
+      z=b.cz+Math.sin(ang)*b.orbitR;
+      y=b.yBase+Math.sin(t*1.5+b.yPhase)*b.yAmp;
+    }else if(b.type===1){ // Figure-8
+      x=b.cx+Math.sin(ang)*b.orbitR;
+      z=b.cz+Math.sin(ang*2)*b.orbitR*0.5;
+      y=b.yBase+Math.cos(t*1.2+b.yPhase)*b.yAmp;
+    }else if(b.type===2){ // Spiral upward
+      const sp=((t*0.3+b.orbitPhase)%6)/6;
+      x=b.cx+Math.cos(ang)*b.orbitR*(1-sp*0.3);
+      z=b.cz+Math.sin(ang)*b.orbitR*(1-sp*0.3);
+      y=b.yBase+sp*b.yAmp*2;
+    }else{ // Erratic zigzag
+      x=b.cx+Math.sin(ang)*b.orbitR+Math.sin(t*3.7+b.yPhase)*0.3;
+      z=b.cz+Math.cos(ang*0.7)*b.orbitR;
+      y=b.yBase+Math.sin(t*2.1+b.yPhase)*b.yAmp+Math.sin(t*4.3)*0.15;
+    }
+    posArr.setXYZ(i,x,y,z);
+  }
+  posArr.needsUpdate=true;
+}
+
+spawnBugs(30);
 
 // ===== Init =====
 async function init(){await loadSaved();tick()}
