@@ -45,46 +45,38 @@ const W = () => window.innerWidth, H = () => window.innerHeight;
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const neon = ['#ff00ff','#ff3388','#ffaa00','#00ff88','#00ddff','#ff4466','#88ff00','#ff00aa','#44ffcc','#ffdd00'];
 
-// ===== Persistence =====
+// ===== Persistence (Supabase) =====
 const STORAGE_KEY = 'urban_legend_plants_v2';
-// Hardcoded Render API — always try server first, fallback to localStorage
-const API_DEFAULT = 'https://urban-legend-api.onrender.com';
-const apiP = new URLSearchParams(location.search).get('api');
-if (apiP) localStorage.setItem('PLANT_API', apiP.replace(/\/$/,''));
-const API = localStorage.getItem('PLANT_API') || API_DEFAULT;
+const SUPABASE_URL = 'https://mmhoohddrmguxnmtvgwz.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_Aig1UQpR4iYyaeArWCG5IQ_XGhTXzsq';
+const SB_HEADERS = {
+  'apikey': SUPABASE_KEY,
+  'Authorization': 'Bearer ' + SUPABASE_KEY,
+  'Content-Type': 'application/json'
+};
 
 async function loadEntries() {
-  // Try API with timeout (Render free tier cold starts ~30s)
   try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 8000);
-    const res = await fetch(API+'/api/entries', { signal: ctrl.signal });
-    clearTimeout(timer);
+    const res = await fetch(SUPABASE_URL + '/rest/v1/entries?order=created_at.asc', { headers: SB_HEADERS });
     if (res.ok) {
       const data = await res.json();
-      // Sync API data to localStorage as cache
       if (data.length > 0) localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
       return data;
     }
   } catch {}
-  // Fallback to localStorage
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]'); } catch { return []; }
 }
 
 function saveEntry(text) {
-  // Always save to localStorage immediately
+  const id = Date.now().toString();
   const list = JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');
-  list.push({ text, id: Date.now().toString(), t: new Date().toISOString() });
+  list.push({ text, id, created_at: new Date().toISOString() });
   localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-  // Also send to API (fire and forget, with retry)
-  const body = JSON.stringify({ text, id: Date.now().toString() });
-  fetch(API+'/api/entries', { method:'POST', headers:{'Content-Type':'application/json'}, body })
-    .catch(() => {
-      // Retry once after 5s (in case of cold start)
-      setTimeout(() => {
-        fetch(API+'/api/entries', { method:'POST', headers:{'Content-Type':'application/json'}, body }).catch(()=>{});
-      }, 5000);
-    });
+  fetch(SUPABASE_URL + '/rest/v1/entries', {
+    method: 'POST',
+    headers: { ...SB_HEADERS, 'Prefer': 'return=minimal' },
+    body: JSON.stringify({ id, text })
+  }).catch(()=>{});
 }
 
 // ===== Seeded random =====
