@@ -513,15 +513,16 @@ function makePlant(text){
   let plantH=3; // estimated height for stacking
 
   if(plantType<=2){ // Tree or Fern (L-System)
-    const ri=plantType<=1?(seed%3):(3+seed%2);
-    const type=PLANT_RULES[ri%PLANT_RULES.length];
-    const modType={...type,angle:type.angle*(0.7+rng()*0.6),step:type.step*(0.6+rng()*0.8),width:type.width*(1.2+rng()*1.0)};
+    const ri=Math.floor(rng()*PLANT_RULES.length);
+    const type=PLANT_RULES[ri];
+    const iterVar=Math.max(2,type.iters+Math.floor(rng()*3)-1);
+    const modType={...type,angle:type.angle*(0.4+rng()*1.2),step:type.step*(0.3+rng()*1.4),width:type.width*(0.8+rng()*2.0),iters:iterVar};
     const lStr=lsysGen(modType.axiom,modType.rules,modType.iters);
     const r=interpretLS(lStr,modType,rng);
     segs=[...genRoots(rng,modType.width),...r.segs];leaves=r.leaves;flowers=r.flowers;
     plantH=modType.step*modType.iters*3;
   }else if(plantType===3){ // MUSHROOM — short stalk + dome cap
-    const stalkH=0.4+rng()*1.2,stalkW=0.1+rng()*0.15,stalkN=3+Math.floor(rng()*3);
+    const stalkH=0.3+rng()*2.0,stalkW=0.06+rng()*0.25,stalkN=2+Math.floor(rng()*6);
     let cx=0,cy=0,cz=0;
     for(let i=0;i<stalkN;i++){
       const t=i/stalkN;
@@ -529,11 +530,13 @@ function makePlant(text){
       segs.push({start:new THREE.Vector3(cx,cy,cz),end:new THREE.Vector3(nx,ny,nz),width:stalkW*(1-t*0.15),depth:0});
       cx=nx;cy=ny;cz=nz;
     }
-    caps.push({center:new THREE.Vector3(cx,cy,cz),radius:0.25+rng()*0.5,height:0.12+rng()*0.2});
+    caps.push({center:new THREE.Vector3(cx,cy,cz),radius:0.15+rng()*0.8,height:0.08+rng()*0.35});
+    // Sometimes add extra smaller caps on stalk
+    if(rng()>0.5&&segs.length>2){const si=Math.floor(rng()*segs.length);const sp=segs[si].end;caps.push({center:sp.clone().add(new THREE.Vector3(0,0.05,0)),radius:0.1+rng()*0.3,height:0.06+rng()*0.15})}
     segs=[...genRoots(rng,stalkW*0.4),...segs];
     plantH=stalkH+0.3;
   }else if(plantType===4){ // BIG FLOWER — tall stem + huge petals
-    const stemH=1.5+rng()*3,stemW=0.04+rng()*0.05,stemN=8+Math.floor(rng()*6);
+    const stemH=0.8+rng()*4,stemW=0.03+rng()*0.08,stemN=5+Math.floor(rng()*10);
     let cx=0,cy=0,cz=0;const cv=(rng()-0.5)*0.3;
     for(let i=0;i<stemN;i++){
       const t=i/stemN;
@@ -542,25 +545,27 @@ function makePlant(text){
       cx=nx;cy=ny;cz=nz;
       if(rng()>0.7)leaves.push({p:new THREE.Vector3(cx,cy,cz),dir:new THREE.Vector3(rng()-0.5,0.5,rng()-0.5).normalize(),left:new THREE.Vector3(rng()-0.5,0,rng()-0.5).normalize()});
     }
-    bigPetals.push({center:new THREE.Vector3(cx,cy,cz),size:0.4+rng()*0.8,nPetals:5+Math.floor(rng()*6)});
+    bigPetals.push({center:new THREE.Vector3(cx,cy,cz),size:0.2+rng()*1.2,nPetals:3+Math.floor(rng()*10)});
     segs=[...genRoots(rng,stemW*0.5),...segs];
     plantH=stemH;
   }else if(plantType===5){ // VINE — thin winding
-    const type=PLANT_RULES[5+seed%3>=PLANT_RULES.length?0:5+seed%3];
-    const modType={...type,angle:type.angle*(0.8+rng()*0.4),step:type.step*(0.4+rng()*0.5),width:type.width*(0.5+rng()*0.4)};
+    const type=PLANT_RULES[Math.floor(rng()*PLANT_RULES.length)];
+    const iterVar=Math.max(2,type.iters+Math.floor(rng()*2)-1);
+    const modType={...type,angle:type.angle*(0.5+rng()*1.0),step:type.step*(0.3+rng()*0.6),width:type.width*(0.3+rng()*0.5),iters:iterVar};
     const lStr=lsysGen(modType.axiom,modType.rules,modType.iters);
     const r=interpretLS(lStr,modType,rng);
     segs=r.segs;leaves=r.leaves;flowers=r.flowers;
     plantH=modType.step*modType.iters*2;
   }else if(plantType===6){ // CORAL — dense branching, no leaves, vivid
-    const type=PLANT_RULES[seed%PLANT_RULES.length];
-    const modType={...type,angle:type.angle*(1+rng()*0.5),step:type.step*(0.5+rng()*0.4),width:type.width*(1.5+rng()*1.5)};
+    const type=PLANT_RULES[Math.floor(rng()*PLANT_RULES.length)];
+    const iterVar=Math.max(2,type.iters+Math.floor(rng()*2));
+    const modType={...type,angle:type.angle*(0.6+rng()*1.2),step:type.step*(0.3+rng()*0.8),width:type.width*(1.0+rng()*2.5),iters:iterVar};
     const lStr=lsysGen(modType.axiom,modType.rules,modType.iters);
     const r=interpretLS(lStr,modType,rng);
     segs=r.segs;flowers=r.flowers; // no leaves for coral
     plantH=modType.step*modType.iters*2;
   }else{ // CACTUS — thick segments with spikes
-    const bodyH=0.8+rng()*1.5,bodyW=0.15+rng()*0.2,bodyN=4+Math.floor(rng()*4);
+    const bodyH=0.5+rng()*2.5,bodyW=0.1+rng()*0.35,bodyN=3+Math.floor(rng()*6);
     let cx=0,cy=0,cz=0;
     for(let i=0;i<bodyN;i++){
       const t=i/bodyN;
@@ -598,11 +603,16 @@ function makePlant(text){
   mesh.userData.entryText=text;
   mesh.userData.totalIdx=geo.getIndex().count;
   mesh.userData.plantH=plantH;
+  // White glow wireframe outline
+  const edgeMat=new THREE.MeshBasicMaterial({color:0xffffff,wireframe:true,transparent:true,opacity:0.08,depthWrite:false});
+  const edgeMesh=new THREE.Mesh(geo,edgeMat);
+  edgeMesh.userData.isEdgeGlow=true;
   const grp=new THREE.Group();
   grp.rotation.set((rng()-0.5)*0.3,rng()*Math.PI*2,(rng()-0.5)*0.2);
   const sc=0.6+rng()*0.8;
   grp.scale.set(sc,sc,sc);
   grp.add(mesh);
+  grp.add(edgeMesh);
   return grp;
 }
 
@@ -782,7 +792,7 @@ canvas.addEventListener('click',e=>{
   if(hits.length){
     let o=hits[0].object;
     while(o&&!o.userData.entryText)o=o.parent;
-    if(o?.userData.entryText){pop.textContent=o.userData.entryText;pop.classList.add('show');setTimeout(()=>pop.classList.remove('show'),4000)}
+    if(o?.userData.entryText){pop.textContent=o.userData.entryText;pop.classList.add('show')}
   }
 });
 
@@ -828,22 +838,21 @@ searchInput.addEventListener('input',()=>{
     div.addEventListener('click',()=>{
       clearGlow();addGlow(m.mesh);
       pop.textContent=m.text;pop.classList.add('show');
-      setTimeout(()=>pop.classList.remove('show'),5000);
     });
     searchResults.appendChild(div);
     addGlow(m.mesh);
   }
 });
 
-// Close search panel on blank click — glow stays until next blank click
+// Close search panel / popup / glow on blank click (layered dismiss)
 canvas.addEventListener('pointerdown',()=>{
   if(searchPanel.classList.contains('show')){
-    // First click: close panel, keep glow
     searchPanel.classList.remove('show');
     searchResults.innerHTML='';
     searchInput.value='';
+  }else if(pop.classList.contains('show')){
+    pop.classList.remove('show');
   }else if(glowMeshes.length>0){
-    // Second click: clear glow
     clearGlow();
   }
 });
