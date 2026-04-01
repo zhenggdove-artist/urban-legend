@@ -205,7 +205,7 @@ function genRoots(rng,baseW){
 }
 
 // ===== Geometry Builder =====
-function buildPlantGeo(allSegs,leaves,flowers,stemCol,leafCol,flowerCol,rng){
+function buildPlantGeo(allSegs,leaves,flowers,stemCol,leafCol,flowerCol,rng,caps=[],bigPetals=[]){
   const pos=[],nrm=[],col=[],idx=[];
   const RN=7; // more vertices for rounder, volumetric tubes
 
@@ -377,6 +377,82 @@ function buildPlantGeo(allSegs,leaves,flowers,stemCol,leafCol,flowerCol,rng){
     }
   }
 
+  // Mushroom caps — hemisphere dome
+  for(const cap of caps){
+    const cc=new THREE.Color(flowerCol);
+    const ct=cap.center,cr=cap.radius,ch=cap.height;
+    const cRings=8,cSegs=14;
+    const capBase=pos.length/3;
+    for(let ring=0;ring<=cRings;ring++){
+      const t=ring/cRings;
+      const ringR=Math.sin(t*Math.PI*0.52)*cr;
+      const ringY=ct.y+Math.cos(t*Math.PI*0.52)*ch;
+      for(let s=0;s<cSegs;s++){
+        const a=(s/cSegs)*Math.PI*2;
+        pos.push(ct.x+Math.cos(a)*ringR,ringY,ct.z+Math.sin(a)*ringR);
+        const nx=Math.cos(a)*Math.sin(t*Math.PI*0.52),ny=Math.cos(t*Math.PI*0.52),nz=Math.sin(a)*Math.sin(t*Math.PI*0.52);
+        nrm.push(nx,ny,nz);
+        const cv=cc.clone().offsetHSL((rng()-0.5)*0.06,0,t*0.15-(rng()-0.5)*0.05);
+        col.push(cv.r,cv.g,cv.b);
+      }
+    }
+    for(let ring=0;ring<cRings;ring++){
+      for(let s=0;s<cSegs;s++){
+        const a=capBase+ring*cSegs+s,b=capBase+ring*cSegs+(s+1)%cSegs;
+        const c2=capBase+(ring+1)*cSegs+s,d=capBase+(ring+1)*cSegs+(s+1)%cSegs;
+        idx.push(a,c2,b,b,c2,d);
+      }
+    }
+    // Underside gills — ring of triangles under cap
+    const gillC=cc.clone().offsetHSL(0.05,0,-0.15);
+    const gillY=ct.y-ch*0.1;
+    const gillBi=pos.length/3;
+    pos.push(ct.x,gillY,ct.z);nrm.push(0,-1,0);col.push(gillC.r,gillC.g,gillC.b);
+    for(let s=0;s<=cSegs;s++){
+      const a=(s/cSegs)*Math.PI*2;
+      pos.push(ct.x+Math.cos(a)*cr*0.95,gillY,ct.z+Math.sin(a)*cr*0.95);
+      nrm.push(0,-1,0);col.push(gillC.r*0.85,gillC.g*0.85,gillC.b*0.85);
+      if(s>0)idx.push(gillBi,gillBi+s,gillBi+s+1);
+    }
+  }
+
+  // Big flower petals — large curved petals radiating from center
+  for(const bp of bigPetals){
+    const pc=new THREE.Color(flowerCol);
+    const ct=bp.center,sz=bp.size,nP=bp.nPetals;
+    for(let i=0;i<nP;i++){
+      const a=(i/nP)*Math.PI*2+rng()*0.3;
+      const pv=pc.clone().offsetHSL((rng()-0.5)*0.12,0,(rng()-0.5)*0.1);
+      // Each petal = 3 quads forming a curved petal
+      for(let seg=0;seg<3;seg++){
+        const t1=seg/3,t2=(seg+1)/3;
+        const r1=sz*0.15+t1*sz*0.85,r2=sz*0.15+t2*sz*0.85;
+        const w1=Math.sin(t1*Math.PI)*sz*0.35,w2=Math.sin(t2*Math.PI)*sz*0.35;
+        const y1=ct.y+Math.sin(t1*Math.PI*0.6)*sz*0.3,y2=ct.y+Math.sin(t2*Math.PI*0.6)*sz*0.3;
+        const bi=pos.length/3;
+        const aL=a-0.15,aR=a+0.15;
+        pos.push(ct.x+Math.cos(aL)*r1,y1,ct.z+Math.sin(aL)*r1);
+        pos.push(ct.x+Math.cos(aR)*r1,y1,ct.z+Math.sin(aR)*r1);
+        pos.push(ct.x+Math.cos(aL)*r2,y2,ct.z+Math.sin(aL)*r2);
+        pos.push(ct.x+Math.cos(aR)*r2,y2,ct.z+Math.sin(aR)*r2);
+        for(let j=0;j<4;j++){nrm.push(0,1,0);col.push(pv.r*(1-seg*0.08),pv.g*(1-seg*0.08),pv.b*(1-seg*0.08))}
+        idx.push(bi,bi+2,bi+1,bi+1,bi+2,bi+3);
+      }
+    }
+    // Center pistil sphere
+    const pistC=pc.clone().offsetHSL(0.1,0,0.1);
+    const pistBi=pos.length/3;
+    const pistR=sz*0.12;
+    pos.push(ct.x,ct.y+pistR,ct.z);nrm.push(0,1,0);col.push(pistC.r,pistC.g,pistC.b);
+    for(let i=0;i<8;i++){
+      const a=(i/8)*Math.PI*2;
+      pos.push(ct.x+Math.cos(a)*pistR,ct.y+0.01,ct.z+Math.sin(a)*pistR);
+      nrm.push(0,1,0);col.push(pistC.r*0.9,pistC.g*0.9,pistC.b*0.9);
+      if(i>0)idx.push(pistBi,pistBi+i,pistBi+i+1);
+    }
+    idx.push(pistBi,pistBi+8,pistBi+1);
+  }
+
   const geo=new THREE.BufferGeometry();
   geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
   geo.setAttribute('normal',new THREE.Float32BufferAttribute(nrm,3));
@@ -400,30 +476,95 @@ function buildPlantGeo(allSegs,leaves,flowers,stemCol,leafCol,flowerCol,rng){
   return geo;
 }
 
-// ===== Generate Plant =====
+// ===== Generate Plant — 8 distinct types =====
 function makePlant(text){
   const seed=hash(text);
   const rng=srand(seed);
-  const type=PLANT_RULES[seed%PLANT_RULES.length];
+  const plantType=seed%8;
+  // 0-1:tree, 2:fern, 3:mushroom, 4:big flower, 5:vine, 6:coral, 7:cactus
 
-  // Randomize parameters per plant — thicker stems, varied angles
-  const modType={...type,
-    angle:type.angle*(0.7+rng()*0.6),
-    step:type.step*(0.6+rng()*0.8),
-    width:type.width*(1.2+rng()*1.0) // 1.2x-2.2x thicker for volume
-  };
-
-  const lStr=lsysGen(modType.axiom,modType.rules,modType.iters);
-  const{segs,leaves,flowers}=interpretLS(lStr,modType,rng);
-  const rootSegs=genRoots(rng,modType.width);
-  const all=[...rootSegs,...segs];
-
-  // Each plant picks colors from ANY part of the palette — wild mixing
+  let segs=[],leaves=[],flowers=[],caps=[],bigPetals=[];
   const stemCol=ALL_PASTEL[Math.floor(rng()*ALL_PASTEL.length)];
   const leafCol=ALL_PASTEL[Math.floor(rng()*ALL_PASTEL.length)];
   const flowerCol=ALL_PASTEL[Math.floor(rng()*ALL_PASTEL.length)];
+  let plantH=3; // estimated height for stacking
 
-  const geo=buildPlantGeo(all,leaves,flowers,stemCol,leafCol,flowerCol,rng);
+  if(plantType<=2){ // Tree or Fern (L-System)
+    const ri=plantType<=1?(seed%3):(3+seed%2);
+    const type=PLANT_RULES[ri%PLANT_RULES.length];
+    const modType={...type,angle:type.angle*(0.7+rng()*0.6),step:type.step*(0.6+rng()*0.8),width:type.width*(1.2+rng()*1.0)};
+    const lStr=lsysGen(modType.axiom,modType.rules,modType.iters);
+    const r=interpretLS(lStr,modType,rng);
+    segs=[...genRoots(rng,modType.width),...r.segs];leaves=r.leaves;flowers=r.flowers;
+    plantH=modType.step*modType.iters*3;
+  }else if(plantType===3){ // MUSHROOM — short stalk + dome cap
+    const stalkH=0.4+rng()*1.2,stalkW=0.1+rng()*0.15,stalkN=3+Math.floor(rng()*3);
+    let cx=0,cy=0,cz=0;
+    for(let i=0;i<stalkN;i++){
+      const t=i/stalkN;
+      const nx=cx+(rng()-0.5)*0.08,ny=cy+stalkH/stalkN,nz=cz+(rng()-0.5)*0.08;
+      segs.push({start:new THREE.Vector3(cx,cy,cz),end:new THREE.Vector3(nx,ny,nz),width:stalkW*(1-t*0.15),depth:0});
+      cx=nx;cy=ny;cz=nz;
+    }
+    caps.push({center:new THREE.Vector3(cx,cy,cz),radius:0.25+rng()*0.5,height:0.12+rng()*0.2});
+    segs=[...genRoots(rng,stalkW*0.4),...segs];
+    plantH=stalkH+0.3;
+  }else if(plantType===4){ // BIG FLOWER — tall stem + huge petals
+    const stemH=1.5+rng()*3,stemW=0.04+rng()*0.05,stemN=8+Math.floor(rng()*6);
+    let cx=0,cy=0,cz=0;const cv=(rng()-0.5)*0.3;
+    for(let i=0;i<stemN;i++){
+      const t=i/stemN;
+      const nx=cx+Math.sin(t*Math.PI)*cv*0.2,ny=cy+stemH/stemN,nz=cz+Math.cos(t*Math.PI*0.7)*cv*0.2;
+      segs.push({start:new THREE.Vector3(cx,cy,cz),end:new THREE.Vector3(nx,ny,nz),width:stemW*(1-t*0.3),depth:0});
+      cx=nx;cy=ny;cz=nz;
+      if(rng()>0.7)leaves.push({p:new THREE.Vector3(cx,cy,cz),dir:new THREE.Vector3(rng()-0.5,0.5,rng()-0.5).normalize(),left:new THREE.Vector3(rng()-0.5,0,rng()-0.5).normalize()});
+    }
+    bigPetals.push({center:new THREE.Vector3(cx,cy,cz),size:0.4+rng()*0.8,nPetals:5+Math.floor(rng()*6)});
+    segs=[...genRoots(rng,stemW*0.5),...segs];
+    plantH=stemH;
+  }else if(plantType===5){ // VINE — thin winding
+    const type=PLANT_RULES[5+seed%3>=PLANT_RULES.length?0:5+seed%3];
+    const modType={...type,angle:type.angle*(0.8+rng()*0.4),step:type.step*(0.4+rng()*0.5),width:type.width*(0.5+rng()*0.4)};
+    const lStr=lsysGen(modType.axiom,modType.rules,modType.iters);
+    const r=interpretLS(lStr,modType,rng);
+    segs=r.segs;leaves=r.leaves;flowers=r.flowers;
+    plantH=modType.step*modType.iters*2;
+  }else if(plantType===6){ // CORAL — dense branching, no leaves, vivid
+    const type=PLANT_RULES[seed%PLANT_RULES.length];
+    const modType={...type,angle:type.angle*(1+rng()*0.5),step:type.step*(0.5+rng()*0.4),width:type.width*(1.5+rng()*1.5)};
+    const lStr=lsysGen(modType.axiom,modType.rules,modType.iters);
+    const r=interpretLS(lStr,modType,rng);
+    segs=r.segs;flowers=r.flowers; // no leaves for coral
+    plantH=modType.step*modType.iters*2;
+  }else{ // CACTUS — thick segments with spikes
+    const bodyH=0.8+rng()*1.5,bodyW=0.15+rng()*0.2,bodyN=4+Math.floor(rng()*4);
+    let cx=0,cy=0,cz=0;
+    for(let i=0;i<bodyN;i++){
+      const t=i/bodyN;
+      const nx=cx+(rng()-0.5)*0.05,ny=cy+bodyH/bodyN,nz=cz+(rng()-0.5)*0.05;
+      segs.push({start:new THREE.Vector3(cx,cy,cz),end:new THREE.Vector3(nx,ny,nz),width:bodyW*(1-t*0.1),depth:0});
+      cx=nx;cy=ny;cz=nz;
+    }
+    // Arms
+    const nArms=1+Math.floor(rng()*3);
+    for(let a=0;a<nArms;a++){
+      const aIdx=Math.floor((0.3+rng()*0.4)*segs.length);
+      const ap=segs[Math.min(aIdx,segs.length-1)].end.clone();
+      const aDir=new THREE.Vector3((rng()-0.5)*2,0.5+rng()*0.5,(rng()-0.5)*2).normalize();
+      let ax=ap.x,ay=ap.y,az=ap.z;
+      for(let i=0;i<3;i++){
+        const nx=ax+aDir.x*0.3,ny=ay+aDir.y*0.3,nz=az+aDir.z*0.3;
+        segs.push({start:new THREE.Vector3(ax,ay,az),end:new THREE.Vector3(nx,ny,nz),width:bodyW*0.6*(1-i*0.2),depth:1});
+        ax=nx;ay=ny;az=nz;
+      }
+    }
+    // Flowers on top
+    flowers.push({p:new THREE.Vector3(cx,cy,cz),dir:new THREE.Vector3(0,1,0)});
+    segs=[...genRoots(rng,bodyW*0.3),...segs];
+    plantH=bodyH;
+  }
+
+  const geo=buildPlantGeo(segs,leaves,flowers,stemCol,leafCol,flowerCol,rng,caps,bigPetals);
   const emissiveCol=new THREE.Color(ALL_PASTEL[Math.floor(rng()*ALL_PASTEL.length)]);
   const mat=new THREE.MeshStandardMaterial({
     vertexColors:true,roughness:0.6,metalness:0.05,
@@ -433,10 +574,9 @@ function makePlant(text){
   const mesh=new THREE.Mesh(geo,mat);
   mesh.userData.entryText=text;
   mesh.userData.totalIdx=geo.getIndex().count;
+  mesh.userData.plantH=plantH;
   const grp=new THREE.Group();
-  // Random tilt for each plant — no two stand the same way
-  grp.rotation.set((rng()-0.5)*0.4,rng()*Math.PI*2,(rng()-0.5)*0.3);
-  // Random scale variation
+  grp.rotation.set((rng()-0.5)*0.3,rng()*Math.PI*2,(rng()-0.5)*0.2);
   const sc=0.6+rng()*0.8;
   grp.scale.set(sc,sc,sc);
   grp.add(mesh);
@@ -520,9 +660,18 @@ const plantEntries=[];
 function addPlant(text,grow=true){
   let grp;
   try{grp=makePlant(text)}catch(e){console.error('Plant err:',e);return null}
-  // ALL plants clustered tightly at center — intertwined mass
+  // Cluster at center — sometimes grow ON TOP of existing plants
   const rr=srand(hash(text)+plantEntries.length);
-  grp.position.set((rr()-0.5)*0.8,0,(rr()-0.5)*0.8);
+  if(plantEntries.length>0&&rr()>0.45){
+    // Grow on an existing plant's branch
+    const existing=plantEntries[Math.floor(rr()*plantEntries.length)];
+    const ePos=existing.mesh.position;
+    const eH=existing.mesh.children[0]?.userData.plantH||3;
+    const yOff=eH*(0.2+rr()*0.6)*existing.mesh.scale.y;
+    grp.position.set(ePos.x+(rr()-0.5)*0.6,yOff,ePos.z+(rr()-0.5)*0.6);
+  }else{
+    grp.position.set((rr()-0.5)*1.0,0,(rr()-0.5)*1.0);
+  }
   const mesh=grp.children[0];
   if(grow&&mesh){
     grp.userData.growStart=performance.now();
