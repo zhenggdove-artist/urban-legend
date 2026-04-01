@@ -799,8 +799,8 @@ goBtn.addEventListener('click',()=>{
   ui.classList.add('mini');
   const planted=addPlant(text,true);
   saveEntry(text);
-  // Glow the growing plant
-  if(planted){clearGlow();addGlow(planted);setTimeout(clearGlow,3000)}
+  // Glow the growing plant — stays until user clicks blank
+  if(planted){clearGlow();addGlow(planted)}
   camTarget.set(0,3,0);camDist=10;
 });
 
@@ -835,9 +835,17 @@ searchInput.addEventListener('input',()=>{
   }
 });
 
-// Close search when clicking outside
+// Close search panel on blank click — glow stays until next blank click
 canvas.addEventListener('pointerdown',()=>{
-  if(searchPanel.classList.contains('show')){searchPanel.classList.remove('show');clearGlow();searchResults.innerHTML=''}
+  if(searchPanel.classList.contains('show')){
+    // First click: close panel, keep glow
+    searchPanel.classList.remove('show');
+    searchResults.innerHTML='';
+    searchInput.value='';
+  }else if(glowMeshes.length>0){
+    // Second click: clear glow
+    clearGlow();
+  }
 });
 
 // ===== Load Saved =====
