@@ -105,9 +105,12 @@ function lsysGen(axiom,rules,iters){
 function interpretLS(str,cfg,rng){
   const segs=[],leaves=[],flowers=[];
   let pos=new THREE.Vector3(0,0,0);
-  let hd=new THREE.Vector3(0,1,0);
-  let lt=new THREE.Vector3(1,0,0);
-  let up=new THREE.Vector3(0,0,1);
+  // Randomize initial growth direction per plant — not always straight up
+  let hd=new THREE.Vector3((rng()-0.5)*0.4,1,(rng()-0.5)*0.4).normalize();
+  let lt=new THREE.Vector3();
+  if(Math.abs(hd.y)<0.9)lt.crossVectors(hd,new THREE.Vector3(0,1,0)).normalize();
+  else lt.crossVectors(hd,new THREE.Vector3(1,0,0)).normalize();
+  let up=new THREE.Vector3().crossVectors(lt,hd).normalize();
   let w=cfg.width,d=0,st=cfg.step;
   const stack=[];
   const rad=Math.PI/180;
@@ -115,30 +118,40 @@ function interpretLS(str,cfg,rng){
 
   for(const ch of str){
     if(segs.length>=MAX)break;
-    const av=1+(rng()-0.5)*0.6; // wider angle variation for chaos
+    const av=1+(rng()-0.5)*0.6;
     const a=cfg.angle*rad*av;
     switch(ch){
       case 'F':case 'G':{
         const s0=pos.clone();
         const tmpH=hd.clone();
-        // Strong random 3D twist on every segment
-        tmpH.applyAxisAngle(lt,(rng()-0.5)*18*rad);
-        tmpH.applyAxisAngle(up,(rng()-0.5)*12*rad);
-        const curStep=st*(0.7+rng()*0.6); // vary step length
+        // 3D twist every segment
+        tmpH.applyAxisAngle(lt,(rng()-0.5)*20*rad);
+        tmpH.applyAxisAngle(up,(rng()-0.5)*20*rad);
+        const curStep=st*(0.7+rng()*0.6);
         pos=pos.clone().addScaledVector(tmpH,curStep);
         segs.push({start:s0,end:pos.clone(),width:w,depth:d});
         break;
       }
-      case '+':hd.applyAxisAngle(up,a);lt.applyAxisAngle(up,a);break;
-      case '-':hd.applyAxisAngle(up,-a);lt.applyAxisAngle(up,-a);break;
+      case '+':case '-':{
+        // Yaw + forced random pitch to break planarity
+        const sign=ch==='+'?1:-1;
+        hd.applyAxisAngle(up,a*sign);lt.applyAxisAngle(up,a*sign);
+        const pitchA=(rng()-0.5)*a*0.9;
+        hd.applyAxisAngle(lt,pitchA);up.applyAxisAngle(lt,pitchA);
+        break;
+      }
       case '&':hd.applyAxisAngle(lt,a);up.applyAxisAngle(lt,a);break;
       case '^':hd.applyAxisAngle(lt,-a);up.applyAxisAngle(lt,-a);break;
       case '[':{
         stack.push({pos:pos.clone(),hd:hd.clone(),lt:lt.clone(),up:up.clone(),w,d,st});
-        d++;w*=0.58;st*=0.78;
-        // Random roll on branch start for 3D sprawl
-        const roll=(rng()-0.5)*40*rad;
-        lt.applyAxisAngle(hd,roll);up.applyAxisAngle(hd,roll);
+        d++;w*=0.55;st*=0.78;
+        // MASSIVE 3D randomization at every branch point
+        const rollA=(rng()-0.5)*Math.PI; // ±90° roll
+        lt.applyAxisAngle(hd,rollA);up.applyAxisAngle(hd,rollA);
+        const pitchA=(rng()-0.5)*50*rad; // ±25° pitch
+        hd.applyAxisAngle(lt,pitchA);up.applyAxisAngle(lt,pitchA);
+        const yawA=(rng()-0.5)*40*rad; // ±20° yaw
+        hd.applyAxisAngle(up,yawA);lt.applyAxisAngle(up,yawA);
         break;
       }
       case ']':{
@@ -194,7 +207,7 @@ function genRoots(rng,baseW){
 // ===== Geometry Builder =====
 function buildPlantGeo(allSegs,leaves,flowers,stemCol,leafCol,flowerCol,rng){
   const pos=[],nrm=[],col=[],idx=[];
-  const RN=5;
+  const RN=7; // more vertices for rounder, volumetric tubes
 
   function tube(start,end,w,cr,cg,cb){
     const dir=new THREE.Vector3().subVectors(end,start);
@@ -298,11 +311,11 @@ function makePlant(text){
   const rng=srand(seed);
   const type=PLANT_RULES[seed%PLANT_RULES.length];
 
-  // Randomize parameters per plant for variety
+  // Randomize parameters per plant — thicker stems, varied angles
   const modType={...type,
     angle:type.angle*(0.7+rng()*0.6),
     step:type.step*(0.6+rng()*0.8),
-    width:type.width*(0.7+rng()*0.6)
+    width:type.width*(1.2+rng()*1.0) // 1.2x-2.2x thicker for volume
   };
 
   const lStr=lsysGen(modType.axiom,modType.rules,modType.iters);
