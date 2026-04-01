@@ -244,41 +244,136 @@ function buildPlantGeo(allSegs,leaves,flowers,stemCol,leafCol,flowerCol,rng){
     tube(s.start,s.end,s.width,c2.r*vary,c2.g*vary,c2.b*vary);
   }
 
-  // Leaves (diamond quads) — each leaf gets slight color shift
+  // Leaves — 5 shape types, each randomly oriented in 3D
   const lc=new THREE.Color(leafCol);
   for(const lf of leaves){
-    const sz=0.1+rng()*0.25;
-    const bi=pos.length/3;
-    const fwd=lf.dir.clone().multiplyScalar(sz);
-    const side=lf.left.clone().multiplyScalar(sz*0.5);
-    const n=new THREE.Vector3().crossVectors(fwd,side).normalize();
+    const lv=lc.clone().offsetHSL((rng()-0.5)*0.15,0,(rng()-0.5)*0.12);
+    const sz=0.15+rng()*0.35;
     const p=lf.p;
-    const lv=lc.clone().offsetHSL((rng()-0.5)*0.12,0,(rng()-0.5)*0.1);
-    pos.push(p.x,p.y,p.z);
-    pos.push(p.x+side.x+fwd.x*0.4,p.y+side.y+fwd.y*0.4,p.z+side.z+fwd.z*0.4);
-    pos.push(p.x+fwd.x,p.y+fwd.y,p.z+fwd.z);
-    pos.push(p.x-side.x+fwd.x*0.4,p.y-side.y+fwd.y*0.4,p.z-side.z+fwd.z*0.4);
-    for(let i=0;i<4;i++){nrm.push(n.x,n.y,n.z);col.push(lv.r,lv.g,lv.b)}
-    idx.push(bi,bi+1,bi+2,bi,bi+2,bi+3);
+    // Fully random orientation — NOT aligned to branch
+    const rAxis=new THREE.Vector3(rng()-0.5,rng()-0.5,rng()-0.5).normalize();
+    const rAng=rng()*Math.PI*2;
+    const fwd=lf.dir.clone().applyAxisAngle(rAxis,rAng).multiplyScalar(sz);
+    const side=lf.left.clone().applyAxisAngle(rAxis,rAng).multiplyScalar(sz);
+    const n=new THREE.Vector3().crossVectors(fwd,side).normalize();
+    const lt=Math.floor(rng()*5);
+    if(lt===0){ // Multi-segment curved frond
+      let cp=p.clone();const segs=4+Math.floor(rng()*3),cv=(rng()-0.5)*0.6;
+      for(let i=0;i<segs;i++){
+        const t=i/segs,t2=(i+1)/segs;
+        const w1=Math.sin(t*Math.PI)*sz*0.4,w2=Math.sin(t2*Math.PI)*sz*0.4;
+        const bi=pos.length/3;
+        const cp2=cp.clone().addScaledVector(fwd,1/segs).addScaledVector(side,cv/segs*Math.sin(t*Math.PI));
+        pos.push(cp.x+side.x*w1/sz,cp.y+side.y*w1/sz,cp.z+side.z*w1/sz);
+        pos.push(cp.x-side.x*w1/sz,cp.y-side.y*w1/sz,cp.z-side.z*w1/sz);
+        pos.push(cp2.x+side.x*w2/sz,cp2.y+side.y*w2/sz,cp2.z+side.z*w2/sz);
+        pos.push(cp2.x-side.x*w2/sz,cp2.y-side.y*w2/sz,cp2.z-side.z*w2/sz);
+        for(let j=0;j<4;j++){nrm.push(n.x,n.y,n.z);col.push(lv.r,lv.g,lv.b)}
+        idx.push(bi,bi+2,bi+1,bi+1,bi+2,bi+3);cp.copy(cp2);
+      }
+    }else if(lt===1){ // Star spikes
+      const nSp=3+Math.floor(rng()*4),bi=pos.length/3;
+      pos.push(p.x,p.y,p.z);nrm.push(n.x,n.y,n.z);col.push(lv.r,lv.g,lv.b);
+      for(let i=0;i<nSp;i++){
+        const a=(i/nSp)*Math.PI*2+rng()*0.5,sL=sz*(0.5+rng()*0.5);
+        const dx=Math.cos(a)*fwd.x/sz+Math.sin(a)*side.x/sz;
+        const dy=Math.cos(a)*fwd.y/sz+Math.sin(a)*side.y/sz;
+        const dz=Math.cos(a)*fwd.z/sz+Math.sin(a)*side.z/sz;
+        pos.push(p.x+dx*sL,p.y+dy*sL,p.z+dz*sL);
+        nrm.push(n.x,n.y,n.z);col.push(lv.r*0.9,lv.g*0.9,lv.b*0.9);
+        if(i<nSp-1)idx.push(bi,bi+1+i,bi+2+i);
+        else idx.push(bi,bi+1+i,bi+1);
+      }
+    }else if(lt===2){ // Round pad fan
+      const nSg=6+Math.floor(rng()*4),bi=pos.length/3;
+      pos.push(p.x,p.y,p.z);nrm.push(n.x,n.y,n.z);col.push(lv.r,lv.g,lv.b);
+      for(let i=0;i<=nSg;i++){
+        const a=(i/nSg)*Math.PI*2;
+        pos.push(p.x+Math.cos(a)*fwd.x*0.5+Math.sin(a)*side.x*0.5,
+                 p.y+Math.cos(a)*fwd.y*0.5+Math.sin(a)*side.y*0.5,
+                 p.z+Math.cos(a)*fwd.z*0.5+Math.sin(a)*side.z*0.5);
+        nrm.push(n.x,n.y,n.z);col.push(lv.r,lv.g,lv.b);
+        if(i>0)idx.push(bi,bi+i,bi+i+1);
+      }
+    }else if(lt===3){ // Curling tendril
+      let cp=p.clone();const tS=5+Math.floor(rng()*3),cR=sz*0.3;
+      for(let i=0;i<tS;i++){
+        const t=i/tS,a=t*Math.PI*3,r=cR*(1-t*0.5);
+        const nx2=new THREE.Vector3(Math.cos(a)*fwd.x/sz+fwd.x*t/sz,
+          Math.cos(a)*fwd.y/sz+fwd.y*t/sz+Math.sin(a)*r,
+          Math.cos(a)*fwd.z/sz+fwd.z*t/sz).multiplyScalar(sz/tS);
+        const nxt=cp.clone().add(nx2);
+        const bi=pos.length/3,w2=0.03+0.02*(1-t);
+        pos.push(cp.x+n.x*w2,cp.y+n.y*w2,cp.z+n.z*w2);
+        pos.push(cp.x-n.x*w2,cp.y-n.y*w2,cp.z-n.z*w2);
+        pos.push(nxt.x+n.x*w2,nxt.y+n.y*w2,nxt.z+n.z*w2);
+        pos.push(nxt.x-n.x*w2,nxt.y-n.y*w2,nxt.z-n.z*w2);
+        for(let j=0;j<4;j++){nrm.push(n.x,n.y,n.z);col.push(lv.r,lv.g,lv.b)}
+        idx.push(bi,bi+2,bi+1,bi+1,bi+2,bi+3);cp.copy(nxt);
+      }
+    }else{ // Wide multi-row tropical
+      const rows=3+Math.floor(rng()*3);
+      for(let r=0;r<rows;r++){
+        const t=r/rows,t2=(r+1)/rows;
+        const w1=Math.sin(t*Math.PI)*sz*0.6,w2=Math.sin(t2*Math.PI)*sz*0.6;
+        const bi=pos.length/3;
+        const c1=p.clone().addScaledVector(fwd,t/rows);
+        const c2=p.clone().addScaledVector(fwd,(t+1/rows)/rows);
+        pos.push(c1.x-side.x*w1/sz,c1.y-side.y*w1/sz,c1.z-side.z*w1/sz);
+        pos.push(c1.x,c1.y+rng()*0.03,c1.z);
+        pos.push(c1.x+side.x*w1/sz,c1.y+side.y*w1/sz,c1.z+side.z*w1/sz);
+        pos.push(c2.x-side.x*w2/sz,c2.y-side.y*w2/sz,c2.z-side.z*w2/sz);
+        pos.push(c2.x,c2.y+rng()*0.03,c2.z);
+        pos.push(c2.x+side.x*w2/sz,c2.y+side.y*w2/sz,c2.z+side.z*w2/sz);
+        for(let j=0;j<6;j++){nrm.push(n.x,n.y,n.z);col.push(lv.r,lv.g,lv.b)}
+        idx.push(bi,bi+3,bi+1,bi+1,bi+3,bi+4,bi+1,bi+4,bi+2,bi+2,bi+4,bi+5);
+      }
+    }
   }
 
-  // Flowers (petal fans) — each flower gets unique color shift
+  // Flowers — 3D shapes (sphere burst, rosette, dandelion)
   const fc=new THREE.Color(flowerCol);
   for(const fl of flowers){
-    const bi=pos.length/3;
-    const nP=5+Math.floor(rng()*5);
-    const fSz=0.1+rng()*0.2;
+    const fv=fc.clone().offsetHSL((rng()-0.5)*0.2,0,(rng()-0.5)*0.1);
+    const fSz=0.12+rng()*0.25;
     const c=fl.p;
-    const fv=fc.clone().offsetHSL((rng()-0.5)*0.15,0,(rng()-0.5)*0.1);
-    pos.push(c.x,c.y,c.z);nrm.push(0,1,0);col.push(fv.r*1.4,fv.g*1.4,fv.b*1.4);
-    for(let i=0;i<nP;i++){
-      const a1=(i/nP)*Math.PI*2,a2=((i+1)/nP)*Math.PI*2;
-      const vi=pos.length/3;
-      pos.push(c.x+Math.cos(a1)*fSz*0.3,c.y+0.02,c.z+Math.sin(a1)*fSz*0.3);
-      pos.push(c.x+Math.cos((a1+a2)/2)*fSz,c.y+0.04,c.z+Math.sin((a1+a2)/2)*fSz);
-      pos.push(c.x+Math.cos(a2)*fSz*0.3,c.y+0.02,c.z+Math.sin(a2)*fSz*0.3);
-      for(let j=0;j<3;j++){nrm.push(0,1,0);col.push(fv.r,fv.g,fv.b)}
-      idx.push(bi,vi,vi+1);idx.push(bi,vi+1,vi+2);
+    const nP=5+Math.floor(rng()*6);
+    const ft=Math.floor(rng()*3);
+    if(ft===0){ // Spherical petal burst
+      for(let i=0;i<nP;i++){
+        const phi=Math.acos(2*rng()-1),theta=rng()*Math.PI*2;
+        const dx=Math.sin(phi)*Math.cos(theta),dy=Math.cos(phi)*0.5+0.5,dz=Math.sin(phi)*Math.sin(theta);
+        const bi=pos.length/3;
+        const tx=c.x+dx*fSz,ty=c.y+dy*fSz,tz=c.z+dz*fSz;
+        const pw=fSz*0.25,px=-dz,pz=dx;
+        pos.push(c.x,c.y,c.z);pos.push(tx+px*pw,ty,tz+pz*pw);pos.push(tx-px*pw,ty,tz-pz*pw);
+        for(let j=0;j<3;j++){nrm.push(dx,dy,dz);col.push(fv.r,fv.g,fv.b)}
+        idx.push(bi,bi+1,bi+2);
+      }
+    }else if(ft===1){ // Layered rosette
+      for(let lay=0;lay<3;lay++){
+        const lr=fSz*(0.3+lay*0.25),ly=lay*0.04,ln=4+lay*2;
+        for(let i=0;i<ln;i++){
+          const a1=(i/ln)*Math.PI*2+lay*0.3,a2=((i+1)/ln)*Math.PI*2+lay*0.3;
+          const bi=pos.length/3;
+          pos.push(c.x,c.y+ly+0.02,c.z);
+          pos.push(c.x+Math.cos(a1)*lr,c.y+ly,c.z+Math.sin(a1)*lr);
+          pos.push(c.x+Math.cos(a2)*lr,c.y+ly,c.z+Math.sin(a2)*lr);
+          for(let j=0;j<3;j++){nrm.push(0,1,0);col.push(fv.r*(1-lay*0.08),fv.g*(1-lay*0.08),fv.b*(1-lay*0.08))}
+          idx.push(bi,bi+1,bi+2);
+        }
+      }
+    }else{ // Dandelion puff spikes
+      for(let i=0;i<nP*2;i++){
+        const phi=Math.acos(2*rng()-1),theta=rng()*Math.PI*2;
+        const dx=Math.sin(phi)*Math.cos(theta),dy=Math.cos(phi),dz=Math.sin(phi)*Math.sin(theta);
+        const bi=pos.length/3;
+        const sl=fSz*(0.5+rng()*0.5);
+        const tx=c.x+dx*sl,ty=c.y+dy*sl,tz=c.z+dz*sl;
+        pos.push(c.x,c.y,c.z);pos.push(tx+0.01,ty,tz);pos.push(tx,ty+0.01,tz+0.01);
+        for(let j=0;j<3;j++){nrm.push(dx,dy,dz);col.push(fv.r*1.3,fv.g*1.3,fv.b*1.3)}
+        idx.push(bi,bi+1,bi+2);
+      }
     }
   }
 
