@@ -111,18 +111,21 @@ function interpretLS(str,cfg,rng){
   let w=cfg.width,d=0,st=cfg.step;
   const stack=[];
   const rad=Math.PI/180;
-  const MAX=500;
+  const MAX=600;
 
   for(const ch of str){
     if(segs.length>=MAX)break;
-    const av=1+(rng()-0.5)*0.3;
+    const av=1+(rng()-0.5)*0.6; // wider angle variation for chaos
     const a=cfg.angle*rad*av;
     switch(ch){
       case 'F':case 'G':{
         const s0=pos.clone();
         const tmpH=hd.clone();
-        tmpH.applyAxisAngle(lt,(rng()-0.5)*6*rad);
-        pos=pos.clone().addScaledVector(tmpH,st);
+        // Strong random 3D twist on every segment
+        tmpH.applyAxisAngle(lt,(rng()-0.5)*18*rad);
+        tmpH.applyAxisAngle(up,(rng()-0.5)*12*rad);
+        const curStep=st*(0.7+rng()*0.6); // vary step length
+        pos=pos.clone().addScaledVector(tmpH,curStep);
         segs.push({start:s0,end:pos.clone(),width:w,depth:d});
         break;
       }
@@ -132,12 +135,15 @@ function interpretLS(str,cfg,rng){
       case '^':hd.applyAxisAngle(lt,-a);up.applyAxisAngle(lt,-a);break;
       case '[':{
         stack.push({pos:pos.clone(),hd:hd.clone(),lt:lt.clone(),up:up.clone(),w,d,st});
-        d++;w*=0.62;st*=0.82;
+        d++;w*=0.58;st*=0.78;
+        // Random roll on branch start for 3D sprawl
+        const roll=(rng()-0.5)*40*rad;
+        lt.applyAxisAngle(hd,roll);up.applyAxisAngle(hd,roll);
         break;
       }
       case ']':{
-        if(d>1&&rng()>0.25)leaves.push({p:pos.clone(),dir:hd.clone(),left:lt.clone()});
-        if(d>2&&rng()>0.65)flowers.push({p:pos.clone(),dir:hd.clone()});
+        if(d>0&&rng()>0.2)leaves.push({p:pos.clone(),dir:hd.clone(),left:lt.clone()});
+        if(d>1&&rng()>0.5)flowers.push({p:pos.clone(),dir:hd.clone()});
         const sv=stack.pop();
         if(!sv)break;
         pos=sv.pos;hd=sv.hd;lt=sv.lt;up=sv.up;w=sv.w;d=sv.d;st=sv.st;
@@ -216,45 +222,49 @@ function buildPlantGeo(allSegs,leaves,flowers,stemCol,leafCol,flowerCol,rng){
     }
   }
 
-  // Stems
+  // Stems — per-segment color shift for organic variety
   const sc=new THREE.Color(stemCol);
   for(const s of allSegs){
-    const vary=0.92+rng()*0.16;
-    tube(s.start,s.end,s.width,sc.r*vary,sc.g*vary,sc.b*vary);
+    const vary=0.75+rng()*0.5;
+    const hShift=(rng()-0.5)*0.08;
+    const c2=sc.clone().offsetHSL(hShift,0,(rng()-0.5)*0.15);
+    tube(s.start,s.end,s.width,c2.r*vary,c2.g*vary,c2.b*vary);
   }
 
-  // Leaves (diamond quads)
+  // Leaves (diamond quads) — each leaf gets slight color shift
   const lc=new THREE.Color(leafCol);
   for(const lf of leaves){
-    const sz=0.1+rng()*0.2;
+    const sz=0.1+rng()*0.25;
     const bi=pos.length/3;
     const fwd=lf.dir.clone().multiplyScalar(sz);
-    const side=lf.left.clone().multiplyScalar(sz*0.45);
+    const side=lf.left.clone().multiplyScalar(sz*0.5);
     const n=new THREE.Vector3().crossVectors(fwd,side).normalize();
     const p=lf.p;
+    const lv=lc.clone().offsetHSL((rng()-0.5)*0.12,0,(rng()-0.5)*0.1);
     pos.push(p.x,p.y,p.z);
     pos.push(p.x+side.x+fwd.x*0.4,p.y+side.y+fwd.y*0.4,p.z+side.z+fwd.z*0.4);
     pos.push(p.x+fwd.x,p.y+fwd.y,p.z+fwd.z);
     pos.push(p.x-side.x+fwd.x*0.4,p.y-side.y+fwd.y*0.4,p.z-side.z+fwd.z*0.4);
-    for(let i=0;i<4;i++){nrm.push(n.x,n.y,n.z);col.push(lc.r,lc.g,lc.b)}
+    for(let i=0;i<4;i++){nrm.push(n.x,n.y,n.z);col.push(lv.r,lv.g,lv.b)}
     idx.push(bi,bi+1,bi+2,bi,bi+2,bi+3);
   }
 
-  // Flowers (petal fans)
+  // Flowers (petal fans) — each flower gets unique color shift
   const fc=new THREE.Color(flowerCol);
   for(const fl of flowers){
     const bi=pos.length/3;
-    const nP=5+Math.floor(rng()*4);
-    const fSz=0.08+rng()*0.14;
+    const nP=5+Math.floor(rng()*5);
+    const fSz=0.1+rng()*0.2;
     const c=fl.p;
-    pos.push(c.x,c.y,c.z);nrm.push(0,1,0);col.push(fc.r*1.3,fc.g*1.3,fc.b*1.3);
+    const fv=fc.clone().offsetHSL((rng()-0.5)*0.15,0,(rng()-0.5)*0.1);
+    pos.push(c.x,c.y,c.z);nrm.push(0,1,0);col.push(fv.r*1.4,fv.g*1.4,fv.b*1.4);
     for(let i=0;i<nP;i++){
       const a1=(i/nP)*Math.PI*2,a2=((i+1)/nP)*Math.PI*2;
       const vi=pos.length/3;
       pos.push(c.x+Math.cos(a1)*fSz*0.3,c.y+0.02,c.z+Math.sin(a1)*fSz*0.3);
       pos.push(c.x+Math.cos((a1+a2)/2)*fSz,c.y+0.04,c.z+Math.sin((a1+a2)/2)*fSz);
       pos.push(c.x+Math.cos(a2)*fSz*0.3,c.y+0.02,c.z+Math.sin(a2)*fSz*0.3);
-      for(let j=0;j<3;j++){nrm.push(0,1,0);col.push(fc.r,fc.g,fc.b)}
+      for(let j=0;j<3;j++){nrm.push(0,1,0);col.push(fv.r,fv.g,fv.b)}
       idx.push(bi,vi,vi+1);idx.push(bi,vi+1,vi+2);
     }
   }
@@ -287,26 +297,40 @@ function makePlant(text){
   const seed=hash(text);
   const rng=srand(seed);
   const type=PLANT_RULES[seed%PLANT_RULES.length];
-  const lStr=lsysGen(type.axiom,type.rules,type.iters);
-  const{segs,leaves,flowers}=interpretLS(lStr,type,rng);
-  const rootSegs=genRoots(rng,type.width);
+
+  // Randomize parameters per plant for variety
+  const modType={...type,
+    angle:type.angle*(0.7+rng()*0.6),
+    step:type.step*(0.6+rng()*0.8),
+    width:type.width*(0.7+rng()*0.6)
+  };
+
+  const lStr=lsysGen(modType.axiom,modType.rules,modType.iters);
+  const{segs,leaves,flowers}=interpretLS(lStr,modType,rng);
+  const rootSegs=genRoots(rng,modType.width);
   const all=[...rootSegs,...segs];
 
-  // Pick colors from palette
-  const stemCol=PASTEL_PURPLE[Math.floor(rng()*PASTEL_PURPLE.length)];
-  const leafCol=PASTEL_BLUE[Math.floor(rng()*PASTEL_BLUE.length)];
-  const flowerCol=PASTEL_PINK[Math.floor(rng()*PASTEL_PINK.length)];
+  // Each plant picks colors from ANY part of the palette — wild mixing
+  const stemCol=ALL_PASTEL[Math.floor(rng()*ALL_PASTEL.length)];
+  const leafCol=ALL_PASTEL[Math.floor(rng()*ALL_PASTEL.length)];
+  const flowerCol=ALL_PASTEL[Math.floor(rng()*ALL_PASTEL.length)];
 
   const geo=buildPlantGeo(all,leaves,flowers,stemCol,leafCol,flowerCol,rng);
+  const emissiveCol=new THREE.Color(ALL_PASTEL[Math.floor(rng()*ALL_PASTEL.length)]);
   const mat=new THREE.MeshStandardMaterial({
-    vertexColors:true,roughness:0.65,metalness:0.05,
-    emissive:new THREE.Color(flowerCol),emissiveIntensity:0.12,
+    vertexColors:true,roughness:0.6,metalness:0.05,
+    emissive:emissiveCol,emissiveIntensity:0.15,
     side:THREE.DoubleSide
   });
   const mesh=new THREE.Mesh(geo,mat);
   mesh.userData.entryText=text;
   mesh.userData.totalIdx=geo.getIndex().count;
   const grp=new THREE.Group();
+  // Random tilt for each plant — no two stand the same way
+  grp.rotation.set((rng()-0.5)*0.4,rng()*Math.PI*2,(rng()-0.5)*0.3);
+  // Random scale variation
+  const sc=0.6+rng()*0.8;
+  grp.scale.set(sc,sc,sc);
   grp.add(mesh);
   return grp;
 }
@@ -388,8 +412,9 @@ const plantEntries=[];
 function addPlant(text,grow=true){
   let grp;
   try{grp=makePlant(text)}catch(e){console.error('Plant err:',e);return null}
+  // ALL plants clustered tightly at center — intertwined mass
   const rr=srand(hash(text)+plantEntries.length);
-  grp.position.set((rr()-0.5)*2.5,0,(rr()-0.5)*2.5);
+  grp.position.set((rr()-0.5)*0.8,0,(rr()-0.5)*0.8);
   const mesh=grp.children[0];
   if(grow&&mesh){
     grp.userData.growStart=performance.now();
