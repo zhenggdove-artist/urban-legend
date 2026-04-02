@@ -6,60 +6,81 @@
   <title>URBAN LEGEND</title>
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
-    html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:"Courier New",monospace}
+    @font-face{
+      font-family:"Saint";
+      src:url("FONTS/saint.otf") format("opentype");
+      font-weight:normal;
+      font-style:normal;
+      font-display:swap;
+    }
+    :root{
+      --ui-lav:#e7ddff;
+      --ui-lav-2:#cdbcf4;
+      --ui-sky:#bfe3ff;
+      --ui-shadow:rgba(73,64,122,0.35);
+      --ui-ink:#ffffff;
+      --ui-ink-soft:#f2f6ff;
+    }
+    html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:"Saint","Trebuchet MS",sans-serif}
     #c{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
-    #ui{position:absolute;bottom:20px;right:20px;
-      width:min(80vw,520px);background:rgba(205,180,219,0.25);border:1px solid rgba(255,200,221,0.35);
-      padding:24px;z-index:10;color:#f5d6d6;backdrop-filter:blur(8px);transition:all 0.4s;border-radius:8px}
-    #ui.mini{width:auto;padding:10px 18px;cursor:pointer}
+    #ui{position:absolute;left:6vw;top:18vh;
+      width:min(72vw,420px);background:linear-gradient(160deg,rgba(231,221,255,0.55),rgba(191,227,255,0.35));
+      border:1px solid rgba(255,255,255,0.45);padding:20px 22px 18px;z-index:10;color:var(--ui-ink);
+      backdrop-filter:blur(8px);transition:all 0.4s;border-radius:28px;
+      box-shadow:0 18px 38px var(--ui-shadow), inset 0 1px 0 rgba(255,255,255,0.6)}
+    #ui.mini{width:auto;padding:10px 18px;cursor:pointer;border-radius:999px}
     #ui.mini h2,#ui.mini textarea,#ui.mini button#go{display:none}
-    #ui.mini::after{content:'WRITE';font-size:11px;letter-spacing:4px;color:#ffc8dd;text-transform:uppercase}
+    #ui.mini::after{content:'WRITE';font-size:12px;letter-spacing:3px;color:var(--ui-ink-soft);text-transform:uppercase}
     #ui.hidden{opacity:0;pointer-events:none}
-    #ui h2{font-size:14px;letter-spacing:6px;color:#ffc8dd;margin-bottom:10px}
-    #ui textarea{width:100%;height:90px;background:rgba(0,0,0,0.25);border:1px solid rgba(255,200,221,0.25);
-      color:#f5d6d6;padding:12px;font-size:14px;resize:none;outline:none;border-radius:4px}
-    #go{margin-top:14px;width:100%;height:44px;background:rgba(255,175,204,0.12);
-      border:1px solid rgba(255,175,204,0.35);color:#ffc8dd;text-transform:uppercase;letter-spacing:6px;
-      cursor:pointer;font-family:inherit;border-radius:4px}
+    #ui h2{font-size:20px;letter-spacing:3px;color:var(--ui-ink);margin-bottom:12px;text-shadow:0 2px 8px rgba(80,70,130,0.25)}
+    #ui textarea{width:100%;height:92px;background:rgba(255,255,255,0.28);border:1px solid rgba(255,255,255,0.55);
+      color:var(--ui-ink);padding:12px 16px;font-size:16px;resize:none;outline:none;border-radius:18px;
+      box-shadow:inset 0 2px 6px rgba(90,80,140,0.18)}
+    #go{margin-top:14px;width:100%;height:48px;background:linear-gradient(90deg,var(--ui-lav),var(--ui-lav-2));
+      border:1px solid rgba(255,255,255,0.65);color:var(--ui-ink);text-transform:uppercase;letter-spacing:4px;
+      cursor:pointer;font-family:inherit;border-radius:999px;box-shadow:0 6px 16px rgba(90,70,140,0.25)}
     #go:disabled{opacity:0.4;cursor:not-allowed}
     #pop{position:absolute;bottom:80px;left:50%;transform:translateX(-50%);
       max-width:min(90vw,600px);max-height:40vh;overflow-y:auto;
-      background:rgba(205,180,219,0.35);color:#f5d6d6;
-      border:1px solid rgba(255,200,221,0.3);padding:12px 16px;z-index:12;display:none;
-      font-size:13px;letter-spacing:1px;border-radius:6px;backdrop-filter:blur(6px);
+      background:linear-gradient(160deg,rgba(231,221,255,0.7),rgba(191,227,255,0.4));color:var(--ui-ink);
+      border:1px solid rgba(255,255,255,0.5);padding:12px 16px;z-index:12;display:none;
+      font-size:14px;letter-spacing:1px;border-radius:16px;backdrop-filter:blur(6px);
       white-space:pre-wrap;word-break:break-word;overscroll-behavior:contain}
     #pop.show{display:block}
     #pop::-webkit-scrollbar{width:4px}
-    #pop::-webkit-scrollbar-thumb{background:rgba(255,200,221,0.4);border-radius:2px}
-    #search-btn{position:absolute;bottom:30px;left:20px;width:44px;height:44px;
-      background:rgba(205,180,219,0.2);border:1px solid rgba(255,200,221,0.35);color:#ffc8dd;
-      border-radius:50%;cursor:pointer;z-index:14;font-family:inherit;font-size:16px;
-      display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
-    #search-panel{position:absolute;bottom:80px;left:20px;width:min(70vw,320px);
-      background:rgba(205,180,219,0.3);border:1px solid rgba(255,200,221,0.35);
-      padding:14px;z-index:15;border-radius:8px;backdrop-filter:blur(8px);display:none}
+    #pop::-webkit-scrollbar-thumb{background:rgba(180,170,230,0.6);border-radius:2px}
+    #search-btn{position:absolute;bottom:28px;left:24px;width:52px;height:52px;
+      background:linear-gradient(160deg,rgba(231,221,255,0.7),rgba(191,227,255,0.45));
+      border:1px solid rgba(255,255,255,0.6);color:var(--ui-ink);
+      border-radius:50%;cursor:pointer;z-index:14;font-family:inherit;font-size:18px;
+      display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);
+      box-shadow:0 10px 22px rgba(90,70,140,0.25)}
+    #search-panel{position:absolute;bottom:90px;left:24px;width:min(70vw,320px);
+      background:linear-gradient(160deg,rgba(231,221,255,0.7),rgba(191,227,255,0.45));
+      border:1px solid rgba(255,255,255,0.6);
+      padding:14px;z-index:15;border-radius:18px;backdrop-filter:blur(8px);display:none}
     #search-panel.show{display:block}
-    #search-panel input{width:100%;height:36px;background:rgba(0,0,0,0.25);border:1px solid rgba(255,200,221,0.25);
-      color:#f5d6d6;padding:0 10px;font-size:13px;outline:none;border-radius:4px;font-family:inherit}
+    #search-panel input{width:100%;height:38px;background:rgba(255,255,255,0.3);border:1px solid rgba(255,255,255,0.6);
+      color:var(--ui-ink);padding:0 12px;font-size:14px;outline:none;border-radius:14px;font-family:inherit}
     #search-results{margin-top:10px;max-height:30vh;overflow-y:auto;overscroll-behavior:contain}
     #search-results::-webkit-scrollbar{width:4px}
-    #search-results::-webkit-scrollbar-thumb{background:rgba(255,200,221,0.4);border-radius:2px}
-    .sr-item{padding:8px;margin-bottom:6px;background:rgba(0,0,0,0.15);border-radius:4px;
-      color:#f5d6d6;font-size:12px;cursor:pointer;word-break:break-word;border:1px solid transparent}
-    .sr-item:hover{border-color:rgba(255,200,221,0.4)}
+    #search-results::-webkit-scrollbar-thumb{background:rgba(180,170,230,0.6);border-radius:2px}
+    .sr-item{padding:8px;margin-bottom:6px;background:rgba(255,255,255,0.22);border-radius:12px;
+      color:var(--ui-ink);font-size:13px;cursor:pointer;word-break:break-word;border:1px solid transparent}
+    .sr-item:hover{border-color:rgba(255,255,255,0.7)}
   </style>
 </head>
 <body>
   <canvas id="c"></canvas>
   <div id="ui">
     <h2>WRITE</h2>
-    <textarea id="ta" placeholder="留下你的話..."></textarea>
+    <textarea id="ta" placeholder="Leave your message..."></textarea>
     <button id="go" disabled>PLANT</button>
   </div>
   <div id="pop"></div>
   <button id="search-btn">&#x1F50D;</button>
   <div id="search-panel">
-    <input id="search-input" placeholder="搜尋植物文字..." />
+    <input id="search-input" placeholder="Search planted words..." />
     <div id="search-results"></div>
   </div>
 
@@ -730,6 +751,8 @@ let mixer=null,clipIdle=null,clipDrink=null,clipJump=null,clipWalk=null,clipFall
 let actIdle=null,actDrink=null,actJump=null,actWalk=null,actFall=null;
 const charMats=[];
 let charModel=null;
+let rootBone=null;
+let rootBoneBase=null;
 const CHAR_Y_OFFSET=0.25; // ← 手動微調角色在平台上的高度（往上加大數值）
 
 // Load character (single GLB with mesh + all animations)
@@ -751,6 +774,13 @@ async function loadChar(){
         charMats.push(o.material);
       }
     }
+  });
+  // Lock root bone translation to prevent animation root-motion drift
+  charModel.traverse(o=>{
+    if(rootBone||!o.isSkinnedMesh||!o.skeleton)return;
+    const bones=o.skeleton.bones||[];
+    rootBone=bones.find(b=>/hips|root/i.test(b.name))||bones[0]||null;
+    if(rootBone)rootBoneBase=rootBone.position.clone();
   });
   charRoot.add(charModel);
 
@@ -895,6 +925,7 @@ function cinematicCam(dt){
 // ===== Character Animation State Machine =====
 const PLATFORM_EDGE=1.6; // walk distance to reach platform edge
 const JUMP_FORWARD=1.6; // forward distance during jump off the edge
+const JUMP_CUT=0.45; // cut jump before landing frames
 let walkStartY=0;
 let walkStartX=0;
 let edgeZ=0; // charModel.position.z when reaching edge
@@ -903,12 +934,17 @@ let jumpEndZ=0;
 function animateChar(dt){
   if(!charReady||!mixer)return;
   mixer.update(dt);
+  if(rootBone&&rootBoneBase){
+    rootBone.position.copy(rootBoneBase);
+    rootBone.updateMatrixWorld(true);
+  }
 
   if(phase===PHASE.DRINK){
     if(phaseT>=clipDrink.duration*0.45){
       phase=PHASE.WALK;phaseT=0;
       walkStartY=charModel?charModel.position.y:CHAR_Y_OFFSET;
-      walkStartX=charModel?charModel.position.x:0;
+      walkStartX=0;
+      if(charModel)charModel.position.x=0;
       actDrink?.fadeOut(0.3);
       if(clipWalk){
         actWalk?.stop();
@@ -942,13 +978,14 @@ function animateChar(dt){
     }
   }
   else if(phase===PHASE.JUMP){
-    const jumpEnd=clipJump?clipJump.duration*0.7:0.8;
+    const jumpEnd=clipJump?clipJump.duration*JUMP_CUT:0.5;
     if(charModel){
       charModel.position.x=walkStartX;
-      charModel.position.y=walkStartY;
       // Jump forward off the edge
       const jt=Math.min(1,phaseT/jumpEnd);
       const ease=jt*jt*(3-2*jt);
+      const jumpArc=Math.sin(Math.PI*jt)*0.45;
+      charModel.position.y=walkStartY+jumpArc;
       charModel.position.z=jumpStartZ+(jumpEndZ-jumpStartZ)*ease;
     }
     if(phaseT>=jumpEnd){
