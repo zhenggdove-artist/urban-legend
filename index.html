@@ -51,7 +51,6 @@
 </head>
 <body>
   <canvas id="c"></canvas>
-  <div id="dbg" style="position:fixed;top:0;left:0;color:#ff0;background:rgba(0,0,0,0.7);font:12px monospace;padding:4px;z-index:9999;pointer-events:none"></div>
   <div id="ui">
     <h2>WRITE</h2>
     <textarea id="ta" placeholder="留下你的話..."></textarea>
@@ -898,8 +897,11 @@ function cinematicCam(dt){
 
 // ===== Character Animation State Machine =====
 const PLATFORM_EDGE=1.6; // walk distance to reach platform edge
+const JUMP_FORWARD=1.2; // forward distance during jump off the edge
 let walkStartY=0;
 let edgeZ=0; // charModel.position.z when reaching edge
+let jumpStartZ=0;
+let jumpEndZ=0;
 function animateChar(dt){
   if(!charReady||!mixer)return;
   mixer.update(dt);
@@ -910,8 +912,9 @@ function animateChar(dt){
       walkStartY=charModel?charModel.position.y:CHAR_Y_OFFSET;
       actDrink?.fadeOut(0.3);
       if(clipWalk){
+        actWalk?.stop();
         actWalk=mixer.clipAction(clipWalk);
-        actWalk.setLoop(THREE.LoopOnce);
+        actWalk.setLoop(THREE.LoopOnce,1);
         actWalk.clampWhenFinished=true;
         actWalk.reset().fadeIn(0.3).play();
       }
@@ -927,8 +930,10 @@ function animateChar(dt){
     }
     if(t>=1){
       edgeZ=charModel?charModel.position.z:0;
+      jumpStartZ=edgeZ;
+      jumpEndZ=edgeZ-JUMP_FORWARD;
       phase=PHASE.JUMP;phaseT=0;
-      actWalk?.fadeOut(0.2);
+      actWalk?.stop();
       if(clipJump){
         actJump=mixer.clipAction(clipJump);
         actJump.setLoop(THREE.LoopOnce);actJump.clampWhenFinished=true;
@@ -937,12 +942,14 @@ function animateChar(dt){
     }
   }
   else if(phase===PHASE.JUMP){
+    const jumpEnd=clipJump?clipJump.duration*0.7:0.8;
     if(charModel){
       charModel.position.y=walkStartY;
       // Jump forward off the edge
-      charModel.position.z=edgeZ-phaseT*1.2;
+      const jt=Math.min(1,phaseT/jumpEnd);
+      const ease=jt*jt*(3-2*jt);
+      charModel.position.z=jumpStartZ+(jumpEndZ-jumpStartZ)*ease;
     }
-    const jumpEnd=clipJump?clipJump.duration*0.7:0.8;
     if(phaseT>=jumpEnd){
       phase=PHASE.FALL;phaseT=0;
       actJump?.fadeOut(0.2);
@@ -959,7 +966,11 @@ function animateChar(dt){
     const t=Math.min(1,phaseT/dur);
     const easeIn=t*t;
     charRoot.position.y=PLAT_Y-(PLAT_Y)*easeIn;
-    if(charModel)charModel.rotation.y=Math.PI*(1-t);
+    if(charModel){
+      charModel.position.z=jumpEndZ;
+      charModel.position.y=walkStartY;
+      charModel.rotation.y=Math.PI*(1-t);
+    }
     updateSky(t);
     if(t>=1){
       phase=PHASE.LAND;phaseT=0;
@@ -1251,18 +1262,6 @@ function tick(){
   }
 
   updateBugs(globalTime);
-
-  // Debug overlay — remove after confirming character works
-  const dbg=document.getElementById('dbg');
-  if(dbg){
-    let s='';
-    if(charModel){
-      const b=new THREE.Box3().setFromObject(charModel);
-      const sz=new THREE.Vector3();b.getSize(sz);
-      s=` sz:${sz.x.toFixed(2)},${sz.y.toFixed(2)},${sz.z.toFixed(2)} sc:${charModel.scale.x}`;
-    }
-    dbg.textContent=`ready:${charReady} idle:${!!clipIdle} walk:${!!clipWalk} fall:${!!clipFall} phase:${phase} root.y:${charRoot.position.y.toFixed(1)}${s}`;
-  }
 
   renderer.render(scene,camera);
 }
