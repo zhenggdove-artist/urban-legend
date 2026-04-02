@@ -1425,8 +1425,10 @@ function animateChar(dt){
   else if(phase===PHASE.LAND){
     if(phaseT>=2.5){
       phase=PHASE.DONE;phaseT=0;
-      camYaw=0.3;camPitch=0.35;camDist=14;
-      camTarget.set(0,3,0);
+      interacting=false;interTimer=0;
+      camYaw=0.3;camPitch=0.35;camDist=8;
+      if(lastPlantedPos)camTarget.set(lastPlantedPos.x,2,lastPlantedPos.z);
+      else camTarget.set(0,3,0);
     }
   }
 }
@@ -1586,6 +1588,7 @@ function addPlant(text,grow=true,ts=null){
   plantEntries.push({mesh:grp,text,ts:ts||new Date().toISOString(),pendingLabel:!!grow});
   // Spawn bugs around this plant's position
   spawnBugsAt(grp.position.x,grp.position.z,3+Math.floor(Math.random()*4));
+  if(grow)lastPlantedPos=grp.position.clone();
   return grp;
 }
 
@@ -1593,6 +1596,7 @@ function addPlant(text,grow=true,ts=null){
 let camYaw=Math.PI,camPitch=0.2,camDist=7.5;
 let camTarget=new THREE.Vector3(0,PLAT_Y+1,0);
 let interacting=false,interTimer=0;
+let lastPlantedPos=null; // world position of the most recently planted plant
 const ptrs=new Map();
 let dragS={x:0,y:0,yaw:0,pitch:0},pinchD0=0,pinchR0=14;
 
@@ -1814,7 +1818,10 @@ goBtn.addEventListener('click',(e)=>{
     const planted=addPlant(text,true);
     saveEntry(text);
     if(planted){clearGlow();addGlow(planted)}
-    camTarget.set(0,3,0);camDist=10;
+    interacting=false;interTimer=0;
+    if(lastPlantedPos)camTarget.set(lastPlantedPos.x,2,lastPlantedPos.z);
+    else camTarget.set(0,3,0);
+    camDist=8;
   }
 });
 
@@ -1920,10 +1927,16 @@ function tick(){
     if(phase===PHASE.IDLE||phase===PHASE.DRINK||phase===PHASE.WALK||phase===PHASE.JUMP){
       camTarget.set(charRoot.position.x,charRoot.position.y+1,charRoot.position.z);
     }
-    // Only pull camera target to ground level during DONE phase
+    // During DONE phase: orbit around the last planted plant
     if(phase===PHASE.DONE){
-      const maxY=plantEntries.length>0?4:3;
-      camTarget.y+=(maxY-camTarget.y)*dt*0.5;
+      if(lastPlantedPos&&!interacting){
+        camTarget.x+=(lastPlantedPos.x-camTarget.x)*dt*2;
+        camTarget.z+=(lastPlantedPos.z-camTarget.z)*dt*2;
+        camTarget.y+=(2-camTarget.y)*dt*2;
+      }else if(!lastPlantedPos){
+        const maxY=plantEntries.length>0?4:3;
+        camTarget.y+=(maxY-camTarget.y)*dt*0.5;
+      }
     }
     updateCam();
   }
