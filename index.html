@@ -22,6 +22,8 @@
       --ui-ink-soft:#f2f6ff;
     }
     html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:"Saint","Trebuchet MS",sans-serif}
+    button,input,textarea{font-family:"Saint","Trebuchet MS",sans-serif}
+    #ui,#ui *,#pop,#search-panel,#search-panel *,#search-btn{font-family:"Saint","Trebuchet MS",sans-serif}
     #c{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
     #ui{position:absolute;left:6vw;top:18vh;
       width:min(72vw,420px);background:linear-gradient(160deg,rgba(231,221,255,0.55),rgba(191,227,255,0.35));
@@ -753,6 +755,7 @@ const charMats=[];
 let charModel=null;
 let rootBone=null;
 let rootBoneBase=null;
+let baseModelY=0;
 const CHAR_Y_OFFSET=0.25; // ← 手動微調角色在平台上的高度（往上加大數值）
 
 // Load character (single GLB with mesh + all animations)
@@ -764,6 +767,12 @@ async function loadChar(){
   charModel.rotation.y=Math.PI; // face away from camera (back towards +Z)
   charModel.scale.setScalar(100); // Mixamo FBX→Blender applies 0.01 scale — undo it
   charModel.position.y=CHAR_Y_OFFSET; // raise above platform surface
+  charModel.updateMatrixWorld(true);
+  { // Auto-adjust base Y so feet sit on platform
+    const box=new THREE.Box3().setFromObject(charModel);
+    baseModelY=CHAR_Y_OFFSET-box.min.y;
+    charModel.position.y=baseModelY;
+  }
 
   // Keep original textures — only disable frustum culling
   charModel.traverse(o=>{
@@ -928,6 +937,7 @@ const JUMP_FORWARD=1.6; // forward distance during jump off the edge
 const JUMP_CUT=0.45; // cut jump before landing frames
 let walkStartY=0;
 let walkStartX=0;
+let walkStartZ=0;
 let edgeZ=0; // charModel.position.z when reaching edge
 let jumpStartZ=0;
 let jumpEndZ=0;
@@ -935,16 +945,19 @@ function animateChar(dt){
   if(!charReady||!mixer)return;
   mixer.update(dt);
   if(rootBone&&rootBoneBase){
-    rootBone.position.copy(rootBoneBase);
+    rootBone.position.x=rootBoneBase.x;
+    rootBone.position.z=rootBoneBase.z;
+    if(rootBone.position.y<rootBoneBase.y)rootBone.position.y=rootBoneBase.y;
     rootBone.updateMatrixWorld(true);
   }
 
   if(phase===PHASE.DRINK){
     if(phaseT>=clipDrink.duration*0.45){
       phase=PHASE.WALK;phaseT=0;
-      walkStartY=charModel?charModel.position.y:CHAR_Y_OFFSET;
-      walkStartX=0;
-      if(charModel)charModel.position.x=0;
+      walkStartY=baseModelY;
+      walkStartX=charRoot.position.x;
+      walkStartZ=charRoot.position.z;
+      if(charModel)charModel.position.set(0,walkStartY,0);
       actDrink?.fadeOut(0.3);
       if(clipWalk){
         actWalk?.stop();
@@ -959,13 +972,11 @@ function animateChar(dt){
     // Walk once to edge — use clip duration so animation plays exactly once
     const walkDur=clipWalk?clipWalk.duration:2.0;
     const t=Math.min(1,phaseT/walkDur);
-    if(charModel){
-      charModel.position.x=walkStartX;
-      charModel.position.z=-PLATFORM_EDGE*t;
-      charModel.position.y=walkStartY;
-    }
+    const z=walkStartZ-PLATFORM_EDGE*t;
+    charRoot.position.set(walkStartX,PLAT_Y,z);
+    if(charModel)charModel.position.set(0,walkStartY,0);
     if(t>=1){
-      edgeZ=charModel?charModel.position.z:0;
+      edgeZ=charRoot.position.z;
       jumpStartZ=edgeZ;
       jumpEndZ=edgeZ-JUMP_FORWARD;
       phase=PHASE.JUMP;phaseT=0;
@@ -980,13 +991,12 @@ function animateChar(dt){
   else if(phase===PHASE.JUMP){
     const jumpEnd=clipJump?clipJump.duration*JUMP_CUT:0.5;
     if(charModel){
-      charModel.position.x=walkStartX;
-      // Jump forward off the edge
       const jt=Math.min(1,phaseT/jumpEnd);
       const ease=jt*jt*(3-2*jt);
       const jumpArc=Math.sin(Math.PI*jt)*0.45;
-      charModel.position.y=walkStartY+jumpArc;
-      charModel.position.z=jumpStartZ+(jumpEndZ-jumpStartZ)*ease;
+      const z=jumpStartZ+(jumpEndZ-jumpStartZ)*ease;
+      charRoot.position.set(walkStartX,PLAT_Y,z);
+      charModel.position.set(0,walkStartY+jumpArc,0);
     }
     if(phaseT>=jumpEnd){
       phase=PHASE.FALL;phaseT=0;
@@ -1005,9 +1015,9 @@ function animateChar(dt){
     const easeIn=t*t;
     charRoot.position.y=PLAT_Y-(PLAT_Y)*easeIn;
     if(charModel){
-      charModel.position.x=walkStartX;
-      charModel.position.z=jumpEndZ;
-      charModel.position.y=walkStartY;
+      charRoot.position.x=walkStartX;
+      charRoot.position.z=jumpEndZ;
+      charModel.position.set(0,walkStartY,0);
       charModel.rotation.y=Math.PI*(1-t);
     }
     updateSky(t);
@@ -1015,7 +1025,7 @@ function animateChar(dt){
       phase=PHASE.LAND;phaseT=0;
       charRoot.position.y=0;
       actFall?.fadeOut(0.3);
-      if(charModel){charModel.position.set(0,CHAR_Y_OFFSET,0);charModel.rotation.y=Math.PI}
+      if(charModel){charModel.position.set(0,baseModelY,0);charModel.rotation.y=Math.PI}
       createBurst(new THREE.Vector3(0,0,0));
       if(firstText){
         const planted=addPlant(firstText,true);
