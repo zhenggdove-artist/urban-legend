@@ -938,16 +938,16 @@ loadChar().catch(e=>console.error('Char load err:',e));
 // ===== Mushroom Cloud Particle Burst (蕈狀雲) =====
 let burst=null;
 function createBurst(pos){
-  const N=12500,pts=[],cols=[],vels=[],sizes=[];
+  const N=22000,pts=[],cols=[],vels=[],sizes=[];
   for(let i=0;i<N;i++){
     // 3D sphere of tiny particles, expanding outward
     const u=Math.random()*2-1;
     const th=Math.random()*Math.PI*2;
     const s=Math.sqrt(1-u*u);
     const dx=s*Math.cos(th),dy=u,dz=s*Math.sin(th);
-    const r0=Math.cbrt(Math.random())*0.45;
+    const r0=Math.cbrt(Math.random())*1.0;
     const px=pos.x+dx*r0,py=pos.y+dy*r0,pz=pos.z+dz*r0;
-    const speed=3+Math.random()*9;
+    const speed=6+Math.random()*16;
     const vx=dx*speed,vy=dy*speed,vz=dz*speed;
     pts.push(px,py,pz);
     const brightness=0.75+Math.random()*0.25;
@@ -956,25 +956,26 @@ function createBurst(pos){
     const b=brightness*Math.random()*0.2;
     cols.push(r,g,b);
     vels.push(vx,vy,vz);
-    sizes.push(0.02+Math.random()*0.08);
+    sizes.push(0.03+Math.random()*0.12);
   }
   const geo=new THREE.BufferGeometry();
   geo.setAttribute('position',new THREE.Float32BufferAttribute(pts,3));
   geo.setAttribute('color',new THREE.Float32BufferAttribute(cols,3));
   geo.setAttribute('size',new THREE.Float32BufferAttribute(sizes,1));
-  const mat=new THREE.PointsMaterial({size:0.15,vertexColors:true,transparent:true,opacity:1,depthWrite:false,sizeAttenuation:true,blending:THREE.AdditiveBlending});
+  const mat=new THREE.PointsMaterial({size:0.22,vertexColors:true,transparent:true,opacity:1,depthWrite:false,sizeAttenuation:true,blending:THREE.AdditiveBlending});
   const mesh=new THREE.Points(geo,mat);
   scene.add(mesh);
-  burst={mesh,vels,time:0,geo,N};
+  burst={mesh,vels,time:0,geo,N,fadePlants:0};
 }
 function updateBurst(dt){
   if(!burst)return;
   burst.time+=dt;
+  burst.fadePlants=Math.min(1,burst.fadePlants+dt*3);
   const p=burst.geo.getAttribute('position');
-  const drag=0.97;
+  const drag=0.98;
   for(let i=0;i<burst.N;i++){
     burst.vels[i*3]*=drag;
-    burst.vels[i*3+1]-=4*dt; // lighter gravity for floaty feel
+    burst.vels[i*3+1]-=2*dt; // floaty
     burst.vels[i*3+1]*=drag;
     burst.vels[i*3+2]*=drag;
     p.setX(i,p.getX(i)+burst.vels[i*3]*dt);
@@ -985,8 +986,11 @@ function updateBurst(dt){
   // Fade out over 5 seconds for longer spectacle
   const fade=Math.max(0,1-burst.time/5);
   burst.mesh.material.opacity=fade;
-  burst.mesh.material.size=0.15*Math.max(0.3,1-burst.time*0.1);
-  if(burst.time>5.5){scene.remove(burst.mesh);burst.geo.dispose();burst.mesh.material.dispose();burst=null}
+  burst.mesh.material.size=0.22*Math.max(0.3,1-burst.time*0.08);
+  if(burst.time>5.5){
+    scene.remove(burst.mesh);burst.geo.dispose();burst.mesh.material.dispose();
+    burst=null;
+  }
 }
 
 // ===== Character Aura (yellow glow particles) =====
@@ -1088,7 +1092,7 @@ const warmGlow=new THREE.Color('#ffd24a');
 let drinkGlowT=-1;
 const DRINK_GLOW_DUR=2.4;
 let pulseGlow=null;
-const pulseGeo=new THREE.SphereGeometry(0.2,24,16);
+const pulseGeo=new THREE.SphereGeometry(0.04,12,8);
 function startDrinkGlow(){drinkGlowT=0}
 function resetDrinkGlow(){
   drinkGlowT=-1;
@@ -1115,12 +1119,14 @@ function updateDrinkGlow(dt){
     const group=new THREE.Group();
     group.position.copy(center);
     const spheres=[];
-    for(let i=0;i<3;i++){
+    for(let i=0;i<100;i++){
       const mat=new THREE.MeshBasicMaterial({
         color:0xffd24a,transparent:true,opacity:0.35,
         blending:THREE.AdditiveBlending,depthWrite:false
       });
       const m=new THREE.Mesh(pulseGeo,mat);
+      m.userData.phase=Math.random();
+      m.userData.radius=0.1+Math.random()*0.2;
       group.add(m);spheres.push(m);
     }
     charRoot.add(group);
@@ -1130,10 +1136,10 @@ function updateDrinkGlow(dt){
     pulseGlow.time+=dt;
     for(let i=0;i<pulseGlow.spheres.length;i++){
       const s=pulseGlow.spheres[i];
-      const t=(pulseGlow.time*0.9+i/3)%1;
-      const r=0.2+t*1.6;
+      const t=(pulseGlow.time*1.2+s.userData.phase)%1;
+      const r=s.userData.radius+t*1.4;
       s.scale.setScalar(r);
-      s.material.opacity=0.45*(1-t);
+      s.material.opacity=0.25*(1-t);
     }
   }
   for(const info of charMats){
@@ -1333,6 +1339,19 @@ function animateChar(dt){
 const plantRoot=new THREE.Group();
 scene.add(plantRoot);
 const plantEntries=[];
+function setPlantsDim(f){
+  for(const entry of plantEntries){
+    const mesh=entry.mesh?.children?.[0];
+    if(!mesh||!mesh.material)continue;
+    const mats=Array.isArray(mesh.material)?mesh.material:[mesh.material];
+    for(const m of mats){
+      if(!m.userData)m.userData={};
+      if(m.userData.baseOpacity===undefined)m.userData.baseOpacity=m.opacity??1;
+      m.transparent=true;
+      m.opacity=m.userData.baseOpacity*(1-0.6*f);
+    }
+  }
+}
 
 function addPlant(text,grow=true,ts=null){
   let grp;
@@ -1664,6 +1683,11 @@ function tick(){
   updateBurst(dt);
   updateAura(dt);
   updateDrinkGlow(dt);
+  if(burst){
+    setPlantsDim(Math.min(1,burst.fadePlants));
+  }else{
+    setPlantsDim(0);
+  }
   if(phase===PHASE.IDLE||phase===PHASE.DRINK||phase===PHASE.WALK||phase===PHASE.JUMP){
     updateSky(0);
   }
