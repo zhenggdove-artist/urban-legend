@@ -102,22 +102,37 @@
     #fade{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;
       transition:opacity 0.6s ease;z-index:20}
     #fade.show{opacity:1}
-    #title{position:absolute;top:3vh;left:50%;transform:translateX(-50%) perspective(200px) rotateX(8deg);
-      font-size:52px;letter-spacing:10px;font-weight:bold;
+    #title{position:absolute;top:3vh;left:50%;transform:translateX(-50%) perspective(200px) rotateX(6deg);
+      font-size:clamp(24px,7vw,52px);letter-spacing:0.6em;font-weight:bold;
       font-family:"Saint","Trebuchet MS",sans-serif;
       text-transform:uppercase;z-index:12;pointer-events:none;
-      color:#E84887;
+      white-space:nowrap;text-align:center;
+      color:#d4849e;
+      -webkit-text-stroke:0.5px rgba(255,255,255,0.3);
       text-shadow:
-        0 1px 0 #F06AA0,
-        0 2px 0 #D43D78,
-        0 3px 0 #C0306A,
-        0 4px 0 #A8255A,
-        0 5px 0 #8E1A4A,
-        0 6px 0 #72103A,
-        0 8px 12px rgba(0,0,0,0.3),
-        0 0 24px rgba(232,72,135,0.4)}
-    #title span{display:inline-block}
-    @media (max-width:640px){#title{font-size:32px;letter-spacing:6px;top:2vh}}
+        0 0 8px rgba(255,180,220,0.6),
+        0 0 20px rgba(180,140,255,0.4),
+        0 0 40px rgba(100,200,255,0.3),
+        0 1px 0 #e0a0b8,
+        0 2px 0 #c88a9e,
+        0 3px 0 #b07488,
+        0 4px 0 #986070,
+        0 5px 0 #804a58,
+        0 7px 10px rgba(0,0,0,0.25);
+      animation:titleShimmer 4s ease-in-out infinite}
+    #title span{display:inline-block;
+      text-shadow:inherit;
+      animation:titlePuff 3s ease-in-out infinite alternate}
+    @keyframes titleShimmer{
+      0%,100%{filter:hue-rotate(0deg) drop-shadow(0 0 6px rgba(255,180,220,0.5))}
+      25%{filter:hue-rotate(30deg) drop-shadow(0 0 10px rgba(180,140,255,0.5))}
+      50%{filter:hue-rotate(60deg) drop-shadow(0 0 8px rgba(100,220,255,0.5))}
+      75%{filter:hue-rotate(-20deg) drop-shadow(0 0 10px rgba(255,160,180,0.5))}
+    }
+    @keyframes titlePuff{
+      0%{transform:scale(1)}
+      100%{transform:scale(1.04)}
+    }
     #mouth-text-layer{position:fixed;inset:0;pointer-events:none;z-index:18}
     .mouth-text{position:absolute;color:#ff1f1f;font-size:16px;letter-spacing:1px;
       text-shadow:0 1px 0 rgba(255,255,255,0.5);white-space:nowrap}
@@ -125,7 +140,7 @@
 </head>
 <body>
   <canvas id="c"></canvas>
-  <div id="title"><span style="font-size:1.35em">U</span><span style="font-size:1.18em">R</span><span style="font-size:1.05em">B</span><span style="font-size:0.92em">A</span><span style="font-size:0.85em">N</span><span style="font-size:0.6em">&nbsp;</span><span style="font-size:0.85em">L</span><span style="font-size:0.92em">E</span><span style="font-size:1.05em">G</span><span style="font-size:1.18em">E</span><span style="font-size:1.35em">N</span><span style="font-size:1.45em">D</span></div>
+  <div id="title"><span style="font-size:1.3em">U</span><span style="font-size:1.15em">R</span><span style="font-size:1.0em">B</span><span style="font-size:0.88em">A</span><span style="font-size:0.82em">N</span><span style="font-size:0.5em;letter-spacing:0.3em">&nbsp;</span><span style="font-size:0.82em">L</span><span style="font-size:0.88em">E</span><span style="font-size:1.0em">G</span><span style="font-size:1.15em">E</span><span style="font-size:1.3em">N</span><span style="font-size:1.4em">D</span></div>
   <div id="mouth-text-layer"></div>
   <div id="ui" class="mini">
     <h2>WRITE</h2>
