@@ -802,7 +802,8 @@ const ta=document.getElementById('ta');
 // Click mini UI to expand
 ui.addEventListener('click',()=>{if(ui.classList.contains('mini'))ui.classList.remove('mini')});
 ta.addEventListener('input',()=>{goBtn.disabled=!ta.value.trim()});
-goBtn.addEventListener('click',()=>{
+goBtn.addEventListener('click',(e)=>{
+  e.stopPropagation();
   const text=ta.value.trim();
   if(!text)return;
   ta.value='';goBtn.disabled=true;
