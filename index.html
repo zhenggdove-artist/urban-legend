@@ -1110,8 +1110,7 @@ function resetDrinkGlow(){
 function updateDrinkGlow(dt){
   if(drinkGlowT<0)return;
   drinkGlowT+=dt;
-  const pulse=0.5+0.5*Math.sin(drinkGlowT*(Math.PI*4));
-  const k=(0.2+0.3*pulse)*0.3;
+  const k=0; // keep body tint minimal so pulse is visible
   if(!pulseGlow&&charModel){
     const box=new THREE.Box3().setFromObject(charModel);
     const center=new THREE.Vector3();box.getCenter(center);
@@ -1131,16 +1130,17 @@ function updateDrinkGlow(dt){
   if(pulseGlow){
     pulseGlow.time+=dt;
     const t=(pulseGlow.time*10)%1; // 10 pulses per second
-    const r=0.25+t*2.8;
+    const u=t<0.5 ? (t*2) : (1-(t-0.5)*2); // out then back in
+    const r=0.15+u*2.6;
     pulseGlow.mesh.scale.setScalar(r);
-    pulseGlow.mesh.material.opacity=0.9*(1-t);
+    pulseGlow.mesh.material.opacity=0.9*(1-u*0.85);
   }
   for(const info of charMats){
     const m=info.mat;
     if(m.emissive){
       const base=info.baseEmissive?info.baseEmissive:new THREE.Color(0,0,0);
-      m.emissive.copy(base).lerp(warmGlow,0.15);
-      if('emissiveIntensity' in m)m.emissiveIntensity=(info.baseEmissiveIntensity||0)+k*0.6;
+      m.emissive.copy(base).lerp(warmGlow,0.05);
+      if('emissiveIntensity' in m)m.emissiveIntensity=(info.baseEmissiveIntensity||0)+k;
     }
   }
   if(phase===PHASE.LAND||phase===PHASE.DONE)resetDrinkGlow();
