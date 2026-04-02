@@ -603,16 +603,11 @@ function makePlant(text){
   mesh.userData.entryText=text;
   mesh.userData.totalIdx=geo.getIndex().count;
   mesh.userData.plantH=plantH;
-  // White glow wireframe outline
-  const edgeMat=new THREE.MeshBasicMaterial({color:0xffffff,wireframe:true,transparent:true,opacity:0.22,depthWrite:false});
-  const edgeMesh=new THREE.Mesh(geo,edgeMat);
-  edgeMesh.userData.isEdgeGlow=true;
   const grp=new THREE.Group();
   grp.rotation.set((rng()-0.5)*0.3,rng()*Math.PI*2,(rng()-0.5)*0.2);
   const sc=0.6+rng()*0.8;
   grp.scale.set(sc,sc,sc);
   grp.add(mesh);
-  grp.add(edgeMesh);
   return grp;
 }
 
