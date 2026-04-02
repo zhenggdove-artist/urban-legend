@@ -604,7 +604,7 @@ function makePlant(text){
   mesh.userData.totalIdx=geo.getIndex().count;
   mesh.userData.plantH=plantH;
   // White glow wireframe outline
-  const edgeMat=new THREE.MeshBasicMaterial({color:0xffffff,wireframe:true,transparent:true,opacity:0.08,depthWrite:false});
+  const edgeMat=new THREE.MeshBasicMaterial({color:0xffffff,wireframe:true,transparent:true,opacity:0.22,depthWrite:false});
   const edgeMesh=new THREE.Mesh(geo,edgeMat);
   edgeMesh.userData.isEdgeGlow=true;
   const grp=new THREE.Group();
@@ -690,7 +690,7 @@ const plantRoot=new THREE.Group();
 scene.add(plantRoot);
 const plantEntries=[];
 
-function addPlant(text,grow=true){
+function addPlant(text,grow=true,ts=null){
   let grp;
   try{grp=makePlant(text)}catch(e){console.error('Plant err:',e);return null}
   // Cluster at center — sometimes grow ON TOP of existing plants
@@ -717,7 +717,7 @@ function addPlant(text,grow=true){
     grp.userData.phase=Math.random()*Math.PI*2;
   }
   plantRoot.add(grp);
-  plantEntries.push({mesh:grp,text});
+  plantEntries.push({mesh:grp,text,ts:ts||new Date().toISOString()});
   return grp;
 }
 
@@ -821,28 +821,34 @@ const searchPanel=document.getElementById('search-panel');
 const searchInput=document.getElementById('search-input');
 const searchResults=document.getElementById('search-results');
 
-searchBtn.addEventListener('click',e=>{
-  e.stopPropagation();
-  searchPanel.classList.toggle('show');
-  if(searchPanel.classList.contains('show'))searchInput.focus();
-  else{clearGlow();searchResults.innerHTML=''}
-});
-
-searchInput.addEventListener('input',()=>{
-  const q=searchInput.value.trim().toLowerCase();
+function renderSearchList(query){
   searchResults.innerHTML='';clearGlow();
-  if(!q)return;
-  const matches=plantEntries.filter(e=>e.text.toLowerCase().includes(q));
+  const q=query.trim().toLowerCase();
+  // Sort by time, newest first
+  const sorted=[...plantEntries].sort((a,b)=>(b.ts||'').localeCompare(a.ts||''));
+  const matches=q?sorted.filter(e=>e.text.toLowerCase().includes(q)):sorted;
   for(const m of matches){
     const div=document.createElement('div');
     div.className='sr-item';div.textContent=m.text;
-    div.addEventListener('click',()=>{
+    div.addEventListener('click',(ev)=>{
+      ev.stopPropagation();
       clearGlow();addGlow(m.mesh);
       pop.textContent=m.text;pop.classList.add('show');
     });
     searchResults.appendChild(div);
-    addGlow(m.mesh);
+    if(q)addGlow(m.mesh);
   }
+}
+
+searchBtn.addEventListener('click',e=>{
+  e.stopPropagation();
+  searchPanel.classList.toggle('show');
+  if(searchPanel.classList.contains('show')){searchInput.focus();renderSearchList('')}
+  else{clearGlow();searchResults.innerHTML='';searchInput.value=''}
+});
+
+searchInput.addEventListener('input',()=>{
+  renderSearchList(searchInput.value);
 });
 
 // Close search panel / popup / glow on blank click (layered dismiss)
@@ -862,7 +868,7 @@ canvas.addEventListener('pointerdown',()=>{
 async function loadSaved(){
   try{
     const entries=await loadEntries();
-    for(const e of entries){if(e.text)addPlant(e.text,false)}
+    for(const e of entries){if(e.text)addPlant(e.text,false,e.created_at||null)}
   }catch(e){console.error('Load err:',e)}
 }
 
