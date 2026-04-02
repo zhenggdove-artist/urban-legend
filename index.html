@@ -624,22 +624,39 @@ renderer.toneMappingExposure=1.3;
 
 const scene=new THREE.Scene();
 
-// Sky gradient
-{
-  const cv=document.createElement('canvas');cv.width=2;cv.height=512;
-  const ctx=cv.getContext('2d');
-  const g=ctx.createLinearGradient(0,0,0,512);
-  g.addColorStop(0,'#E88FAC');
-  g.addColorStop(0.25,'#F0A8C0');
-  g.addColorStop(0.5,'#F5C6D8');
-  g.addColorStop(0.75,'#FADDE6');
-  g.addColorStop(1,'#FFF0F5');
-  ctx.fillStyle=g;ctx.fillRect(0,0,2,512);
-  scene.background=new THREE.CanvasTexture(cv);
+// Sky gradient (dynamic — transitions from pink to white during fall)
+const skyCV=document.createElement('canvas');skyCV.width=2;skyCV.height=512;
+const skyCtx=skyCV.getContext('2d');
+const skyTex=new THREE.CanvasTexture(skyCV);
+scene.background=skyTex;
+let skyLerp=0; // 0=pink, 1=white
+function updateSky(t){
+  skyLerp=t;
+  const g=skyCtx.createLinearGradient(0,0,0,512);
+  // Lerp from pink gradient to white
+  function lc(pink,white){
+    const pr=parseInt(pink.slice(1,3),16),pg=parseInt(pink.slice(3,5),16),pb=parseInt(pink.slice(5,7),16);
+    const wr=parseInt(white.slice(1,3),16),wg=parseInt(white.slice(3,5),16),wb=parseInt(white.slice(5,7),16);
+    const r=Math.round(pr+(wr-pr)*t),gv=Math.round(pg+(wg-pg)*t),b=Math.round(pb+(wb-pb)*t);
+    return `rgb(${r},${gv},${b})`;
+  }
+  g.addColorStop(0,lc('#E88FAC','#FFFFFF'));
+  g.addColorStop(0.25,lc('#F0A8C0','#FFFFFF'));
+  g.addColorStop(0.5,lc('#F5C6D8','#FFFFFF'));
+  g.addColorStop(0.75,lc('#FADDE6','#FFFFFF'));
+  g.addColorStop(1,lc('#FFF0F5','#FFFFFF'));
+  skyCtx.fillStyle=g;skyCtx.fillRect(0,0,2,512);
+  skyTex.needsUpdate=true;
+  // Match fog color to sky midpoint (guard: fog may not exist yet on first call)
+  if(scene.fog){
+    const fogR=0xF5+(0xFF-0xF5)*t,fogG=0xC6+(0xFF-0xC6)*t,fogB=0xD8+(0xFF-0xD8)*t;
+    scene.fog.color.setRGB(fogR/255,fogG/255,fogB/255);
+  }
 }
 
 // Fog for dreamcore depth
-scene.fog=new THREE.FogExp2('#d8e8f0',0.012);
+scene.fog=new THREE.FogExp2('#d8e8f0',0.008);
+updateSky(0);
 
 // Ground — glowing green meadow
 {
@@ -680,10 +697,10 @@ const sun=new THREE.DirectionalLight('#fff5e6',0.7);
 sun.position.set(8,18,5);scene.add(sun);
 scene.add(new THREE.AmbientLight('#ffffff',0.35));
 
-const camera=new THREE.PerspectiveCamera(55,W()/H(),0.1,500);
+const camera=new THREE.PerspectiveCamera(55,W()/H(),0.1,1000);
 
 // ===== Character (GLB) + Cinematic =====
-const PLAT_Y=15; // hidden when camera swings to front during fall
+const PLAT_Y=200; // high enough that ground is invisible from platform
 const PHASE={IDLE:0,DRINK:1,JUMP:2,FALL:3,LAND:4,DONE:5};
 let phase=PHASE.IDLE,phaseT=0,firstText='';
 let charReady=false;
@@ -745,37 +762,58 @@ async function loadChar(){
   }
 
   // Start idle
+  console.log('Animations found:',gltf.animations.map(c=>c.name),'idle:',!!clipIdle,'drink:',!!clipDrink,'jump:',!!clipJump);
   if(clipIdle){actIdle=mixer.clipAction(clipIdle);actIdle.play()}
   charReady=true;
+  console.log('Character loaded, charRoot.position.y:',charRoot.position.y);
 }
 loadChar().catch(e=>console.error('Char load err:',e));
 
-// ===== Yellow Particle Burst =====
+// ===== Mushroom Cloud Particle Burst (蕈狀雲) =====
 let burst=null;
 function createBurst(pos){
-  const N=500,pts=[],cols=[],vels=[],sizes=[];
+  const N=2500,pts=[],cols=[],vels=[],sizes=[];
   for(let i=0;i<N;i++){
-    // Spread origin slightly for volume
-    pts.push(pos.x+(Math.random()-0.5)*0.5,pos.y+Math.random()*0.8,pos.z+(Math.random()-0.5)*0.5);
-    // Warm gold/yellow palette with variation
-    const r=0.9+Math.random()*0.1;
-    const g=0.7+Math.random()*0.25;
-    const b=Math.random()*0.15;
-    cols.push(r,g,b);
-    // Wide spread velocities — spherical burst
     const theta=Math.random()*Math.PI*2;
-    const phi=Math.acos(2*Math.random()-1);
-    const speed=3+Math.random()*10;
-    vels.push(Math.sin(phi)*Math.cos(theta)*speed,
-              Math.abs(Math.cos(phi))*speed*0.8+2,
-              Math.sin(phi)*Math.sin(theta)*speed);
-    sizes.push(0.04+Math.random()*0.18);
+    let vx,vy,vz,px,py,pz,speed;
+    if(i<800){
+      // Central column — narrow fast upward particles
+      const cr=Math.random()*0.6;
+      px=pos.x+Math.cos(theta)*cr;py=pos.y+Math.random()*0.3;pz=pos.z+Math.sin(theta)*cr;
+      speed=8+Math.random()*14;
+      vx=Math.cos(theta)*cr*2;vy=speed;vz=Math.sin(theta)*cr*2;
+    }else if(i<1800){
+      // Dome cap — spreads outward and upward like mushroom top
+      const phi=Math.random()*Math.PI*0.5; // upper hemisphere
+      const capR=Math.random()*0.4;
+      px=pos.x+Math.cos(theta)*capR;py=pos.y+0.5+Math.random()*0.3;pz=pos.z+Math.sin(theta)*capR;
+      speed=5+Math.random()*10;
+      const spreadAngle=0.3+Math.random()*0.7; // more horizontal spread for dome
+      vx=Math.sin(spreadAngle)*Math.cos(theta)*speed*(1.5+Math.random());
+      vy=Math.cos(spreadAngle)*speed*0.6+3;
+      vz=Math.sin(spreadAngle)*Math.sin(theta)*speed*(1.5+Math.random());
+    }else{
+      // Ground ring — fast horizontal ring expanding outward
+      const gr=Math.random()*0.3;
+      px=pos.x+Math.cos(theta)*gr;py=pos.y+Math.random()*0.15;pz=pos.z+Math.sin(theta)*gr;
+      speed=6+Math.random()*12;
+      vx=Math.cos(theta)*speed;vy=Math.random()*3;vz=Math.sin(theta)*speed;
+    }
+    pts.push(px,py,pz);
+    // Warm light particles: gold/white/amber
+    const brightness=0.7+Math.random()*0.3;
+    const r=brightness;
+    const g=brightness*(0.7+Math.random()*0.3);
+    const b=brightness*Math.random()*0.25;
+    cols.push(r,g,b);
+    vels.push(vx,vy,vz);
+    sizes.push(0.03+Math.random()*0.2);
   }
   const geo=new THREE.BufferGeometry();
   geo.setAttribute('position',new THREE.Float32BufferAttribute(pts,3));
   geo.setAttribute('color',new THREE.Float32BufferAttribute(cols,3));
   geo.setAttribute('size',new THREE.Float32BufferAttribute(sizes,1));
-  const mat=new THREE.PointsMaterial({size:0.12,vertexColors:true,transparent:true,opacity:1,depthWrite:false,sizeAttenuation:true});
+  const mat=new THREE.PointsMaterial({size:0.15,vertexColors:true,transparent:true,opacity:1,depthWrite:false,sizeAttenuation:true,blending:THREE.AdditiveBlending});
   const mesh=new THREE.Points(geo,mat);
   scene.add(mesh);
   burst={mesh,vels,time:0,geo,N};
@@ -784,10 +822,10 @@ function updateBurst(dt){
   if(!burst)return;
   burst.time+=dt;
   const p=burst.geo.getAttribute('position');
-  const drag=0.98; // air resistance
+  const drag=0.97;
   for(let i=0;i<burst.N;i++){
     burst.vels[i*3]*=drag;
-    burst.vels[i*3+1]-=7*dt; // gravity
+    burst.vels[i*3+1]-=4*dt; // lighter gravity for floaty feel
     burst.vels[i*3+1]*=drag;
     burst.vels[i*3+2]*=drag;
     p.setX(i,p.getX(i)+burst.vels[i*3]*dt);
@@ -795,10 +833,11 @@ function updateBurst(dt){
     p.setZ(i,p.getZ(i)+burst.vels[i*3+2]*dt);
   }
   p.needsUpdate=true;
-  // Fade out slowly over 3.5 seconds
-  burst.mesh.material.opacity=Math.max(0,1-burst.time/3.5);
-  burst.mesh.material.size=0.12*(1-burst.time*0.15);
-  if(burst.time>4){scene.remove(burst.mesh);burst.geo.dispose();burst.mesh.material.dispose();burst=null}
+  // Fade out over 5 seconds for longer spectacle
+  const fade=Math.max(0,1-burst.time/5);
+  burst.mesh.material.opacity=fade;
+  burst.mesh.material.size=0.15*Math.max(0.3,1-burst.time*0.1);
+  if(burst.time>5.5){scene.remove(burst.mesh);burst.geo.dispose();burst.mesh.material.dispose();burst=null}
 }
 
 // ===== Cinematic Camera =====
@@ -875,7 +914,9 @@ function animateChar(dt){
     const easeIn=t*t;
     charRoot.position.y=PLAT_Y-(PLAT_Y)*easeIn;
     // Rotate to face camera during fall
-    charRoot.children[0].rotation.y=Math.PI*(1-t);
+    if(charRoot.children[0])charRoot.children[0].rotation.y=Math.PI*(1-t);
+    // Sky transition: pink → white during fall
+    updateSky(t);
     if(t>=1){
       phase=PHASE.LAND;phaseT=0;
       charRoot.position.y=0;
@@ -1137,8 +1178,11 @@ function tick(){
     interTimer+=dt;
     if(interTimer>2)interacting=false;
     if(!interacting)camYaw+=dt*0.06;
-    const maxY=plantEntries.length>0?4:3;
-    camTarget.y+=(maxY-camTarget.y)*dt*0.5;
+    // Only pull camera target to ground level during DONE phase
+    if(phase===PHASE.DONE){
+      const maxY=plantEntries.length>0?4:3;
+      camTarget.y+=(maxY-camTarget.y)*dt*0.5;
+    }
     updateCam();
   }
 
