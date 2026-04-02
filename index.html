@@ -123,6 +123,8 @@
       transition:opacity 1.5s ease}
     #title.fade-out{opacity:0}
     #title span{display:inline-block}
+    #title .word{display:inline-block}
+    #title .gap{display:inline-block;width:0.6em}
     #mouth-text-layer{position:fixed;inset:0;pointer-events:none;z-index:18}
     .mouth-text{position:absolute;color:#ff1f1f;font-size:16px;letter-spacing:1px;
       text-shadow:0 1px 0 rgba(255,255,255,0.5);white-space:nowrap}
@@ -130,7 +132,11 @@
 </head>
 <body>
   <canvas id="c"></canvas>
-  <div id="title"><span style="font-size:1.2em">U</span><span style="font-size:1.1em">R</span><span style="font-size:1.0em">B</span><span style="font-size:0.9em">A</span><span style="font-size:0.85em">N</span><span style="font-size:0.5em">&nbsp;</span><span style="font-size:0.85em">L</span><span style="font-size:0.9em">E</span><span style="font-size:1.0em">G</span><span style="font-size:1.1em">E</span><span style="font-size:1.2em">N</span><span style="font-size:1.25em">D</span></div>
+  <div id="title">
+    <span class="word">URBAN</span>
+    <span class="gap"></span>
+    <span class="word">LEGEND</span>
+  </div>
   <div id="mouth-text-layer"></div>
   <div id="ui" class="mini">
     <h2>WRITE</h2>
