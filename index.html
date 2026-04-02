@@ -1105,6 +1105,14 @@ function resetDrinkGlow(){
     });
     pulseGlow=null;
   }
+  if(mouthText){
+    for(const it of mouthText.items){
+      it.texture.dispose();
+      it.sprite.material.dispose();
+    }
+    mouthText.group.parent?.remove(mouthText.group);
+    mouthText=null;
+  }
   for(const info of charMats){
     const m=info.mat;
     if(info.baseEmissive&&m.emissive)m.emissive.copy(info.baseEmissive);
@@ -1118,7 +1126,7 @@ function updateDrinkGlow(dt){
   if(!pulseGlow&&charModel){
     const root=new THREE.Group();
     const makeMat=()=>new THREE.MeshBasicMaterial({
-      color:0xffc52a,transparent:true,opacity:0.95,
+      color:0xff9a1a,transparent:true,opacity:0.95,
       blending:THREE.AdditiveBlending,depthWrite:false,depthTest:false,
       side:THREE.BackSide
     });
@@ -1249,6 +1257,7 @@ function animateChar(dt){
 
   if(phase===PHASE.DRINK){
     const drinkDur=clipDrink?clipDrink.duration*(1-DRINK_START):1.0;
+    if(phaseT<0.4)startMouthText();
     if(phaseT>=drinkDur){
       startDrinkGlow();
       phase=PHASE.WALK;phaseT=0;
@@ -1365,6 +1374,118 @@ function setPlantsDim(f){
       m.transparent=true;
       m.opacity=m.userData.baseOpacity*(1-0.6*f);
     }
+  }
+}
+
+// ===== Mouth Text During Drink =====
+let mouthText=null;
+let mouthBone=null;
+const mouthTmp=new THREE.Vector3();
+const mouthQ=new THREE.Quaternion();
+function findMouthBone(){
+  if(!charModel)return null;
+  let bone=null;
+  charModel.traverse(o=>{
+    if(bone||!o.isBone)return;
+    const n=o.name.toLowerCase();
+    if(n.includes('head')||n.includes('mouth')||n.includes('jaw'))bone=o;
+  });
+  return bone;
+}
+function getMouthWorldPos(){
+  if(!mouthBone)mouthBone=findMouthBone();
+  if(mouthBone){
+    mouthBone.getWorldPosition(mouthTmp);
+    mouthBone.getWorldQuaternion(mouthQ);
+    const fwd=new THREE.Vector3(0,0,1).applyQuaternion(mouthQ);
+    const down=new THREE.Vector3(0,-1,0).applyQuaternion(mouthQ);
+    const f=charHalfHeight*0.12;
+    const d=charHalfHeight*0.08;
+    mouthTmp.add(fwd.multiplyScalar(f));
+    mouthTmp.add(down.multiplyScalar(d));
+    return mouthTmp;
+  }
+  return charRoot.localToWorld(new THREE.Vector3(0,charHalfHeight*0.6,0));
+}
+function makeTextSprite(text){
+  const cv=document.createElement('canvas');
+  cv.width=256;cv.height=64;
+  const ctx=cv.getContext('2d');
+  ctx.clearRect(0,0,cv.width,cv.height);
+  ctx.font='24px Saint';
+  ctx.fillStyle='#ff2b2b';
+  ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText(text,cv.width/2,cv.height/2);
+  const tex=new THREE.CanvasTexture(cv);
+  const mat=new THREE.SpriteMaterial({map:tex,transparent:true,opacity:0.9,depthWrite:false});
+  const sp=new THREE.Sprite(mat);
+  sp.scale.set(charHalfHeight*0.35,charHalfHeight*0.12,1);
+  return {sprite:sp,texture:tex};
+}
+function getRecentTexts(n){
+  const arr=[];
+  for(const e of plantEntries){if(e.text)arr.push(e.text)}
+  if(firstText)arr.push(firstText);
+  const clean=arr.filter(t=>t&&t.trim());
+  const out=clean.slice(-n);
+  while(out.length<n)out.unshift(clean[clean.length-1]||'...');
+  return out;
+}
+function startMouthText(){
+  if(mouthText||!charModel)return;
+  const texts=getRecentTexts(10);
+  const group=new THREE.Group();
+  const items=[];
+  for(let i=0;i<10;i++){
+    const {sprite,texture}=makeTextSprite(texts[i]||'...');
+    const off=new THREE.Vector3(
+      (Math.random()-0.5)*charHalfHeight*0.18,
+      (Math.random()-0.5)*charHalfHeight*0.12,
+      (Math.random()-0.5)*charHalfHeight*0.18
+    );
+    items.push({
+      sprite,texture,
+      delay:Math.random()*0.4,
+      dur:0.6+Math.random()*0.4,
+      off,
+      baseScale:sprite.scale.clone()
+    });
+    sprite.visible=false;
+    group.add(sprite);
+  }
+  charRoot.add(group);
+  mouthText={group,items,time:0};
+}
+function updateMouthText(dt){
+  if(!mouthText)return;
+  mouthText.time+=dt;
+  const mouthWorld=getMouthWorldPos().clone();
+  const mouthLocal=charRoot.worldToLocal(mouthWorld);
+  mouthText.group.position.copy(mouthLocal);
+  let alive=false;
+  for(const it of mouthText.items){
+    const t=(mouthText.time-it.delay)/it.dur;
+    if(t<0){it.sprite.visible=false;alive=true;continue;}
+    if(t<=1){
+      alive=true;
+      it.sprite.visible=true;
+      const u=Math.min(1,t);
+      const pos=it.off.clone().multiplyScalar(1-u);
+      it.sprite.position.copy(pos);
+      const flick=0.6+0.4*Math.sin((mouthText.time*20)+(it.delay*10));
+      it.sprite.material.opacity=flick*(1-u);
+      it.sprite.scale.copy(it.baseScale).multiplyScalar(1-u*0.7);
+    }else{
+      it.sprite.visible=false;
+    }
+  }
+  if(!alive){
+    for(const it of mouthText.items){
+      it.texture.dispose();
+      it.sprite.material.dispose();
+    }
+    mouthText.group.parent?.remove(mouthText.group);
+    mouthText=null;
   }
 }
 
@@ -1698,6 +1819,7 @@ function tick(){
   updateBurst(dt);
   updateAura(dt);
   updateDrinkGlow(dt);
+  updateMouthText(dt);
   if(burst){
     setPlantsDim(Math.min(1,burst.fadePlants));
   }else{
