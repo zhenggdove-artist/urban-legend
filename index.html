@@ -72,13 +72,13 @@
     #pop.show{display:block}
     #pop::-webkit-scrollbar{width:4px}
     #pop::-webkit-scrollbar-thumb{background:rgba(180,170,230,0.6);border-radius:2px}
-    #search-btn{position:absolute;bottom:24px;left:22px;width:82px;height:58px;
+    #search-btn{position:absolute;bottom:12vh;left:22px;width:82px;height:58px;
       background:radial-gradient(circle at 30% 20%,#fff 0%,var(--bubble-1) 55%,var(--bubble-2) 100%);
       border:2px solid var(--bubble-edge);color:var(--bubble-text);
       border-radius:999px;cursor:pointer;z-index:14;font-family:inherit;font-size:0;
       display:flex;align-items:center;justify-content:center;
       box-shadow:0 6px 14px var(--bubble-shadow)}
-    #search-btn::before{content:"›";font-size:24px;color:var(--bubble-text);text-shadow:0 1px 0 rgba(255,255,255,0.7)}
+    #search-btn::before{content:"›";font-size:22px;color:var(--bubble-text);text-shadow:0 1px 0 rgba(255,255,255,0.7)}
     #search-panel{position:absolute;bottom:86px;left:22px;width:min(70vw,330px);
       background:radial-gradient(circle at 30% 20%,#fff 0%,var(--bubble-1) 55%,var(--bubble-2) 100%);
       border:2px solid var(--bubble-edge);
@@ -104,9 +104,9 @@
       transition:opacity 0.6s ease;z-index:20}
     #fade.show{opacity:1}
     /* ===== TITLE STYLE =====
-       手動微調標題位置：修改 left 值調整水平位置（目前 52% 偏右補償）
+       手動微調標題位置：修改 left 值（目前 50%）
        修改 top 值調整垂直位置 */
-    #title{position:absolute;top:3vh;left:52%;
+    #title{position:absolute;top:3vh;left:50%;
       transform:translateX(-50%) perspective(200px) rotateX(6deg);
       font-size:clamp(18px,5.5vw,48px);letter-spacing:0.35em;font-weight:bold;
       font-family:"Saint","Trebuchet MS",sans-serif;
@@ -123,8 +123,29 @@
       transition:opacity 1.5s ease}
     #title.fade-out{opacity:0}
     #title span{display:inline-block}
+    #title span:last-child{letter-spacing:0}
     #title .word{display:inline-block}
     #title .gap{display:inline-block;width:0.6em}
+    @media(max-width:640px){
+      #title{
+        text-shadow:
+          0 1px 0 #f7cfe0,
+          0 2px 0 #efbcd3,
+          0 3px 0 #e3a6c1,
+          0 4px 0 #d394b2,
+          0 5px 6px rgba(0,0,0,0.15);
+        background:linear-gradient(135deg,#f2b7cf 0%,#fce4ec 25%,#e8a0bd 50%,#fff0f5 75%,#f2b7cf 100%);
+        background-size:200% 200%;
+        -webkit-background-clip:text;
+        -webkit-text-fill-color:transparent;
+        background-clip:text;
+        animation:titleShimmer 4s ease infinite}
+    }
+    @keyframes titleShimmer{
+      0%{background-position:0% 50%}
+      50%{background-position:100% 50%}
+      100%{background-position:0% 50%}
+    }
     #mouth-text-layer{position:fixed;inset:0;pointer-events:none;z-index:18}
     .mouth-text{position:absolute;color:#ff1f1f;font-size:16px;letter-spacing:1px;
       text-shadow:0 1px 0 rgba(255,255,255,0.5);white-space:nowrap}
