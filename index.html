@@ -1430,6 +1430,8 @@ function restartWithFade(text){
 }
 function resetToStart(){
   phase=PHASE.IDLE;phaseT=0;firstText='';
+  hidePlantLabel();
+  pop.classList.remove('show');
   if(aura){
     charRoot.remove(aura.mesh);
     aura.geo.dispose();
@@ -1459,6 +1461,8 @@ function restartToIdleWithFade(){
 function startCinematic(text){
   firstText=text;
   phase=PHASE.DRINK;phaseT=0;
+  hidePlantLabel();
+  pop.classList.remove('show');
   if(aura){
     charRoot.remove(aura.mesh);
     aura.geo.dispose();
