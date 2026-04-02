@@ -30,6 +30,9 @@
       border:4px solid #ffd8e4;padding:0;z-index:10;color:#fff;
       transition:all 0.4s;border-radius:6px;
       box-shadow:0 0 0 3px #8a5a6b,0 18px 30px rgba(120,70,85,0.35)}
+    @media (max-width: 640px){
+      #ui{left:auto;right:6vw;top:auto;bottom:12vh;width:min(72vw,320px)}
+    }
     #ui.mini{width:auto;padding:8px 14px;cursor:pointer;border-radius:6px}
     #ui.mini h2,#ui.mini textarea,#ui.mini button#go{display:none}
     #ui.mini::after{content:'WRITE';font-size:12px;letter-spacing:2px;color:#fff;text-transform:uppercase}
@@ -1063,9 +1066,8 @@ function resetDrinkGlow(){
 function updateDrinkGlow(dt){
   if(drinkGlowT<0)return;
   drinkGlowT+=dt;
-  const t=Math.min(1,drinkGlowT/DRINK_GLOW_DUR);
   const pulse=0.5+0.5*Math.sin(drinkGlowT*(Math.PI*4));
-  const k=(1-t)*(0.6+0.7*pulse)*0.6;
+  const k=(0.6+0.7*pulse)*0.6;
   for(const info of charMats){
     const m=info.mat;
     if(m.emissive){
@@ -1074,7 +1076,7 @@ function updateDrinkGlow(dt){
       if('emissiveIntensity' in m)m.emissiveIntensity=(info.baseEmissiveIntensity||0)+k*1.2;
     }
   }
-  if(t>=1)resetDrinkGlow();
+  if(phase===PHASE.LAND||phase===PHASE.DONE)resetDrinkGlow();
 }
 
 // ===== Cinematic Camera =====
