@@ -102,20 +102,21 @@
     #fade{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;
       transition:opacity 0.6s ease;z-index:20}
     #fade.show{opacity:1}
-    #title{position:absolute;top:3vh;left:50%;transform:translateX(-50%);
+    #title{position:absolute;top:3vh;left:50%;transform:translateX(-50%) perspective(200px) rotateX(8deg);
       font-size:52px;letter-spacing:10px;font-weight:bold;
       font-family:"Saint","Trebuchet MS",sans-serif;
       text-transform:uppercase;z-index:12;pointer-events:none;
-      color:#c9a96e;
+      color:#E84887;
       text-shadow:
-        0 1px 0 #dfc98a,
-        0 2px 0 #b8923e,
-        0 3px 0 #a67c3d,
-        0 4px 0 #8b6914,
-        0 5px 0 #6b4f10,
-        0 6px 0 #503a0b,
-        0 8px 12px rgba(0,0,0,0.35),
-        0 0 20px rgba(201,169,110,0.3)}
+        0 1px 0 #F06AA0,
+        0 2px 0 #D43D78,
+        0 3px 0 #C0306A,
+        0 4px 0 #A8255A,
+        0 5px 0 #8E1A4A,
+        0 6px 0 #72103A,
+        0 8px 12px rgba(0,0,0,0.3),
+        0 0 24px rgba(232,72,135,0.4)}
+    #title span{display:inline-block}
     @media (max-width:640px){#title{font-size:32px;letter-spacing:6px;top:2vh}}
     #mouth-text-layer{position:fixed;inset:0;pointer-events:none;z-index:18}
     .mouth-text{position:absolute;color:#ff1f1f;font-size:16px;letter-spacing:1px;
@@ -124,7 +125,7 @@
 </head>
 <body>
   <canvas id="c"></canvas>
-  <div id="title">URBAN LEGEND</div>
+  <div id="title"><span style="font-size:1.35em">U</span><span style="font-size:1.18em">R</span><span style="font-size:1.05em">B</span><span style="font-size:0.92em">A</span><span style="font-size:0.85em">N</span><span style="font-size:0.6em">&nbsp;</span><span style="font-size:0.85em">L</span><span style="font-size:0.92em">E</span><span style="font-size:1.05em">G</span><span style="font-size:1.18em">E</span><span style="font-size:1.35em">N</span><span style="font-size:1.45em">D</span></div>
   <div id="mouth-text-layer"></div>
   <div id="ui" class="mini">
     <h2>WRITE</h2>
@@ -833,7 +834,7 @@ scene.add(charRoot);
 
 // Platform (invisible once camera swings to front ? very high up)
 const platformMat=new THREE.MeshPhysicalMaterial({
-  color:'#f7f3f0',
+  color:'#E84887',
   roughness:0.2,
   metalness:0.1,
   clearcoat:1.0,
@@ -842,12 +843,12 @@ const platformMat=new THREE.MeshPhysicalMaterial({
   iridescenceIOR:1.3,
   iridescenceThicknessRange:[100,800],
   specularIntensity:0.9,
-  specularColor:new THREE.Color('#fff6f2'),
+  specularColor:new THREE.Color('#FFB0D0'),
   sheen:0.6,
-  sheenColor:new THREE.Color('#ffd9ec'),
+  sheenColor:new THREE.Color('#FF6B9D'),
   envMapIntensity:1.4,
-  emissive:new THREE.Color('#fff0f6'),
-  emissiveIntensity:0.05
+  emissive:new THREE.Color('#E84887'),
+  emissiveIntensity:0.08
 });
 const platformMesh=new THREE.Group();
 const platformSide=new THREE.Mesh(new THREE.CylinderGeometry(1.8,2.0,0.5,24,1,true),platformMat);
