@@ -633,11 +633,11 @@ const scene=new THREE.Scene();
   const cv=document.createElement('canvas');cv.width=2;cv.height=512;
   const ctx=cv.getContext('2d');
   const g=ctx.createLinearGradient(0,0,0,512);
-  g.addColorStop(0,'#7EC8E3');
-  g.addColorStop(0.35,'#A2D2FF');
-  g.addColorStop(0.6,'#BDE0FE');
-  g.addColorStop(0.85,'#E0F0FF');
-  g.addColorStop(1,'#F0E8F0');
+  g.addColorStop(0,'#E88FAC');
+  g.addColorStop(0.25,'#F0A8C0');
+  g.addColorStop(0.5,'#F5C6D8');
+  g.addColorStop(0.75,'#FADDE6');
+  g.addColorStop(1,'#FFF0F5');
   ctx.fillStyle=g;ctx.fillRect(0,0,2,512);
   scene.background=new THREE.CanvasTexture(cv);
 }
@@ -687,7 +687,7 @@ scene.add(new THREE.AmbientLight('#ffffff',0.35));
 const camera=new THREE.PerspectiveCamera(55,W()/H(),0.1,500);
 
 // ===== Character (GLB) + Cinematic =====
-const PLAT_Y=80; // high enough to be off-screen when camera faces front
+const PLAT_Y=15; // hidden when camera swings to front during fall
 const PHASE={IDLE:0,DRINK:1,JUMP:2,FALL:3,LAND:4,DONE:5};
 let phase=PHASE.IDLE,phaseT=0,firstText='';
 let charReady=false;
@@ -725,16 +725,34 @@ async function loadChar(){
   const gltf=await loader.loadAsync('character.glb');
   charModel=gltf.scene;
   charModel.rotation.y=Math.PI; // face away from camera (back towards +Z)
+
+  // Debug: check bounding box
+  const box=new THREE.Box3().setFromObject(charModel);
+  const size=new THREE.Vector3();box.getSize(size);
+  const center=new THREE.Vector3();box.getCenter(center);
+  console.log('Char bbox size:',size,'center:',center);
+  showErr('Model loaded! Size:'+size.x.toFixed(1)+','+size.y.toFixed(1)+','+size.z.toFixed(1));
+
+  // Scale if too small or too large
+  if(size.y<0.5){charModel.scale.setScalar(2/size.y)}
+  else if(size.y>5){charModel.scale.setScalar(2/size.y)}
+
   // Desaturate materials to pastel tones
+  let meshCount=0;
   charModel.traverse(o=>{
-    if(o.isMesh&&o.material){
-      const m=o.material;
-      m.color.set('#d4b8c4');
-      m.roughness=0.85;m.metalness=0;
-      m.emissive=new THREE.Color('#d4b8c4');m.emissiveIntensity=0.06;
-      charMats.push(m);
+    if(o.isMesh){
+      meshCount++;
+      if(o.material){
+        const m=o.material;
+        m.color.set('#d4b8c4');
+        m.roughness=0.85;m.metalness=0;
+        m.emissive=new THREE.Color('#d4b8c4');m.emissiveIntensity=0.06;
+        m.side=THREE.DoubleSide;
+        charMats.push(m);
+      }
     }
   });
+  console.log('Meshes found:',meshCount);
   charRoot.add(charModel);
 
   // Find animations by name
@@ -745,12 +763,15 @@ async function loadChar(){
     else if(n.includes('drink'))clipDrink=clip;
     else if(n.includes('jump'))clipJump=clip;
   }
-  console.log('Animations loaded:',gltf.animations.map(a=>a.name));
-  console.log('idle:',!!clipIdle,'drink:',!!clipDrink,'jump:',!!clipJump);
+  console.log('Animations:',gltf.animations.map(a=>a.name),'idle:',!!clipIdle);
 
   // Start idle
   if(clipIdle){actIdle=mixer.clipAction(clipIdle);actIdle.play()}
   charReady=true;
+
+  // Set initial camera to look at character
+  camTarget.set(0,PLAT_Y+1,0);
+  camPitch=0.3;camDist=8;
 }
 loadChar().catch(e=>{console.error('Char load err:',e);showErr('Char: '+e.message)});
 
@@ -807,12 +828,9 @@ function updateBurst(dt){
 
 // ===== Cinematic Camera =====
 function cinematicCam(dt){
-  if(!charReady)return true; // wait for model load, still block orbit
   if(phase===PHASE.IDLE){
-    const cy=charRoot.position.y+1;
-    camera.position.set(0,cy+1,5);
-    camera.lookAt(0,cy,0);
-    return true;
+    // Free orbit — handled by normal orbit controls
+    return false;
   }
   if(phase===PHASE.DRINK){
     const cy=charRoot.position.y+1;
@@ -955,7 +973,8 @@ const ptrs=new Map();
 let dragS={x:0,y:0,yaw:0,pitch:0},pinchD0=0,pinchR0=14;
 
 canvas.addEventListener('pointerdown',e=>{
-  if(phase!==PHASE.DONE){ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});return}
+  const canOrbit=phase===PHASE.IDLE||phase===PHASE.DONE;
+  if(!canOrbit){ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});return}
   ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
   canvas.setPointerCapture(e.pointerId);
   interacting=true;interTimer=0;
@@ -965,7 +984,8 @@ canvas.addEventListener('pointerdown',e=>{
 canvas.addEventListener('pointermove',e=>{
   if(!ptrs.has(e.pointerId))return;
   ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
-  if(phase!==PHASE.DONE)return;
+  const canOrbit=phase===PHASE.IDLE||phase===PHASE.DONE;
+  if(!canOrbit)return;
   interacting=true;interTimer=0;
   if(ptrs.size===1){
     camYaw=dragS.yaw+(e.clientX-dragS.x)/W()*4;
@@ -977,7 +997,7 @@ canvas.addEventListener('pointermove',e=>{
 });
 canvas.addEventListener('pointerup',e=>ptrs.delete(e.pointerId));
 canvas.addEventListener('pointercancel',e=>ptrs.delete(e.pointerId));
-canvas.addEventListener('wheel',e=>{e.preventDefault();if(phase!==PHASE.DONE)return;camDist=clamp(camDist+e.deltaY*0.015,3,50);interacting=true;interTimer=0},{passive:false});
+canvas.addEventListener('wheel',e=>{e.preventDefault();if(phase!==PHASE.IDLE&&phase!==PHASE.DONE)return;camDist=clamp(camDist+e.deltaY*0.015,3,50);interacting=true;interTimer=0},{passive:false});
 
 function updateCam(){
   camera.position.set(
@@ -1005,8 +1025,7 @@ function addGlow(grp){
 const raycaster=new THREE.Raycaster();
 const pop=document.getElementById('pop');
 canvas.addEventListener('click',e=>{
-  if(phase!==PHASE.DONE)return;
-  // If UI is open and click is outside UI, collapse it
+  // UI collapse works in any phase
   const ui=document.getElementById('ui');
   if(!ui.classList.contains('mini')&&!ui.classList.contains('hidden')){
     const uiR=ui.getBoundingClientRect();
@@ -1014,6 +1033,7 @@ canvas.addEventListener('click',e=>{
       ui.classList.add('mini');return;
     }
   }
+  if(phase!==PHASE.DONE)return;
   if(!plantRoot.children.length)return;
   const rect=canvas.getBoundingClientRect();
   raycaster.setFromCamera({x:((e.clientX-rect.left)/rect.width)*2-1,y:-((e.clientY-rect.top)/rect.height)*2+1},camera);
@@ -1037,17 +1057,25 @@ goBtn.addEventListener('click',(e)=>{
   if(!text)return;
   ta.value='';goBtn.disabled=true;
   ui.classList.add('mini');
-  if(phase===PHASE.IDLE&&charReady){
+  if(phase===PHASE.IDLE&&charReady&&mixer&&clipDrink){
     // First submission — trigger cinematic sequence
     firstText=text;
     phase=PHASE.DRINK;phaseT=0;
+    camTarget.set(0,PLAT_Y+1,0);
     // Cross-fade from idle to drink (play second half)
     actIdle?.fadeOut(0.3);
     actDrink=mixer.clipAction(clipDrink);
     actDrink.setLoop(THREE.LoopOnce);actDrink.clampWhenFinished=true;
-    actDrink.time=clipDrink.duration*0.35; // start from second half
+    actDrink.time=clipDrink.duration*0.35;
     actDrink.reset().fadeIn(0.3).play();
     actDrink.time=clipDrink.duration*0.35;
+  }else if(phase===PHASE.IDLE){
+    // Model not loaded yet — skip cinematic, plant directly
+    phase=PHASE.DONE;
+    const planted=addPlant(text,true);
+    saveEntry(text);
+    if(planted){clearGlow();addGlow(planted)}
+    camTarget.set(0,3,0);camDist=10;
   }else if(phase===PHASE.DONE){
     // Normal plant growth
     const planted=addPlant(text,true);
