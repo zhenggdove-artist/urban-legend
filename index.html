@@ -671,6 +671,25 @@ const skyCV=document.createElement('canvas');skyCV.width=2;skyCV.height=512;
 const skyCtx=skyCV.getContext('2d');
 const skyTex=new THREE.CanvasTexture(skyCV);
 scene.background=skyTex;
+
+// Rainbow environment for pearlescent reflections
+const envCV=document.createElement('canvas');envCV.width=256;envCV.height=128;
+const envCtx=envCV.getContext('2d');
+const envGrad=envCtx.createLinearGradient(0,0,envCV.width,0);
+envGrad.addColorStop(0,'#ffd1f2');
+envGrad.addColorStop(0.2,'#b5e2fa');
+envGrad.addColorStop(0.4,'#bde0fe');
+envGrad.addColorStop(0.6,'#cdb4db');
+envGrad.addColorStop(0.8,'#ffb7b2');
+envGrad.addColorStop(1,'#fff1c1');
+envCtx.fillStyle=envGrad;envCtx.fillRect(0,0,envCV.width,envCV.height);
+envCtx.globalAlpha=0.35;
+envCtx.fillStyle='#ffffff';
+envCtx.fillRect(0,0,envCV.width,envCV.height*0.45);
+envCtx.globalAlpha=1;
+const envTex=new THREE.CanvasTexture(envCV);
+envTex.mapping=THREE.EquirectangularReflectionMapping;
+scene.environment=envTex;
 let skyLerp=0; // 0=pink, 1=white
 function updateSky(t){
   skyLerp=t;
@@ -759,17 +778,18 @@ const platformMesh=new THREE.Mesh(
   new THREE.CylinderGeometry(1.8,2.0,0.5,24),
   new THREE.MeshPhysicalMaterial({
     color:'#f7f3f0',
-    roughness:0.25,
-    metalness:0.05,
+    roughness:0.2,
+    metalness:0.1,
     clearcoat:1.0,
     clearcoatRoughness:0.15,
-    iridescence:0.9,
+    iridescence:1.0,
     iridescenceIOR:1.3,
-    iridescenceThicknessRange:[120,420],
+    iridescenceThicknessRange:[100,800],
     specularIntensity:0.9,
     specularColor:new THREE.Color('#fff6f2'),
     sheen:0.6,
     sheenColor:new THREE.Color('#ffd9ec'),
+    envMapIntensity:1.4,
     emissive:new THREE.Color('#fff0f6'),
     emissiveIntensity:0.05
   })
@@ -919,23 +939,59 @@ function updateBurst(dt){
 // ===== Character Aura (yellow glow particles) =====
 let aura=null;
 function createAura(){
-  if(aura||!charRoot)return;
-  const N=700,pts=[],cols=[],sizes=[];
-  for(let i=0;i<N;i++){
-    const u=Math.random()*2-1;
-    const th=Math.random()*Math.PI*2;
-    const s=Math.sqrt(1-u*u);
-    const dx=s*Math.cos(th),dy=u,dz=s*Math.sin(th);
-    const r=0.5+Math.random()*0.6;
-    pts.push(dx*r,dy*r+1.0,dz*r);
-    cols.push(1.0,0.9+Math.random()*0.1,0.2+Math.random()*0.1);
-    sizes.push(0.02+Math.random()*0.05);
+  if(aura||!charRoot||!charModel)return;
+  const meshes=[];
+  charRoot.updateMatrixWorld(true);
+  charModel.updateMatrixWorld(true);
+  charModel.traverse(o=>{
+    if(o.isMesh&&o.geometry&&o.geometry.attributes&&o.geometry.attributes.position){
+      meshes.push(o);
+    }
+  });
+  const N=2200,pts=[],cols=[],sizes=[];
+  if(meshes.length){
+    for(let i=0;i<N;i++){
+      const m=meshes[Math.floor(Math.random()*meshes.length)];
+      const pos=m.geometry.attributes.position;
+      if(!pos||pos.count===0){i--;continue}
+      const idx=Math.floor(Math.random()*pos.count);
+      const v=new THREE.Vector3();
+      if(m.isSkinnedMesh&&m.skeleton&&m.geometry.attributes.skinIndex){
+        m.boneTransform(idx,v);
+      }else{
+        v.set(pos.getX(idx),pos.getY(idx),pos.getZ(idx));
+      }
+      v.applyMatrix4(m.matrixWorld);
+      charRoot.worldToLocal(v);
+      v.x+=(Math.random()-0.5)*0.03;
+      v.y+=(Math.random()-0.5)*0.03;
+      v.z+=(Math.random()-0.5)*0.03;
+      pts.push(v.x,v.y,v.z);
+      const g=0.78+Math.random()*0.17;
+      const b=0.18+Math.random()*0.12;
+      cols.push(1.0,g,b);
+      sizes.push(0.008+Math.random()*0.018);
+    }
+  }else{
+    for(let i=0;i<N;i++){
+      const u=Math.random()*2-1;
+      const th=Math.random()*Math.PI*2;
+      const s=Math.sqrt(1-u*u);
+      const dx=s*Math.cos(th),dy=u,dz=s*Math.sin(th);
+      const r=0.5+Math.random()*0.6;
+      pts.push(dx*r,dy*r+1.0,dz*r);
+      cols.push(1.0,0.85+Math.random()*0.1,0.2+Math.random()*0.1);
+      sizes.push(0.01+Math.random()*0.02);
+    }
   }
   const geo=new THREE.BufferGeometry();
   geo.setAttribute('position',new THREE.Float32BufferAttribute(pts,3));
   geo.setAttribute('color',new THREE.Float32BufferAttribute(cols,3));
   geo.setAttribute('size',new THREE.Float32BufferAttribute(sizes,1));
-  const mat=new THREE.PointsMaterial({size:0.12,vertexColors:true,transparent:true,opacity:0.35,depthWrite:false,blending:THREE.AdditiveBlending});
+  const mat=new THREE.PointsMaterial({
+    size:0.03,vertexColors:true,transparent:true,opacity:0.6,
+    depthWrite:false,blending:THREE.AdditiveBlending,sizeAttenuation:true
+  });
   const mesh=new THREE.Points(geo,mat);
   charRoot.add(mesh);
   aura={mesh,geo,time:0};
@@ -943,9 +999,9 @@ function createAura(){
 function updateAura(dt){
   if(!aura)return;
   aura.time+=dt;
-  aura.mesh.rotation.y+=dt*0.8;
-  aura.mesh.material.opacity=Math.max(0,0.35*(1-aura.time/1.2));
-  if(aura.time>1.2){
+  aura.mesh.rotation.y+=dt*0.2;
+  aura.mesh.material.opacity=Math.max(0,0.6*(1-aura.time/1.4));
+  if(aura.time>1.4){
     charRoot.remove(aura.mesh);
     aura.geo.dispose();
     aura.mesh.material.dispose();
@@ -1172,7 +1228,7 @@ function addPlant(text,grow=true,ts=null){
 }
 
 // ===== Camera =====
-let camYaw=0.3,camPitch=0.3,camDist=8;
+let camYaw=Math.PI,camPitch=0.2,camDist=7.5;
 let camTarget=new THREE.Vector3(0,PLAT_Y+1,0);
 let interacting=false,interTimer=0;
 const ptrs=new Map();
