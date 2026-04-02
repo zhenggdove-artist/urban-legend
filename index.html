@@ -1288,17 +1288,20 @@ const plantEntries=[];
 function addPlant(text,grow=true,ts=null){
   let grp;
   try{grp=makePlant(text)}catch(e){console.error('Plant err:',e);return null}
-  // Cluster at center — sometimes grow ON TOP of existing plants
+  // Spread outward; 50% chance to grow on existing plant at mid height
   const rr=srand(hash(text)+plantEntries.length);
-  if(plantEntries.length>0&&rr()>0.45){
-    // Grow on an existing plant's branch
+  if(plantEntries.length>0&&rr()>0.5){
+    // Grow on an existing plant's branch (around 50% height)
     const existing=plantEntries[Math.floor(rr()*plantEntries.length)];
     const ePos=existing.mesh.position;
     const eH=existing.mesh.children[0]?.userData.plantH||3;
-    const yOff=eH*(0.2+rr()*0.6)*existing.mesh.scale.y;
+    const yOff=eH*0.5*existing.mesh.scale.y;
     grp.position.set(ePos.x+(rr()-0.5)*0.6,yOff,ePos.z+(rr()-0.5)*0.6);
   }else{
-    grp.position.set((rr()-0.5)*1.0,0,(rr()-0.5)*1.0);
+    const angle=rr()*Math.PI*2;
+    const spread=0.6+Math.sqrt(plantEntries.length+1)*0.45;
+    const r=spread*(0.6+rr()*0.8);
+    grp.position.set(Math.cos(angle)*r,0,Math.sin(angle)*r);
   }
   const mesh=grp.children[0];
   if(grow&&mesh){
