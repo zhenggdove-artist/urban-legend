@@ -107,20 +107,19 @@
        手動微調標題位置：修改 left 值調整水平位置（目前 52% 偏右補償）
        修改 top 值調整垂直位置 */
     #title{position:absolute;top:3vh;left:52%;
-      transform:translateX(-49%) perspective(200px) rotateX(6deg);
+      transform:translateX(-50%) perspective(200px) rotateX(6deg);
       font-size:clamp(18px,5.5vw,48px);letter-spacing:0.35em;font-weight:bold;
       font-family:"Saint","Trebuchet MS",sans-serif;
       text-transform:uppercase;z-index:12;pointer-events:none;
       white-space:nowrap;text-align:center;
-      color:#d4849e;
-      -webkit-text-stroke:0.5px rgba(255,255,255,0.3);
+      color:#f2b7cf;
+      -webkit-text-stroke:0.5px rgba(255,255,255,0.25);
       text-shadow:
-        0 1px 0 #e0a0b8,
-        0 2px 0 #c88a9e,
-        0 3px 0 #b07488,
-        0 4px 0 #986070,
-        0 5px 0 #804a58,
-        0 7px 10px rgba(0,0,0,0.25);
+        0 1px 0 #f7cfe0,
+        0 2px 0 #efbcd3,
+        0 3px 0 #e3a6c1,
+        0 4px 0 #d394b2,
+        0 6px 8px rgba(0,0,0,0.18);
       transition:opacity 1.5s ease}
     #title.fade-out{opacity:0}
     #title span{display:inline-block}
@@ -1715,7 +1714,12 @@ function restartToIdleWithFade(){
   if(fade.classList.contains('show'))return;
   fade.classList.add('show');
   setTimeout(()=>{resetToStart();},320);
-  setTimeout(()=>{fade.classList.remove('show');ta.focus();},720);
+  setTimeout(()=>{
+    fade.classList.remove('show');
+    ui.classList.add('mini');
+    const titleEl=document.getElementById('title');
+    if(titleEl)titleEl.classList.remove('fade-out');
+  },720);
 }
 function startCinematic(text){
   firstText=text;
@@ -1752,7 +1756,7 @@ function startCinematic(text){
 // Click mini UI to expand / restart after landing
 ui.addEventListener('click',()=>{
   if(!ui.classList.contains('mini'))return;
-  if(phase===PHASE.DONE){restartToIdleWithFade()}
+  if(phase===PHASE.DONE){restartToIdleWithFade();return;}
   startBgm();
   ui.classList.remove('mini');
 });
