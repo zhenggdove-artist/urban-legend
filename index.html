@@ -20,34 +20,49 @@
       --ui-shadow:rgba(73,64,122,0.35);
       --ui-ink:#ffffff;
       --ui-ink-soft:#f2f6ff;
+      --win-bg:#f6bcd6;
+      --win-title:#e0a0bf;
+      --win-light:#fff3f9;
+      --win-mid:#d19ab3;
+      --win-dark:#7b5162;
+      --win-text:#5b3a46;
     }
     html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:"Saint","Trebuchet MS",sans-serif}
     button,input,textarea{font-family:"Saint","Trebuchet MS",sans-serif}
     #ui,#ui *,#pop,#search-panel,#search-panel *,#search-btn{font-family:"Saint","Trebuchet MS",sans-serif}
     #c{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
-    #ui{position:absolute;left:6vw;top:14vh;
-      width:min(72vw,420px);background:#f4a8b7;
-      border:4px solid #ffd8e4;padding:0;z-index:10;color:#fff;
-      transition:all 0.4s;border-radius:6px;
-      box-shadow:0 0 0 3px #8a5a6b,0 18px 30px rgba(120,70,85,0.35)}
+    #ui{position:absolute;right:6vw;bottom:12vh;left:auto;top:auto;
+      width:min(72vw,420px);background:var(--win-bg);
+      border:2px solid var(--win-dark);padding:0;z-index:10;color:#fff;
+      transition:all 0.25s;border-radius:2px;
+      box-shadow:
+        inset 2px 2px 0 var(--win-light),
+        inset -2px -2px 0 var(--win-mid),
+        4px 4px 0 rgba(90,60,70,0.35)}
     @media (max-width: 640px){
-      #ui{left:auto;right:6vw;top:auto;bottom:12vh;width:min(72vw,320px)}
+      #ui{right:6vw;bottom:12vh;width:min(78vw,320px)}
     }
-    #ui.mini{width:auto;padding:8px 14px;cursor:pointer;border-radius:6px}
+    #ui.mini{width:72px;height:64px;padding:0;cursor:pointer;border-radius:2px;
+      display:flex;align-items:center;justify-content:center;background:var(--win-bg)}
     #ui.mini h2,#ui.mini textarea,#ui.mini button#go{display:none}
-    #ui.mini::after{content:'WRITE';font-size:12px;letter-spacing:2px;color:#fff;text-transform:uppercase}
+    #ui.mini::after{content:'WRITE';font-size:11px;letter-spacing:1.5px;color:var(--win-text);text-transform:uppercase}
     #ui.hidden{opacity:0;pointer-events:none}
-    #ui h2{font-size:18px;letter-spacing:2px;color:#fff;margin:0;
-      background:#d8899f;padding:8px 12px;border-bottom:3px solid #ffd8e4;
-      text-shadow:0 2px 0 #8a5a6b}
-    #ui textarea{width:calc(100% - 24px);height:96px;margin:12px;
-      background:#f3e6ef;border:3px solid #c77c90;color:#5b3a46;
-      padding:10px 12px;font-size:16px;resize:none;outline:none;border-radius:4px;
-      box-shadow:inset 0 0 0 2px #fff}
-    #go{margin:0 12px 12px;width:calc(100% - 24px);height:40px;background:#e9c4d4;
-      border:3px solid #c77c90;color:#5b3a46;text-transform:uppercase;letter-spacing:4px;
-      cursor:pointer;font-family:inherit;border-radius:4px;
-      box-shadow:inset 0 0 0 2px #fff,0 6px 0 #8a5a6b}
+    #ui h2{font-size:14px;letter-spacing:2px;color:var(--win-text);margin:0;
+      background:var(--win-title);padding:6px 10px;border-bottom:2px solid var(--win-dark);
+      text-shadow:0 1px 0 var(--win-light)}
+    #ui textarea{width:calc(100% - 20px);height:92px;margin:10px;
+      background:#fbe9f2;border:2px solid var(--win-dark);color:var(--win-text);
+      padding:10px 10px;font-size:14px;resize:none;outline:none;border-radius:2px;
+      box-shadow:
+        inset 2px 2px 0 var(--win-light),
+        inset -2px -2px 0 var(--win-mid)}
+    #go{margin:0 10px 10px;width:calc(100% - 20px);height:36px;background:#f2c9dc;
+      border:2px solid var(--win-dark);color:var(--win-text);text-transform:uppercase;letter-spacing:3px;
+      cursor:pointer;font-family:inherit;border-radius:2px;
+      box-shadow:
+        inset 2px 2px 0 var(--win-light),
+        inset -2px -2px 0 var(--win-mid),
+        2px 2px 0 rgba(90,60,70,0.35)}
     #go:disabled{opacity:0.4;cursor:not-allowed}
     #pop{position:absolute;bottom:80px;left:50%;transform:translateX(-50%);
       max-width:min(90vw,600px);max-height:40vh;overflow-y:auto;
@@ -59,25 +74,26 @@
     #pop::-webkit-scrollbar{width:4px}
     #pop::-webkit-scrollbar-thumb{background:rgba(180,170,230,0.6);border-radius:2px}
     #search-btn{position:absolute;bottom:24px;left:22px;width:52px;height:52px;
-      background:#f4a8b7;border:3px solid #ffd8e4;color:#fff;
-      border-radius:6px;cursor:pointer;z-index:14;font-family:inherit;font-size:0;
+      background:var(--win-bg);border:2px solid var(--win-dark);color:var(--win-text);
+      border-radius:2px;cursor:pointer;z-index:14;font-family:inherit;font-size:0;
       display:flex;align-items:center;justify-content:center;
-      box-shadow:0 0 0 3px #8a5a6b,0 10px 18px rgba(120,70,85,0.3)}
-    #search-btn::before{content:"✦";font-size:20px;color:#fff;text-shadow:0 2px 0 #8a5a6b}
+      box-shadow:inset 2px 2px 0 var(--win-light),inset -2px -2px 0 var(--win-mid),2px 2px 0 rgba(90,60,70,0.35)}
+    #search-btn::before{content:"???";font-size:18px;color:var(--win-text);text-shadow:none}
     #search-panel{position:absolute;bottom:86px;left:22px;width:min(70vw,330px);
-      background:#f4a8b7;border:3px solid #ffd8e4;
-      padding:12px;z-index:15;border-radius:6px;display:none;
-      box-shadow:0 0 0 3px #8a5a6b,0 10px 18px rgba(120,70,85,0.3)}
+      background:var(--win-bg);border:2px solid var(--win-dark);
+      padding:10px;z-index:15;border-radius:2px;display:none;
+      box-shadow:inset 2px 2px 0 var(--win-light),inset -2px -2px 0 var(--win-mid),2px 2px 0 rgba(90,60,70,0.35)}
     #search-panel.show{display:block}
-    #search-panel input{width:100%;height:34px;background:#f3e6ef;border:2px solid #c77c90;
-      color:#5b3a46;padding:0 10px;font-size:14px;outline:none;border-radius:4px;font-family:inherit;
-      box-shadow:inset 0 0 0 2px #fff}
+    #search-panel input{width:100%;height:32px;background:#fbe9f2;border:2px solid var(--win-dark);
+      color:var(--win-text);padding:0 8px;font-size:13px;outline:none;border-radius:2px;font-family:inherit;
+      box-shadow:inset 2px 2px 0 var(--win-light),inset -2px -2px 0 var(--win-mid)}
     #search-results{margin-top:10px;max-height:30vh;overflow-y:auto;overscroll-behavior:contain}
     #search-results::-webkit-scrollbar{width:4px}
     #search-results::-webkit-scrollbar-thumb{background:#c77c90;border-radius:2px}
-    .sr-item{padding:6px;margin-bottom:6px;background:#f3e6ef;border-radius:4px;
-      color:#5b3a46;font-size:13px;cursor:pointer;word-break:break-word;border:2px solid #c77c90}
-    .sr-item:hover{border-color:#8a5a6b}
+    .sr-item{padding:6px;margin-bottom:6px;background:#fbe9f2;border-radius:2px;
+      color:var(--win-text);font-size:12px;cursor:pointer;word-break:break-word;border:2px solid var(--win-dark);
+      box-shadow:inset 2px 2px 0 var(--win-light),inset -2px -2px 0 var(--win-mid)}
+    .sr-item:hover{border-color:#9a6b7b}
     #plant-label{position:absolute;left:0;top:0;transform:translate(-50%,0);
       padding:6px 10px;background:rgba(255,240,248,0.9);color:#5b3a46;
       border:2px solid #c77c90;border-radius:6px;box-shadow:0 6px 14px rgba(120,70,85,0.25);
@@ -90,9 +106,9 @@
 </head>
 <body>
   <canvas id="c"></canvas>
-  <div id="ui">
+  <div id="ui" class="mini">
     <h2>WRITE</h2>
-    <textarea id="ta" placeholder="Leave your message..."></textarea>
+    <textarea id="ta" placeholder="Leave your messae to the world"></textarea>
     <button id="go" disabled>PLANT</button>
   </div>
   <div id="pop"></div>
@@ -789,26 +805,29 @@ charRoot.position.set(0,PLAT_Y,0);
 scene.add(charRoot);
 
 // Platform (invisible once camera swings to front ? very high up)
-const platformMesh=new THREE.Mesh(
-  new THREE.CylinderGeometry(1.8,2.0,0.5,24),
-  new THREE.MeshPhysicalMaterial({
-    color:'#f7f3f0',
-    roughness:0.2,
-    metalness:0.1,
-    clearcoat:1.0,
-    clearcoatRoughness:0.15,
-    iridescence:1.0,
-    iridescenceIOR:1.3,
-    iridescenceThicknessRange:[100,800],
-    specularIntensity:0.9,
-    specularColor:new THREE.Color('#fff6f2'),
-    sheen:0.6,
-    sheenColor:new THREE.Color('#ffd9ec'),
-    envMapIntensity:1.4,
-    emissive:new THREE.Color('#fff0f6'),
-    emissiveIntensity:0.05
-  })
-);
+const platformMat=new THREE.MeshPhysicalMaterial({
+  color:'#f7f3f0',
+  roughness:0.2,
+  metalness:0.1,
+  clearcoat:1.0,
+  clearcoatRoughness:0.15,
+  iridescence:1.0,
+  iridescenceIOR:1.3,
+  iridescenceThicknessRange:[100,800],
+  specularIntensity:0.9,
+  specularColor:new THREE.Color('#fff6f2'),
+  sheen:0.6,
+  sheenColor:new THREE.Color('#ffd9ec'),
+  envMapIntensity:1.4,
+  emissive:new THREE.Color('#fff0f6'),
+  emissiveIntensity:0.05
+});
+const platformMesh=new THREE.Group();
+const platformSide=new THREE.Mesh(new THREE.CylinderGeometry(1.8,2.0,0.5,24,1,true),platformMat);
+const platformTop=new THREE.Mesh(new THREE.CircleGeometry(1.8,24),platformMat);
+platformTop.rotation.x=-Math.PI/2;
+platformTop.position.y=0.25;
+platformMesh.add(platformSide,platformTop);
 platformMesh.position.set(0,PLAT_Y,0);scene.add(platformMesh);
 
 // Animation state
