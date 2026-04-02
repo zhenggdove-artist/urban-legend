@@ -636,7 +636,8 @@ function makePlant(text){
   const mat=new THREE.MeshStandardMaterial({
     vertexColors:true,roughness:0.6,metalness:0.05,
     emissive:emissiveCol,emissiveIntensity:0.15,
-    side:THREE.DoubleSide
+    side:THREE.DoubleSide,
+    envMapIntensity:0
   });
   if(clipBelow&&groundClip){
     mat.clippingPlanes=[groundClip];
@@ -731,7 +732,8 @@ updateSky(0);
   }
   gGeo.computeVertexNormals();
   scene.add(new THREE.Mesh(gGeo,new THREE.MeshStandardMaterial({
-    color:'#5a9e6a',emissive:'#1a5a2a',emissiveIntensity:0.18,roughness:0.92,metalness:0
+    color:'#5a9e6a',emissive:'#1a5a2a',emissiveIntensity:0.18,roughness:0.92,metalness:0,
+    envMapIntensity:0
   })));
 }
 
@@ -948,29 +950,29 @@ function createAura(){
       meshes.push(o);
     }
   });
-  const N=2200,pts=[],cols=[],sizes=[];
+  const N=4200,pts=[],cols=[],sizes=[],meshIds=[],vertIds=[],offs=[];
+  const tmp=new THREE.Vector3();
   if(meshes.length){
     for(let i=0;i<N;i++){
-      const m=meshes[Math.floor(Math.random()*meshes.length)];
+      const mi=Math.floor(Math.random()*meshes.length);
+      const m=meshes[mi];
       const pos=m.geometry.attributes.position;
       if(!pos||pos.count===0){i--;continue}
-      const idx=Math.floor(Math.random()*pos.count);
-      const v=new THREE.Vector3();
+      const vi=Math.floor(Math.random()*pos.count);
       if(m.isSkinnedMesh&&m.skeleton&&m.geometry.attributes.skinIndex){
-        m.boneTransform(idx,v);
+        m.boneTransform(vi,tmp);
       }else{
-        v.set(pos.getX(idx),pos.getY(idx),pos.getZ(idx));
+        tmp.set(pos.getX(vi),pos.getY(vi),pos.getZ(vi));
       }
-      v.applyMatrix4(m.matrixWorld);
-      charRoot.worldToLocal(v);
-      v.x+=(Math.random()-0.5)*0.03;
-      v.y+=(Math.random()-0.5)*0.03;
-      v.z+=(Math.random()-0.5)*0.03;
-      pts.push(v.x,v.y,v.z);
-      const g=0.78+Math.random()*0.17;
-      const b=0.18+Math.random()*0.12;
+      tmp.applyMatrix4(m.matrixWorld);
+      charRoot.worldToLocal(tmp);
+      const ox=(Math.random()-0.5)*0.02,oy=(Math.random()-0.5)*0.02,oz=(Math.random()-0.5)*0.02;
+      pts.push(tmp.x+ox,tmp.y+oy,tmp.z+oz);
+      const g=0.72+Math.random()*0.16;
+      const b=0.14+Math.random()*0.1;
       cols.push(1.0,g,b);
-      sizes.push(0.008+Math.random()*0.018);
+      sizes.push(0.006+Math.random()*0.012);
+      meshIds.push(mi);vertIds.push(vi);offs.push(ox,oy,oz);
     }
   }else{
     for(let i=0;i<N;i++){
@@ -980,8 +982,9 @@ function createAura(){
       const dx=s*Math.cos(th),dy=u,dz=s*Math.sin(th);
       const r=0.5+Math.random()*0.6;
       pts.push(dx*r,dy*r+1.0,dz*r);
-      cols.push(1.0,0.85+Math.random()*0.1,0.2+Math.random()*0.1);
-      sizes.push(0.01+Math.random()*0.02);
+      cols.push(1.0,0.8+Math.random()*0.1,0.18+Math.random()*0.08);
+      sizes.push(0.007+Math.random()*0.012);
+      meshIds.push(-1);vertIds.push(-1);offs.push(0,0,0);
     }
   }
   const geo=new THREE.BufferGeometry();
@@ -989,19 +992,39 @@ function createAura(){
   geo.setAttribute('color',new THREE.Float32BufferAttribute(cols,3));
   geo.setAttribute('size',new THREE.Float32BufferAttribute(sizes,1));
   const mat=new THREE.PointsMaterial({
-    size:0.03,vertexColors:true,transparent:true,opacity:0.6,
+    size:0.02,vertexColors:true,transparent:true,opacity:0.75,
     depthWrite:false,blending:THREE.AdditiveBlending,sizeAttenuation:true
   });
   const mesh=new THREE.Points(geo,mat);
   charRoot.add(mesh);
-  aura={mesh,geo,time:0};
+  aura={mesh,geo,time:0,meshes,meshIds,vertIds,offs,tmp:new THREE.Vector3()};
 }
 function updateAura(dt){
   if(!aura)return;
   aura.time+=dt;
-  aura.mesh.rotation.y+=dt*0.2;
-  aura.mesh.material.opacity=Math.max(0,0.6*(1-aura.time/1.4));
-  if(aura.time>1.4){
+  aura.mesh.rotation.y+=dt*0.12;
+  aura.mesh.material.opacity=Math.max(0,0.75*(1-aura.time/1.6));
+  const p=aura.geo.getAttribute('position');
+  const tmp=aura.tmp;
+  for(let i=0;i<aura.meshIds.length;i++){
+    const mi=aura.meshIds[i];
+    if(mi<0)continue;
+    const m=aura.meshes[mi];
+    const pos=m.geometry.attributes.position;
+    const vi=aura.vertIds[i];
+    if(!pos||vi<0||vi>=pos.count)continue;
+    if(m.isSkinnedMesh&&m.skeleton&&m.geometry.attributes.skinIndex){
+      m.boneTransform(vi,tmp);
+    }else{
+      tmp.set(pos.getX(vi),pos.getY(vi),pos.getZ(vi));
+    }
+    tmp.applyMatrix4(m.matrixWorld);
+    charRoot.worldToLocal(tmp);
+    const oi=i*3;
+    p.setXYZ(i,tmp.x+aura.offs[oi],tmp.y+aura.offs[oi+1],tmp.z+aura.offs[oi+2]);
+  }
+  p.needsUpdate=true;
+  if(aura.time>1.6){
     charRoot.remove(aura.mesh);
     aura.geo.dispose();
     aura.mesh.material.dispose();
@@ -1324,7 +1347,7 @@ function startCinematic(text){
   charRoot.position.set(0,PLAT_Y,0);
   platformMesh.visible=true;
   camTarget.set(0,PLAT_Y+1,0);
-  camYaw=0.3;camPitch=0.35;camDist=14;
+  camYaw=Math.PI;camPitch=0.2;camDist=7.5;
   updateSky(0);
   actFall?.stop();actJump?.stop();actWalk?.stop();
   actIdle?.fadeOut(0.2);
@@ -1438,7 +1461,7 @@ function tick(){
   if(!cinematicCam(dt)){
     interTimer+=dt;
     if(interTimer>2)interacting=false;
-    if(!interacting)camYaw+=dt*0.06;
+    if(phase===PHASE.DONE&&!interacting)camYaw+=dt*0.06;
     if(phase===PHASE.IDLE||phase===PHASE.DRINK||phase===PHASE.WALK||phase===PHASE.JUMP){
       camTarget.set(charRoot.position.x,charRoot.position.y+1,charRoot.position.z);
     }
