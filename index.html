@@ -63,6 +63,10 @@
     <div id="search-results"></div>
   </div>
 
+<script>function showErr(m){const d=document.createElement('div');d.style.cssText='position:fixed;top:0;left:0;right:0;background:red;color:#fff;padding:10px;z-index:9999;font-size:11px;word-break:break-all';d.textContent=m;document.body.appendChild(d)}
+window.addEventListener('error',e=>showErr('L'+(e.lineno||'?')+': '+e.message));
+window.addEventListener('unhandledrejection',e=>showErr('Promise: '+e.reason));
+</script>
 <script type="module">
 import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
 
@@ -721,9 +725,9 @@ charHead.position.y=0.6;charBody.add(charHead);
 const hair=new THREE.Mesh(new THREE.SphereGeometry(0.18,10,6,0,Math.PI*2,0,Math.PI*0.55),new THREE.MeshStandardMaterial({color:'#4a3728',roughness:0.9}));
 hair.position.y=0.62;charBody.add(hair);
 // Torso
-charBody.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(0.14,0.17,0.45,8),clothMat),{position:new THREE.Vector3(0,0.28,0)}));
+{const m=new THREE.Mesh(new THREE.CylinderGeometry(0.14,0.17,0.45,8),clothMat);m.position.y=0.28;charBody.add(m)}
 // Hips
-charBody.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(0.17,0.14,0.15,8),clothMat),{position:new THREE.Vector3(0,0.02,0)}));
+{const m=new THREE.Mesh(new THREE.CylinderGeometry(0.17,0.14,0.15,8),clothMat);m.position.y=0.02;charBody.add(m)}
 
 // Arm builder
 function mkArm(xSign){
