@@ -124,6 +124,7 @@
 <script type="module">
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {SkeletonUtils} from 'three/addons/utils/SkeletonUtils.js';
 
 const W=()=>window.innerWidth, H=()=>window.innerHeight;
 const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
@@ -1092,13 +1093,17 @@ const warmGlow=new THREE.Color('#ffd24a');
 let drinkGlowT=-1;
 const DRINK_GLOW_DUR=2.4;
 let pulseGlow=null;
-const pulseGeo=new THREE.SphereGeometry(0.2,24,16);
 function startDrinkGlow(){drinkGlowT=0}
 function resetDrinkGlow(){
   drinkGlowT=-1;
   if(pulseGlow){
-    pulseGlow.group.parent?.remove(pulseGlow.group);
-    for(const s of pulseGlow.spheres){s.material.dispose();}
+    pulseGlow.root.parent?.remove(pulseGlow.root);
+    pulseGlow.root.traverse(o=>{
+      if(o.material){
+        const mats=Array.isArray(o.material)?o.material:[o.material];
+        mats.forEach(m=>m.dispose());
+      }
+    });
     pulseGlow=null;
   }
   for(const info of charMats){
@@ -1112,28 +1117,34 @@ function updateDrinkGlow(dt){
   drinkGlowT+=dt;
   const k=0; // keep body tint minimal so pulse is visible
   if(!pulseGlow&&charModel){
-    const box=new THREE.Box3().setFromObject(charModel);
-    const center=new THREE.Vector3();box.getCenter(center);
-    charRoot.worldToLocal(center);
-    const group=new THREE.Group();
-    group.position.copy(center);
-    const mat=new THREE.MeshBasicMaterial({
-      color:0xfff1a6,transparent:true,opacity:0.9,
-      blending:THREE.AdditiveBlending,depthWrite:false,depthTest:false
+    const root=SkeletonUtils.clone(charModel);
+    root.traverse(o=>{
+      if(o.isMesh){
+        o.material=new THREE.MeshBasicMaterial({
+          color:0xfff1a6,transparent:true,opacity:0.85,
+          blending:THREE.AdditiveBlending,depthWrite:false,depthTest:false,
+          side:THREE.BackSide
+        });
+        o.renderOrder=10;
+      }
     });
-    const m=new THREE.Mesh(pulseGeo,mat);
-    m.renderOrder=10;
-    group.add(m);
-    charRoot.add(group);
-    pulseGlow={group,mesh:m,time:0};
+    charRoot.add(root);
+    pulseGlow={root,time:0};
   }
   if(pulseGlow){
     pulseGlow.time+=dt;
     const t=(pulseGlow.time*10)%1; // 10 pulses per second
     const u=t<0.5 ? (t*2) : (1-(t-0.5)*2); // out then back in
-    const r=0.15+u*2.6;
-    pulseGlow.mesh.scale.setScalar(r);
-    pulseGlow.mesh.material.opacity=0.9*(1-u*0.85);
+    const s=1+u*0.08;
+    pulseGlow.root.position.copy(charModel.position);
+    pulseGlow.root.rotation.copy(charModel.rotation);
+    pulseGlow.root.scale.copy(charModel.scale).multiplyScalar(s);
+    pulseGlow.root.traverse(o=>{
+      if(o.material){
+        const mats=Array.isArray(o.material)?o.material:[o.material];
+        mats.forEach(m=>{m.opacity=0.85*(1-u*0.85);});
+      }
+    });
   }
   for(const info of charMats){
     const m=info.mat;
