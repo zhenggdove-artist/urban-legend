@@ -641,6 +641,38 @@ function makePlant(text){
   return grp;
 }
 
+// ===== Platform Plant Cover (L-System) =====
+const platformPlantRoot=new THREE.Group();
+function addPlatformPlant(x,z,seed){
+  let grp;
+  try{grp=makePlant(seed);}catch{return;}
+  const m=grp.children[0];
+  const h=m?.userData?.plantH||3;
+  const targetH=0.85; // keep below belly height
+  const sc=Math.min(1.2,Math.max(0.2,targetH/Math.max(0.1,h)));
+  grp.scale.setScalar(sc);
+  grp.position.set(x,0.24,z);
+  grp.rotation.y=Math.random()*Math.PI*2;
+  if(m?.geometry){m.geometry.setDrawRange(0,m.userData.totalIdx);}
+  platformPlantRoot.add(grp);
+}
+function coverPlatformWithPlants(){
+  platformPlantRoot.clear();
+  const R=1.85;
+  const inner=180;
+  const rim=120;
+  for(let i=0;i<inner;i++){
+    const a=Math.random()*Math.PI*2;
+    const r=Math.sqrt(Math.random())*R;
+    addPlatformPlant(Math.cos(a)*r,Math.sin(a)*r,`plat-${i}-in`);
+  }
+  for(let i=0;i<rim;i++){
+    const a=Math.random()*Math.PI*2;
+    const r=R*(0.85+Math.random()*0.25);
+    addPlatformPlant(Math.cos(a)*r,Math.sin(a)*r,`plat-${i}-rim`);
+  }
+}
+
 // ===== THREE.js Scene =====
 const canvas=document.getElementById('c');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
@@ -729,6 +761,8 @@ const camera=new THREE.PerspectiveCamera(55,W()/H(),0.1,1000);
 
 // ===== Character (GLB) + Cinematic =====
 const PLAT_Y=200; // high enough that ground is invisible from platform
+const FOOT_LIFT=0.25; // extra lift to keep feet above platform
+const DRINK_START=0.6; // skip early part of drink animation
 const PHASE={IDLE:0,DRINK:1,WALK:2,JUMP:3,FALL:4,LAND:5,DONE:6};
 let phase=PHASE.IDLE,phaseT=0,firstText='';
 let charReady=false;
@@ -763,6 +797,11 @@ gg.setAttribute('color',new THREE.Float32BufferAttribute(gc,3));
 scene.add(new THREE.Points(gg,new THREE.PointsMaterial({
   size:0.08,vertexColors:true,transparent:true,opacity:0.75,depthWrite:false,sizeAttenuation:true
 })))}
+
+// L-system plant cover on platform (hide rim)
+platformPlantRoot.position.set(0,PLAT_Y,0);
+scene.add(platformPlantRoot);
+coverPlatformWithPlants();
 
 // Animation state
 let mixer=null,clipIdle=null,clipDrink=null,clipJump=null,clipWalk=null,clipFall=null;
@@ -842,40 +881,23 @@ let burst=null;
 function createBurst(pos){
   const N=12500,pts=[],cols=[],vels=[],sizes=[];
   for(let i=0;i<N;i++){
-    const theta=Math.random()*Math.PI*2;
-    let vx,vy,vz,px,py,pz,speed;
-    if(i<800){
-      // Central column — narrow fast upward particles
-      const cr=Math.random()*0.6;
-      px=pos.x+Math.cos(theta)*cr;py=pos.y+Math.random()*0.3;pz=pos.z+Math.sin(theta)*cr;
-      speed=8+Math.random()*14;
-      vx=Math.cos(theta)*cr*2;vy=speed;vz=Math.sin(theta)*cr*2;
-    }else if(i<1800){
-      // Dome cap — spreads outward and upward like mushroom top
-      const phi=Math.random()*Math.PI*0.5; // upper hemisphere
-      const capR=Math.random()*0.4;
-      px=pos.x+Math.cos(theta)*capR;py=pos.y+0.5+Math.random()*0.3;pz=pos.z+Math.sin(theta)*capR;
-      speed=5+Math.random()*10;
-      const spreadAngle=0.3+Math.random()*0.7; // more horizontal spread for dome
-      vx=Math.sin(spreadAngle)*Math.cos(theta)*speed*(1.5+Math.random());
-      vy=Math.cos(spreadAngle)*speed*0.6+3;
-      vz=Math.sin(spreadAngle)*Math.sin(theta)*speed*(1.5+Math.random());
-    }else{
-      // Ground ring — fast horizontal ring expanding outward
-      const gr=Math.random()*0.3;
-      px=pos.x+Math.cos(theta)*gr;py=pos.y+Math.random()*0.15;pz=pos.z+Math.sin(theta)*gr;
-      speed=6+Math.random()*12;
-      vx=Math.cos(theta)*speed;vy=Math.random()*3;vz=Math.sin(theta)*speed;
-    }
+    // 3D sphere of tiny particles, expanding outward
+    const u=Math.random()*2-1;
+    const th=Math.random()*Math.PI*2;
+    const s=Math.sqrt(1-u*u);
+    const dx=s*Math.cos(th),dy=u,dz=s*Math.sin(th);
+    const r0=Math.cbrt(Math.random())*0.45;
+    const px=pos.x+dx*r0,py=pos.y+dy*r0,pz=pos.z+dz*r0;
+    const speed=3+Math.random()*9;
+    const vx=dx*speed,vy=dy*speed,vz=dz*speed;
     pts.push(px,py,pz);
-    // Warm light particles: gold/white/amber
-    const brightness=0.7+Math.random()*0.3;
+    const brightness=0.75+Math.random()*0.25;
     const r=brightness;
-    const g=brightness*(0.7+Math.random()*0.3);
-    const b=brightness*Math.random()*0.25;
+    const g=brightness*(0.75+Math.random()*0.25);
+    const b=brightness*Math.random()*0.2;
     cols.push(r,g,b);
     vels.push(vx,vy,vz);
-    sizes.push(0.03+Math.random()*0.2);
+    sizes.push(0.02+Math.random()*0.08);
   }
   const geo=new THREE.BufferGeometry();
   geo.setAttribute('position',new THREE.Float32BufferAttribute(pts,3));
@@ -906,6 +928,43 @@ function updateBurst(dt){
   burst.mesh.material.opacity=fade;
   burst.mesh.material.size=0.15*Math.max(0.3,1-burst.time*0.1);
   if(burst.time>5.5){scene.remove(burst.mesh);burst.geo.dispose();burst.mesh.material.dispose();burst=null}
+}
+
+// ===== Character Aura (yellow glow particles) =====
+let aura=null;
+function createAura(){
+  if(aura||!charRoot)return;
+  const N=700,pts=[],cols=[],sizes=[];
+  for(let i=0;i<N;i++){
+    const u=Math.random()*2-1;
+    const th=Math.random()*Math.PI*2;
+    const s=Math.sqrt(1-u*u);
+    const dx=s*Math.cos(th),dy=u,dz=s*Math.sin(th);
+    const r=0.5+Math.random()*0.6;
+    pts.push(dx*r,dy*r+1.0,dz*r);
+    cols.push(1.0,0.9+Math.random()*0.1,0.2+Math.random()*0.1);
+    sizes.push(0.02+Math.random()*0.05);
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(pts,3));
+  geo.setAttribute('color',new THREE.Float32BufferAttribute(cols,3));
+  geo.setAttribute('size',new THREE.Float32BufferAttribute(sizes,1));
+  const mat=new THREE.PointsMaterial({size:0.12,vertexColors:true,transparent:true,opacity:0.35,depthWrite:false,blending:THREE.AdditiveBlending});
+  const mesh=new THREE.Points(geo,mat);
+  charRoot.add(mesh);
+  aura={mesh,geo,time:0};
+}
+function updateAura(dt){
+  if(!aura)return;
+  aura.time+=dt;
+  aura.mesh.rotation.y+=dt*0.8;
+  aura.mesh.material.opacity=Math.max(0,0.35*(1-aura.time/1.2));
+  if(aura.time>1.2){
+    charRoot.remove(aura.mesh);
+    aura.geo.dispose();
+    aura.mesh.material.dispose();
+    aura=null;
+  }
 }
 
 // ===== Cinematic Camera =====
@@ -965,7 +1024,6 @@ function cinematicCam(dt){
 const PLATFORM_EDGE=1.6; // walk distance to reach platform edge
 const JUMP_FORWARD=1.6; // forward distance during jump off the edge
 const JUMP_CUT=0.45; // cut jump before landing frames
-const FOOT_LIFT=0.25; // extra lift to keep feet above platform
 let walkStartY=0;
 let walkStartX=0;
 let walkStartZ=0;
@@ -983,7 +1041,9 @@ function animateChar(dt){
   }
 
   if(phase===PHASE.DRINK){
-    if(phaseT>=clipDrink.duration*0.45){
+    const drinkDur=clipDrink?clipDrink.duration*(1-DRINK_START):1.0;
+    if(phaseT>=drinkDur){
+      createAura();
       phase=PHASE.WALK;phaseT=0;
       walkStartY=baseModelY;
       walkStartX=0;
@@ -1064,6 +1124,8 @@ function animateChar(dt){
       charRoot.position.y=0;
       actFall?.fadeOut(0.3);
       if(charModel){charModel.position.set(0,baseModelY,0);charModel.rotation.y=Math.PI}
+      charRoot.visible=false;
+      if(charModel)charModel.visible=false;
       createBurst(new THREE.Vector3(0,0,0));
       if(firstText){
         const planted=addPlant(firstText,true);
@@ -1200,6 +1262,32 @@ canvas.addEventListener('click',e=>{
 // ===== UI =====
 const ui=document.getElementById('ui'),goBtn=document.getElementById('go');
 const ta=document.getElementById('ta');
+function startCinematic(text){
+  firstText=text;
+  phase=PHASE.DRINK;phaseT=0;
+  if(aura){
+    charRoot.remove(aura.mesh);
+    aura.geo.dispose();
+    aura.mesh.material.dispose();
+    aura=null;
+  }
+  charRoot.visible=true;
+  if(charModel){charModel.visible=true;charModel.position.set(0,baseModelY,0);charModel.rotation.y=Math.PI}
+  charRoot.position.set(0,PLAT_Y,0);
+  platformMesh.visible=true;
+  camTarget.set(0,PLAT_Y+1,0);
+  camYaw=0.3;camPitch=0.35;camDist=14;
+  updateSky(0);
+  actFall?.stop();actJump?.stop();actWalk?.stop();
+  actIdle?.fadeOut(0.2);
+  if(clipDrink&&mixer){
+    actDrink=mixer.clipAction(clipDrink);
+    actDrink.setLoop(THREE.LoopOnce);actDrink.clampWhenFinished=true;
+    actDrink.reset();
+    actDrink.time=clipDrink.duration*DRINK_START;
+    actDrink.fadeIn(0.2).play();
+  }
+}
 // Click mini UI to expand
 ui.addEventListener('click',()=>{if(ui.classList.contains('mini'))ui.classList.remove('mini')});
 ta.addEventListener('input',()=>{goBtn.disabled=!ta.value.trim()});
@@ -1209,27 +1297,12 @@ goBtn.addEventListener('click',(e)=>{
   if(!text)return;
   ta.value='';goBtn.disabled=true;
   ui.classList.add('mini');
-  if(phase===PHASE.IDLE&&charReady&&mixer&&clipDrink){
-    // First submission — trigger cinematic sequence
-    firstText=text;
-    phase=PHASE.DRINK;phaseT=0;
-    camTarget.set(0,PLAT_Y+1,0);
-    // Cross-fade from idle to drink (play second half)
-    actIdle?.fadeOut(0.3);
-    actDrink=mixer.clipAction(clipDrink);
-    actDrink.setLoop(THREE.LoopOnce);actDrink.clampWhenFinished=true;
-    actDrink.time=clipDrink.duration*0.35;
-    actDrink.reset().fadeIn(0.3).play();
-    actDrink.time=clipDrink.duration*0.35;
+  if((phase===PHASE.IDLE||phase===PHASE.DONE)&&charReady&&mixer&&clipDrink){
+    // Trigger cinematic sequence (restart from platform)
+    startCinematic(text);
   }else if(phase===PHASE.IDLE){
     // Model not loaded yet — skip cinematic, plant directly
     phase=PHASE.DONE;
-    const planted=addPlant(text,true);
-    saveEntry(text);
-    if(planted){clearGlow();addGlow(planted)}
-    camTarget.set(0,3,0);camDist=10;
-  }else if(phase===PHASE.DONE){
-    // Normal plant growth
     const planted=addPlant(text,true);
     saveEntry(text);
     if(planted){clearGlow();addGlow(planted)}
@@ -1308,6 +1381,7 @@ function tick(){
   // Character animation
   animateChar(dt);
   updateBurst(dt);
+  updateAura(dt);
   if(phase===PHASE.IDLE||phase===PHASE.DRINK||phase===PHASE.WALK||phase===PHASE.JUMP){
     updateSky(0);
   }
