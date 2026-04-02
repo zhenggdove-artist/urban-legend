@@ -102,6 +102,24 @@
     #fade{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;
       transition:opacity 0.6s ease;z-index:20}
     #fade.show{opacity:1}
+    #title{position:absolute;top:3vh;left:50%;transform:translateX(-50%);
+      font-size:52px;letter-spacing:10px;font-weight:bold;
+      font-family:"Saint","Trebuchet MS",sans-serif;
+      text-transform:uppercase;z-index:12;pointer-events:none;
+      color:#c9a96e;
+      text-shadow:
+        0 1px 0 #dfc98a,
+        0 2px 0 #b8923e,
+        0 3px 0 #a67c3d,
+        0 4px 0 #8b6914,
+        0 5px 0 #6b4f10,
+        0 6px 0 #503a0b,
+        0 8px 12px rgba(0,0,0,0.35),
+        0 0 20px rgba(201,169,110,0.3)}
+    @media (max-width:640px){#title{font-size:32px;letter-spacing:6px;top:2vh}}
+    #mouth-text-layer{position:fixed;inset:0;pointer-events:none;z-index:18}
+    .mouth-text{position:absolute;color:#ff1f1f;font-size:16px;letter-spacing:1px;
+      text-shadow:0 1px 0 rgba(255,255,255,0.5);white-space:nowrap}
   </style>
 </head>
 <body>
@@ -1434,19 +1452,24 @@ function getRecentTexts(n){
 function startMouthText(){
   if(mouthText||!charModel)return;
   const texts=getRecentTexts(10);
-  // Always start from bottom-right area (where the mini UI bubble is)
-  const vw=window.innerWidth,vh=window.innerHeight;
-  let startX=vw-vw*0.06-41; // right:6vw + half of 82px mini bubble
-  let startY=vh-vh*0.12-29; // bottom:12vh + half of 58px mini bubble
+  // Start position: the mini UI bubble (bottom-right corner)
+  const uiEl=document.getElementById('ui');
+  const uiR=uiEl.getBoundingClientRect();
+  const startX=uiR.left+uiR.width*0.5;
+  const startY=uiR.top+uiR.height*0.5;
   const items=[];
   for(let i=0;i<10;i++){
     const el=makeTextEl(texts[i]||'...');
-    const jitter=new THREE.Vector2((Math.random()-0.5)*40,(Math.random()-0.5)*24);
+    const jx=(Math.random()-0.5)*40, jy=(Math.random()-0.5)*24;
+    const sx=startX+jx, sy=startY+jy;
+    // Set initial position immediately so elements don't flash at (0,0)
+    el.style.left=`${sx}px`;
+    el.style.top=`${sy}px`;
     items.push({
       el,
       delay:Math.random()*0.3,
       dur:0.9+Math.random()*0.5,
-      start:{x:startX+jitter.x,y:startY+jitter.y}
+      start:{x:sx,y:sy}
     });
   }
   mouthText={items,time:0};
@@ -1979,16 +2002,3 @@ window.addEventListener('resize',()=>{
 </script>
 </body>
 </html>
-    #title{position:absolute;top:3vh;left:50%;transform:translateX(-50%);
-      font-size:52px;letter-spacing:10px;font-weight:bold;
-      font-family:"Saint","Trebuchet MS",sans-serif;
-      text-transform:uppercase;z-index:12;pointer-events:none;
-      background:linear-gradient(180deg,#f0e6d0 0%,#c9a96e 25%,#a67c3d 50%,#c9a96e 75%,#f0e6d0 100%);
-      -webkit-background-clip:text;-webkit-text-fill-color:transparent;
-      background-clip:text;
-      filter:drop-shadow(0 2px 0 #8b6914) drop-shadow(0 4px 0 #6b4f10) drop-shadow(0 6px 8px rgba(0,0,0,0.4));
-      text-shadow:none}
-    @media (max-width:640px){#title{font-size:32px;letter-spacing:6px;top:2vh}}
-    #mouth-text-layer{position:fixed;inset:0;pointer-events:none;z-index:18}
-    .mouth-text{position:absolute;color:#ff1f1f;font-size:16px;letter-spacing:1px;
-      text-shadow:0 1px 0 rgba(255,255,255,0.5);white-space:nowrap}
