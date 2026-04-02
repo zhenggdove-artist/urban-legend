@@ -1064,13 +1064,13 @@ function updateDrinkGlow(dt){
   if(drinkGlowT<0)return;
   drinkGlowT+=dt;
   const t=Math.min(1,drinkGlowT/DRINK_GLOW_DUR);
-  const pulse=0.5+0.5*Math.sin(drinkGlowT*4.2);
-  const k=(1-t)*(0.6+0.7*pulse);
+  const pulse=0.5+0.5*Math.sin(drinkGlowT*(Math.PI*4));
+  const k=(1-t)*(0.6+0.7*pulse)*0.6;
   for(const info of charMats){
     const m=info.mat;
     if(m.emissive){
       const base=info.baseEmissive?info.baseEmissive:new THREE.Color(0,0,0);
-      m.emissive.copy(base).lerp(warmGlow,0.9);
+      m.emissive.copy(base).lerp(warmGlow,0.54);
       if('emissiveIntensity' in m)m.emissiveIntensity=(info.baseEmissiveIntensity||0)+k*1.2;
     }
   }
