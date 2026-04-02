@@ -739,6 +739,7 @@ async function loadChar(){
   const gltf=await loader.loadAsync('character.glb');
   charModel=gltf.scene;
   charModel.rotation.y=Math.PI; // face away from camera (back towards +Z)
+  charModel.scale.setScalar(100); // Mixamo FBX→Blender applies 0.01 scale — undo it
 
   // Desaturate materials + disable frustum culling for skinned mesh
   charModel.traverse(o=>{
@@ -1221,7 +1222,13 @@ function tick(){
   // Debug overlay — remove after confirming character works
   const dbg=document.getElementById('dbg');
   if(dbg){
-    dbg.textContent=`charReady:${charReady} model:${!!charModel} mixer:${!!mixer} idle:${!!clipIdle} phase:${phase} camTarget.y:${camTarget.y.toFixed(1)} charRoot.y:${charRoot.position.y.toFixed(1)}`;
+    let s='';
+    if(charModel){
+      const b=new THREE.Box3().setFromObject(charModel);
+      const sz=new THREE.Vector3();b.getSize(sz);
+      s=` sz:${sz.x.toFixed(2)},${sz.y.toFixed(2)},${sz.z.toFixed(2)} sc:${charModel.scale.x}`;
+    }
+    dbg.textContent=`charReady:${charReady} model:${!!charModel} idle:${!!clipIdle} phase:${phase} camTgt.y:${camTarget.y.toFixed(1)} charRoot.y:${charRoot.position.y.toFixed(1)}${s}`;
   }
 
   renderer.render(scene,camera);
