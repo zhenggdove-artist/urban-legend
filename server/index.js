@@ -117,6 +117,19 @@ app.patch('/api/entries/:id', (req, res) => {
 
 app.get('/health', (req, res) => res.json({ ok: true }));
 
+// Keep-alive: lightweight query to prevent Supabase free-tier hibernation
+// Does NOT insert/modify entries — only reads a count
+app.get('/api/keepalive', (req, res) => {
+  if (!pool) return res.json({ ok: true, source: 'no-db' });
+  pool
+    .query('SELECT 1')
+    .then(() => res.json({ ok: true, ts: new Date().toISOString() }))
+    .catch(err => {
+      console.error('keepalive error', err);
+      res.status(500).json({ ok: false });
+    });
+});
+
 const port = process.env.PORT || 3000;
 ensureDb()
   .then(() => {
