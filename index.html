@@ -1126,7 +1126,7 @@ function updateDrinkGlow(dt){
   if(!pulseGlow&&charModel){
     const root=new THREE.Group();
     const makeMat=()=>new THREE.MeshBasicMaterial({
-      color:0xff9a1a,transparent:true,opacity:0.95,
+      color:0xff7a00,transparent:true,opacity:1.0,
       blending:THREE.AdditiveBlending,depthWrite:false,depthTest:false,
       side:THREE.BackSide
     });
@@ -1154,14 +1154,14 @@ function updateDrinkGlow(dt){
     pulseGlow.time+=dt;
     const t=(pulseGlow.time*10)%1; // 10 pulses per second
     const u=t<0.5 ? (t*2) : (1-(t-0.5)*2); // out then back in
-    const s=1+u*0.08;
+    const s=1+u*0.18;
     pulseGlow.root.position.copy(charModel.position);
     pulseGlow.root.rotation.copy(charModel.rotation);
     pulseGlow.root.scale.copy(charModel.scale).multiplyScalar(s);
     pulseGlow.root.traverse(o=>{
       if(o.material){
         const mats=Array.isArray(o.material)?o.material:[o.material];
-        mats.forEach(m=>{m.opacity=0.85*(1-u*0.85);});
+        mats.forEach(m=>{m.opacity=1.0*(1-u*0.7);});
       }
     });
   }
@@ -1257,7 +1257,7 @@ function animateChar(dt){
 
   if(phase===PHASE.DRINK){
     const drinkDur=clipDrink?clipDrink.duration*(1-DRINK_START):1.0;
-    if(phaseT<0.4)startMouthText();
+    if(phaseT<0.8)startMouthText();
     if(phaseT>=drinkDur){
       startDrinkGlow();
       phase=PHASE.WALK;phaseT=0;
@@ -1412,14 +1412,15 @@ function makeTextSprite(text){
   cv.width=256;cv.height=64;
   const ctx=cv.getContext('2d');
   ctx.clearRect(0,0,cv.width,cv.height);
-  ctx.font='24px Saint';
-  ctx.fillStyle='#ff2b2b';
+  ctx.font='32px Saint';
+  ctx.fillStyle='#ff1f1f';
   ctx.textAlign='center';ctx.textBaseline='middle';
   ctx.fillText(text,cv.width/2,cv.height/2);
   const tex=new THREE.CanvasTexture(cv);
-  const mat=new THREE.SpriteMaterial({map:tex,transparent:true,opacity:0.9,depthWrite:false});
+  const mat=new THREE.SpriteMaterial({map:tex,transparent:true,opacity:1,depthWrite:false,depthTest:false});
   const sp=new THREE.Sprite(mat);
-  sp.scale.set(charHalfHeight*0.35,charHalfHeight*0.12,1);
+  sp.scale.set(charHalfHeight*0.55,charHalfHeight*0.2,1);
+  sp.renderOrder=20;
   return {sprite:sp,texture:tex};
 }
 function getRecentTexts(n){
@@ -1439,14 +1440,14 @@ function startMouthText(){
   for(let i=0;i<10;i++){
     const {sprite,texture}=makeTextSprite(texts[i]||'...');
     const off=new THREE.Vector3(
+      (Math.random()-0.5)*charHalfHeight*0.28,
       (Math.random()-0.5)*charHalfHeight*0.18,
-      (Math.random()-0.5)*charHalfHeight*0.12,
-      (Math.random()-0.5)*charHalfHeight*0.18
+      (Math.random()-0.5)*charHalfHeight*0.28
     );
     items.push({
       sprite,texture,
-      delay:Math.random()*0.4,
-      dur:0.6+Math.random()*0.4,
+      delay:Math.random()*0.3,
+      dur:0.9+Math.random()*0.5,
       off,
       baseScale:sprite.scale.clone()
     });
@@ -1472,8 +1473,8 @@ function updateMouthText(dt){
       const u=Math.min(1,t);
       const pos=it.off.clone().multiplyScalar(1-u);
       it.sprite.position.copy(pos);
-      const flick=0.6+0.4*Math.sin((mouthText.time*20)+(it.delay*10));
-      it.sprite.material.opacity=flick*(1-u);
+      const flick=0.7+0.3*Math.sin((mouthText.time*28)+(it.delay*10));
+      it.sprite.material.opacity=flick*(1-u*0.6);
       it.sprite.scale.copy(it.baseScale).multiplyScalar(1-u*0.7);
     }else{
       it.sprite.visible=false;
