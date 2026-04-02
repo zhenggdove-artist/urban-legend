@@ -63,10 +63,6 @@
     <div id="search-results"></div>
   </div>
 
-<script>function showErr(m){const d=document.createElement('div');d.style.cssText='position:fixed;top:0;left:0;right:0;background:red;color:#fff;padding:10px;z-index:9999;font-size:11px;word-break:break-all';d.textContent=m;document.body.appendChild(d)}
-window.addEventListener('error',e=>showErr('L'+(e.lineno||'?')+': '+e.message));
-window.addEventListener('unhandledrejection',e=>showErr('Promise: '+e.reason));
-</script>
 <script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
 import * as THREE from 'three';
@@ -726,33 +722,17 @@ async function loadChar(){
   charModel=gltf.scene;
   charModel.rotation.y=Math.PI; // face away from camera (back towards +Z)
 
-  // Debug: check bounding box
-  const box=new THREE.Box3().setFromObject(charModel);
-  const size=new THREE.Vector3();box.getSize(size);
-  const center=new THREE.Vector3();box.getCenter(center);
-  console.log('Char bbox size:',size,'center:',center);
-  showErr('Model loaded! Size:'+size.x.toFixed(1)+','+size.y.toFixed(1)+','+size.z.toFixed(1));
-
-  // Scale if too small or too large
-  if(size.y<0.5){charModel.scale.setScalar(2/size.y)}
-  else if(size.y>5){charModel.scale.setScalar(2/size.y)}
-
   // Desaturate materials to pastel tones
-  let meshCount=0;
   charModel.traverse(o=>{
-    if(o.isMesh){
-      meshCount++;
-      if(o.material){
-        const m=o.material;
-        m.color.set('#d4b8c4');
-        m.roughness=0.85;m.metalness=0;
-        m.emissive=new THREE.Color('#d4b8c4');m.emissiveIntensity=0.06;
-        m.side=THREE.DoubleSide;
-        charMats.push(m);
-      }
+    if(o.isMesh&&o.material){
+      const m=o.material;
+      m.color.set('#d4b8c4');
+      m.roughness=0.85;m.metalness=0;
+      m.emissive=new THREE.Color('#d4b8c4');m.emissiveIntensity=0.06;
+      m.side=THREE.DoubleSide;
+      charMats.push(m);
     }
   });
-  console.log('Meshes found:',meshCount);
   charRoot.add(charModel);
 
   // Find animations by name
@@ -763,17 +743,12 @@ async function loadChar(){
     else if(n.includes('drink'))clipDrink=clip;
     else if(n.includes('jump'))clipJump=clip;
   }
-  console.log('Animations:',gltf.animations.map(a=>a.name),'idle:',!!clipIdle);
 
   // Start idle
   if(clipIdle){actIdle=mixer.clipAction(clipIdle);actIdle.play()}
   charReady=true;
-
-  // Set initial camera to look at character
-  camTarget.set(0,PLAT_Y+1,0);
-  camPitch=0.3;camDist=8;
 }
-loadChar().catch(e=>{console.error('Char load err:',e);showErr('Char: '+e.message)});
+loadChar().catch(e=>console.error('Char load err:',e));
 
 // ===== Yellow Particle Burst =====
 let burst=null;
@@ -966,8 +941,8 @@ function addPlant(text,grow=true,ts=null){
 }
 
 // ===== Camera =====
-let camYaw=0.3,camPitch=0.35,camDist=14;
-let camTarget=new THREE.Vector3(0,3,0);
+let camYaw=0.3,camPitch=0.3,camDist=8;
+let camTarget=new THREE.Vector3(0,PLAT_Y+1,0);
 let interacting=false,interTimer=0;
 const ptrs=new Map();
 let dragS={x:0,y:0,yaw:0,pitch:0},pinchD0=0,pinchR0=14;
