@@ -1092,7 +1092,7 @@ const warmGlow=new THREE.Color('#ffd24a');
 let drinkGlowT=-1;
 const DRINK_GLOW_DUR=2.4;
 let pulseGlow=null;
-const pulseGeo=new THREE.SphereGeometry(0.04,12,8);
+const pulseGeo=new THREE.SphereGeometry(0.15,24,16);
 function startDrinkGlow(){drinkGlowT=0}
 function resetDrinkGlow(){
   drinkGlowT=-1;
@@ -1118,29 +1118,21 @@ function updateDrinkGlow(dt){
     charRoot.worldToLocal(center);
     const group=new THREE.Group();
     group.position.copy(center);
-    const spheres=[];
-    for(let i=0;i<100;i++){
-      const mat=new THREE.MeshBasicMaterial({
-        color:0xffd24a,transparent:true,opacity:0.35,
-        blending:THREE.AdditiveBlending,depthWrite:false
-      });
-      const m=new THREE.Mesh(pulseGeo,mat);
-      m.userData.phase=Math.random();
-      m.userData.radius=0.1+Math.random()*0.2;
-      group.add(m);spheres.push(m);
-    }
+    const mat=new THREE.MeshBasicMaterial({
+      color:0xffd24a,transparent:true,opacity:0.4,
+      blending:THREE.AdditiveBlending,depthWrite:false
+    });
+    const m=new THREE.Mesh(pulseGeo,mat);
+    group.add(m);
     charRoot.add(group);
-    pulseGlow={group,spheres,time:0};
+    pulseGlow={group,mesh:m,time:0};
   }
   if(pulseGlow){
     pulseGlow.time+=dt;
-    for(let i=0;i<pulseGlow.spheres.length;i++){
-      const s=pulseGlow.spheres[i];
-      const t=(pulseGlow.time*1.2+s.userData.phase)%1;
-      const r=s.userData.radius+t*1.4;
-      s.scale.setScalar(r);
-      s.material.opacity=0.25*(1-t);
-    }
+    const t=(pulseGlow.time*10)%1; // 10 pulses per second
+    const r=0.15+t*1.8;
+    pulseGlow.mesh.scale.setScalar(r);
+    pulseGlow.mesh.material.opacity=0.5*(1-t);
   }
   for(const info of charMats){
     const m=info.mat;
