@@ -680,6 +680,264 @@ scene.add(new THREE.AmbientLight('#ffffff',0.35));
 
 const camera=new THREE.PerspectiveCamera(55,W()/H(),0.1,500);
 
+// ===== Procedural Character + Platform =====
+const PLAT_Y=10;
+const PHASE={IDLE:0,DRINK:1,JUMP:2,FALL:3,LAND:4,DONE:5};
+let phase=PHASE.IDLE,phaseT=0,firstText='';
+
+// Platform — circular elevated with grass
+const platformMesh=new THREE.Mesh(
+  new THREE.CylinderGeometry(1.8,2.0,0.5,24),
+  new THREE.MeshStandardMaterial({color:'#5a9e6a',roughness:0.9,emissive:'#1a5a2a',emissiveIntensity:0.1})
+);
+platformMesh.position.set(0,PLAT_Y,0);scene.add(platformMesh);
+{
+  const gp=[],gc=[];
+  for(let i=0;i<300;i++){
+    const a=Math.random()*Math.PI*2,r=Math.random()*1.7;
+    gp.push(Math.cos(a)*r,PLAT_Y+0.26+Math.random()*0.18,Math.sin(a)*r);
+    const sh=0.35+Math.random()*0.3;gc.push(sh*0.45,sh*1.05,sh*0.35);
+  }
+  const gg=new THREE.BufferGeometry();
+  gg.setAttribute('position',new THREE.Float32BufferAttribute(gp,3));
+  gg.setAttribute('color',new THREE.Float32BufferAttribute(gc,3));
+  scene.add(new THREE.Points(gg,new THREE.PointsMaterial({size:0.06,vertexColors:true,transparent:true,opacity:0.55,depthWrite:false,sizeAttenuation:true})));
+}
+
+// Character — simple humanoid
+const charRoot=new THREE.Group();
+charRoot.position.set(0,PLAT_Y+0.25,0);
+scene.add(charRoot);
+const charBody=new THREE.Group();
+charRoot.add(charBody);
+
+const skinMat=new THREE.MeshStandardMaterial({color:'#e8b89d',roughness:0.8,metalness:0});
+const clothMat=new THREE.MeshStandardMaterial({color:'#cdb4db',roughness:0.7,metalness:0});
+
+// Head
+const charHead=new THREE.Mesh(new THREE.SphereGeometry(0.17,10,8),skinMat);
+charHead.position.y=0.6;charBody.add(charHead);
+// Hair hint
+const hair=new THREE.Mesh(new THREE.SphereGeometry(0.18,10,6,0,Math.PI*2,0,Math.PI*0.55),new THREE.MeshStandardMaterial({color:'#4a3728',roughness:0.9}));
+hair.position.y=0.62;charBody.add(hair);
+// Torso
+charBody.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(0.14,0.17,0.45,8),clothMat),{position:new THREE.Vector3(0,0.28,0)}));
+// Hips
+charBody.add(Object.assign(new THREE.Mesh(new THREE.CylinderGeometry(0.17,0.14,0.15,8),clothMat),{position:new THREE.Vector3(0,0.02,0)}));
+
+// Arm builder
+function mkArm(xSign){
+  const pivot=new THREE.Group();pivot.position.set(xSign*0.2,0.45,0);
+  const upper=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.035,0.3,6),skinMat);
+  upper.position.y=-0.15;pivot.add(upper);
+  const elbowPivot=new THREE.Group();elbowPivot.position.set(0,-0.3,0);
+  const fore=new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.03,0.25,6),skinMat);
+  fore.position.y=-0.125;elbowPivot.add(fore);
+  // Hand
+  const hand=new THREE.Mesh(new THREE.SphereGeometry(0.035,6,5),skinMat);
+  hand.position.y=-0.27;elbowPivot.add(hand);
+  pivot.add(elbowPivot);
+  charBody.add(pivot);
+  return{pivot,elbow:elbowPivot};
+}
+const rArm=mkArm(-1),lArm=mkArm(1);
+
+// Leg builder
+function mkLeg(xSign){
+  const pivot=new THREE.Group();pivot.position.set(xSign*0.08,-0.05,0);
+  const upper=new THREE.Mesh(new THREE.CylinderGeometry(0.055,0.05,0.35,6),clothMat);
+  upper.position.y=-0.175;pivot.add(upper);
+  const kneePivot=new THREE.Group();kneePivot.position.set(0,-0.35,0);
+  const shin=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.04,0.3,6),skinMat);
+  shin.position.y=-0.15;kneePivot.add(shin);
+  // Foot
+  const foot=new THREE.Mesh(new THREE.BoxGeometry(0.06,0.035,0.1),skinMat);
+  foot.position.set(0,-0.32,0.02);kneePivot.add(foot);
+  pivot.add(kneePivot);
+  charBody.add(pivot);
+  return{pivot,knee:kneePivot};
+}
+const rLeg=mkLeg(-1),lLeg=mkLeg(1);
+
+// Character faces -Z (back towards camera at +Z)
+charBody.rotation.y=0;
+
+// ===== Yellow Particle Burst =====
+let burst=null;
+function createBurst(pos){
+  const N=100,pts=[],cols=[],vels=[];
+  for(let i=0;i<N;i++){
+    pts.push(pos.x,pos.y+0.3,pos.z);
+    const b=0.8+Math.random()*0.2;cols.push(1,0.85+Math.random()*0.15,0.15*Math.random());
+    vels.push((Math.random()-0.5)*6,2+Math.random()*6,(Math.random()-0.5)*6);
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(pts,3));
+  geo.setAttribute('color',new THREE.Float32BufferAttribute(cols,3));
+  const mat=new THREE.PointsMaterial({size:0.15,vertexColors:true,transparent:true,opacity:1,depthWrite:false,sizeAttenuation:true});
+  const mesh=new THREE.Points(geo,mat);
+  scene.add(mesh);
+  burst={mesh,vels,time:0,geo};
+}
+function updateBurst(dt){
+  if(!burst)return;
+  burst.time+=dt;
+  const p=burst.geo.getAttribute('position');
+  for(let i=0;i<burst.vels.length/3;i++){
+    burst.vels[i*3+1]-=9.8*dt; // gravity
+    p.setX(i,p.getX(i)+burst.vels[i*3]*dt);
+    p.setY(i,p.getY(i)+burst.vels[i*3+1]*dt);
+    p.setZ(i,p.getZ(i)+burst.vels[i*3+2]*dt);
+  }
+  p.needsUpdate=true;
+  burst.mesh.material.opacity=Math.max(0,1-burst.time/2);
+  if(burst.time>2.5){scene.remove(burst.mesh);burst=null}
+}
+
+// ===== Cinematic Camera =====
+function cinematicCam(dt){
+  if(phase===PHASE.IDLE){
+    // Behind character, slightly above, looking at back
+    const cy=charRoot.position.y+0.5;
+    camera.position.set(0,cy+0.8,4);
+    camera.lookAt(0,cy,0);
+    return true;
+  }
+  if(phase===PHASE.DRINK){
+    // Stay behind but slowly pull out
+    const cy=charRoot.position.y+0.5;
+    const t=Math.min(1,phaseT/2);
+    camera.position.set(0,cy+0.8,4+t*1);
+    camera.lookAt(0,cy,0);
+    return true;
+  }
+  if(phase===PHASE.JUMP){
+    const cy=charRoot.position.y+0.5;
+    camera.position.set(0,cy+1,5);
+    camera.lookAt(0,cy,0);
+    return true;
+  }
+  if(phase===PHASE.FALL){
+    // Transition: swing to front, pull back, look up at falling character
+    const t=Math.min(1,phaseT/2.5);
+    const ease=t*t*(3-2*t); // smoothstep
+    const cy=charRoot.position.y+0.5;
+    // Swing from behind (+Z) to front (-Z), move down and back
+    const camZ=4*(1-2*ease); // +4 → -4
+    const camY=cy+0.8-ease*(charRoot.position.y+2); // go down as char falls
+    const camYFinal=Math.max(1,camY);
+    camera.position.set(0,camYFinal,camZ*(1+ease*0.5));
+    camera.lookAt(0,charRoot.position.y+0.3,0);
+    return true;
+  }
+  if(phase===PHASE.LAND){
+    // Slowly transition to orbit view
+    const t=Math.min(1,phaseT/2);
+    const ease=t*t*(3-2*t);
+    const orbitY=0+3*ease;
+    camera.position.lerp(new THREE.Vector3(
+      camDist*Math.cos(0.35)*Math.sin(0.3),
+      orbitY+camDist*Math.sin(0.35),
+      camDist*Math.cos(0.35)*Math.cos(0.3)
+    ),dt*2);
+    camera.lookAt(0,orbitY,0);
+    return true;
+  }
+  return false;
+}
+
+// ===== Character Animation =====
+function animateChar(dt){
+  if(phase===PHASE.IDLE){
+    // Gentle idle sway
+    const t=globalTime;
+    rArm.pivot.rotation.x=Math.sin(t*1.5)*0.08;
+    lArm.pivot.rotation.x=-Math.sin(t*1.5)*0.08;
+    rArm.pivot.rotation.z=0.05;lArm.pivot.rotation.z=-0.05;
+    rArm.elbow.rotation.x=0;lArm.elbow.rotation.x=0;
+    rLeg.pivot.rotation.x=0;lLeg.pivot.rotation.x=0;
+    charHead.rotation.y=Math.sin(t*0.8)*0.08;
+    charBody.position.y=Math.sin(t*2)*0.01;
+  }
+  else if(phase===PHASE.DRINK){
+    const t=Math.min(1,phaseT/1.8);
+    const e=t<0.5?2*t*t:(1-Math.pow(-2*t+2,2)/2);
+    // Right arm raises to mouth
+    rArm.pivot.rotation.x=-e*2.8;
+    rArm.pivot.rotation.z=0.05-e*0.3;
+    rArm.elbow.rotation.x=e*2.2;
+    // Left arm slight
+    lArm.pivot.rotation.x=-e*0.3;
+    // Head tilts back slightly
+    charHead.rotation.x=-e*0.25;
+    if(phaseT>=2){phase=PHASE.JUMP;phaseT=0}
+  }
+  else if(phase===PHASE.JUMP){
+    const t=Math.min(1,phaseT/0.8);
+    if(t<0.3){
+      // Crouch
+      const ct=t/0.3;
+      charBody.position.y=-ct*0.15;
+      rLeg.pivot.rotation.x=ct*0.4;lLeg.pivot.rotation.x=ct*0.4;
+      rLeg.knee.rotation.x=-ct*0.6;lLeg.knee.rotation.x=-ct*0.6;
+    }else{
+      // Spring up
+      const jt=(t-0.3)/0.7;
+      charBody.position.y=-0.15+jt*0.3;
+      rArm.pivot.rotation.x=-2.8+jt*1.5;lArm.pivot.rotation.x=-0.3-jt*2;
+      rArm.pivot.rotation.z=0.05-0.3+jt*0.8;lArm.pivot.rotation.z=-0.05+jt*(-0.5);
+      rLeg.pivot.rotation.x=0.4-jt*0.8;lLeg.pivot.rotation.x=0.4-jt*0.8;
+      rLeg.knee.rotation.x=-0.6+jt*0.6;lLeg.knee.rotation.x=-0.6+jt*0.6;
+    }
+    if(phaseT>=0.8){phase=PHASE.FALL;phaseT=0;charRoot.position.y=PLAT_Y+0.4}
+  }
+  else if(phase===PHASE.FALL){
+    // Fall from platform to ground
+    const dur=2.0;
+    const t=Math.min(1,phaseT/dur);
+    const easeIn=t*t; // accelerating fall
+    charRoot.position.y=PLAT_Y+0.4-(PLAT_Y+0.4)*easeIn;
+    // Spread limbs during fall
+    rArm.pivot.rotation.x=-1.3;rArm.pivot.rotation.z=1.2;
+    lArm.pivot.rotation.x=-2.3;lArm.pivot.rotation.z=-1.2;
+    rArm.elbow.rotation.x=0.5;lArm.elbow.rotation.x=0.5;
+    rLeg.pivot.rotation.x=-0.3;lLeg.pivot.rotation.x=0.2;
+    rLeg.knee.rotation.x=-0.3;lLeg.knee.rotation.x=-0.2;
+    // Rotate to face camera
+    charBody.rotation.y=t*Math.PI;
+    if(t>=1){
+      phase=PHASE.LAND;phaseT=0;
+      charRoot.position.y=0;
+      createBurst(charRoot.position);
+      // Desaturate character
+      skinMat.color.set('#cdb4db');skinMat.emissive=new THREE.Color('#cdb4db');skinMat.emissiveIntensity=0.08;
+      clothMat.color.set('#a2d2ff');clothMat.emissive=new THREE.Color('#bde0fe');clothMat.emissiveIntensity=0.08;
+      // Grow the first plant
+      if(firstText){
+        const planted=addPlant(firstText,true);
+        saveEntry(firstText);
+        if(planted){clearGlow();addGlow(planted)}
+      }
+    }
+  }
+  else if(phase===PHASE.LAND){
+    // Impact pose — character settles
+    const t=Math.min(1,phaseT/1.5);
+    // Collapse into a resting pose
+    rArm.pivot.rotation.x=-0.5*t;rArm.pivot.rotation.z=0.3*(1-t)+t*0.15;
+    lArm.pivot.rotation.x=-0.5*t;lArm.pivot.rotation.z=-0.3*(1-t)-t*0.15;
+    rArm.elbow.rotation.x=0.3*(1-t);lArm.elbow.rotation.x=0.3*(1-t);
+    rLeg.pivot.rotation.x=0.2*(1-t);lLeg.pivot.rotation.x=0.2*(1-t);
+    rLeg.knee.rotation.x=-0.2*(1-t);lLeg.knee.rotation.x=-0.2*(1-t);
+    charHead.rotation.x=-0.15*(1-t);
+    if(phaseT>=2){
+      phase=PHASE.DONE;phaseT=0;
+      camYaw=0.3;camPitch=0.35;camDist=14;
+      camTarget.set(0,3,0);
+    }
+  }
+}
+
 // ===== Plant Container =====
 const plantRoot=new THREE.Group();
 scene.add(plantRoot);
@@ -724,6 +982,7 @@ const ptrs=new Map();
 let dragS={x:0,y:0,yaw:0,pitch:0},pinchD0=0,pinchR0=14;
 
 canvas.addEventListener('pointerdown',e=>{
+  if(phase!==PHASE.DONE){ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});return}
   ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
   canvas.setPointerCapture(e.pointerId);
   interacting=true;interTimer=0;
@@ -733,6 +992,7 @@ canvas.addEventListener('pointerdown',e=>{
 canvas.addEventListener('pointermove',e=>{
   if(!ptrs.has(e.pointerId))return;
   ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(phase!==PHASE.DONE)return;
   interacting=true;interTimer=0;
   if(ptrs.size===1){
     camYaw=dragS.yaw+(e.clientX-dragS.x)/W()*4;
@@ -744,7 +1004,7 @@ canvas.addEventListener('pointermove',e=>{
 });
 canvas.addEventListener('pointerup',e=>ptrs.delete(e.pointerId));
 canvas.addEventListener('pointercancel',e=>ptrs.delete(e.pointerId));
-canvas.addEventListener('wheel',e=>{e.preventDefault();camDist=clamp(camDist+e.deltaY*0.015,3,50);interacting=true;interTimer=0},{passive:false});
+canvas.addEventListener('wheel',e=>{e.preventDefault();if(phase!==PHASE.DONE)return;camDist=clamp(camDist+e.deltaY*0.015,3,50);interacting=true;interTimer=0},{passive:false});
 
 function updateCam(){
   camera.position.set(
@@ -772,6 +1032,7 @@ function addGlow(grp){
 const raycaster=new THREE.Raycaster();
 const pop=document.getElementById('pop');
 canvas.addEventListener('click',e=>{
+  if(phase!==PHASE.DONE)return;
   // If UI is open and click is outside UI, collapse it
   const ui=document.getElementById('ui');
   if(!ui.classList.contains('mini')&&!ui.classList.contains('hidden')){
@@ -803,11 +1064,17 @@ goBtn.addEventListener('click',(e)=>{
   if(!text)return;
   ta.value='';goBtn.disabled=true;
   ui.classList.add('mini');
-  const planted=addPlant(text,true);
-  saveEntry(text);
-  // Glow the growing plant — stays until user clicks blank
-  if(planted){clearGlow();addGlow(planted)}
-  camTarget.set(0,3,0);camDist=10;
+  if(phase===PHASE.IDLE){
+    // First submission — trigger cinematic sequence
+    firstText=text;
+    phase=PHASE.DRINK;phaseT=0;
+  }else if(phase===PHASE.DONE){
+    // Normal plant growth
+    const planted=addPlant(text,true);
+    saveEntry(text);
+    if(planted){clearGlow();addGlow(planted)}
+    camTarget.set(0,3,0);camDist=10;
+  }
 });
 
 // ===== Search System =====
@@ -875,10 +1142,22 @@ function tick(){
   requestAnimationFrame(tick);
   const dt=Math.min(clock.getDelta(),0.05);
   globalTime+=dt;
-  interTimer+=dt;
-  if(interTimer>2)interacting=false;
-  if(!interacting)camYaw+=dt*0.06;
+  phaseT+=dt;
   const now=performance.now();
+
+  // Character animation
+  animateChar(dt);
+  updateBurst(dt);
+
+  // Camera: cinematic or orbit
+  if(!cinematicCam(dt)){
+    interTimer+=dt;
+    if(interTimer>2)interacting=false;
+    if(!interacting)camYaw+=dt*0.06;
+    const maxY=plantEntries.length>0?4:3;
+    camTarget.y+=(maxY-camTarget.y)*dt*0.5;
+    updateCam();
+  }
 
   for(const entry of plantEntries){
     const g=entry.mesh;
@@ -907,10 +1186,6 @@ function tick(){
   }
 
   updateBugs(globalTime);
-
-  const maxY=plantEntries.length>0?4:3;
-  camTarget.y+=(maxY-camTarget.y)*dt*0.5;
-  updateCam();
   renderer.render(scene,camera);
 }
 
