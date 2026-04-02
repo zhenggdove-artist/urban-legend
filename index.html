@@ -860,12 +860,17 @@ function stripRootMotion(clip){
 async function loadChar(){
   let gltf=null;
   try{
-    if(!window.__glbPromise){
-      window.__glbPromise=fetch('character.glb').then(r=>r.arrayBuffer()).catch(()=>null);
-    }
-    const buf=await window.__glbPromise;
-    if(buf){
-      gltf=await new Promise((res,rej)=>loader.parse(buf,'',res,rej));
+    if('caches' in window){
+      const cache=await caches.open('ul-assets-v1');
+      let resp=await cache.match('character.glb');
+      if(!resp){
+        resp=await fetch('character.glb',{cache:'force-cache'});
+        if(resp&&resp.ok)cache.put('character.glb',resp.clone());
+      }
+      if(resp&&resp.ok){
+        const buf=await resp.arrayBuffer();
+        gltf=await new Promise((res,rej)=>loader.parse(buf,'',res,rej));
+      }
     }
   }catch{}
   if(!gltf)gltf=await loader.loadAsync('character.glb');
@@ -1435,6 +1440,10 @@ function getRecentTexts(n){
 function startMouthText(){
   if(mouthText||!charModel)return;
   const texts=getRecentTexts(10);
+  const uiRect=ta.getBoundingClientRect();
+  const startX=uiRect.left+uiRect.width*0.5;
+  const startY=uiRect.top+uiRect.height*0.5;
+  const startNDC=new THREE.Vector2((startX/W())*2-1, -(startY/H())*2+1);
   const group=new THREE.Group();
   const items=[];
   for(let i=0;i<10;i++){
@@ -1444,11 +1453,13 @@ function startMouthText(){
       (Math.random()-0.5)*charHalfHeight*0.18,
       (Math.random()-0.5)*charHalfHeight*0.28
     );
+    const jitter=new THREE.Vector2((Math.random()-0.5)*0.08,(Math.random()-0.5)*0.08);
     items.push({
       sprite,texture,
       delay:Math.random()*0.3,
       dur:0.9+Math.random()*0.5,
       off,
+      startNDC:startNDC.clone().add(jitter),
       baseScale:sprite.scale.clone()
     });
     sprite.visible=false;
@@ -1471,11 +1482,14 @@ function updateMouthText(dt){
       alive=true;
       it.sprite.visible=true;
       const u=Math.min(1,t);
-      const pos=it.off.clone().multiplyScalar(1-u);
-      it.sprite.position.copy(pos);
+      // Lerp from UI position (screen) to mouth local
+      const startWorld=new THREE.Vector3(it.startNDC.x,it.startNDC.y,0.5).unproject(camera);
+      const startLocal=charRoot.worldToLocal(startWorld);
+      const endLocal=it.off.clone().multiplyScalar(1-u);
+      it.sprite.position.copy(startLocal.lerp(endLocal,u));
       const flick=0.7+0.3*Math.sin((mouthText.time*28)+(it.delay*10));
       it.sprite.material.opacity=flick*(1-u*0.6);
-      it.sprite.scale.copy(it.baseScale).multiplyScalar(1-u*0.7);
+      it.sprite.scale.copy(it.baseScale).multiplyScalar(1-u*0.85);
     }else{
       it.sprite.visible=false;
     }
