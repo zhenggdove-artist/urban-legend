@@ -839,6 +839,7 @@ const DRINK_START=0.6; // skip early part of drink animation
 const PHASE={IDLE:0,DRINK:1,WALK:2,JUMP:3,FALL:4,LAND:5,DONE:6};
 let phase=PHASE.IDLE,phaseT=0,firstText='';
 let charReady=false;
+let pendingStartText=null;
 
 const charRoot=new THREE.Group();
 charRoot.position.set(0,PLAT_Y,0);
@@ -973,6 +974,11 @@ async function loadChar(){
   console.log('Animations found:',gltf.animations.map(c=>c.name),'idle:',!!clipIdle,'drink:',!!clipDrink,'walk:',!!clipWalk,'jump:',!!clipJump,'fall:',!!clipFall);
   if(clipIdle){actIdle=mixer.clipAction(clipIdle);actIdle.play()}
   charReady=true;
+  if(pendingStartText&&clipDrink&&mixer){
+    const t=pendingStartText;
+    pendingStartText=null;
+    startCinematic(t);
+  }
 }
 loadChar().catch(e=>console.error('Char load err:',e));
 
@@ -1758,6 +1764,10 @@ goBtn.addEventListener('click',(e)=>{
   if(!text)return;
   ta.value='';goBtn.disabled=true;
   ui.classList.add('mini');
+  if(!charReady||!mixer||!clipDrink){
+    pendingStartText=text;
+    return;
+  }
   if(phase===PHASE.DONE&&charReady&&mixer&&clipDrink){
     // Fade out/in and restart from platform
     restartWithFade(text);
