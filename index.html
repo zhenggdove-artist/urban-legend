@@ -727,8 +727,8 @@ gg.setAttribute('color',new THREE.Float32BufferAttribute(gc,3));
 scene.add(new THREE.Points(gg,new THREE.PointsMaterial({size:0.06,vertexColors:true,transparent:true,opacity:0.5,depthWrite:false,sizeAttenuation:true})))}
 
 // Animation state
-let mixer=null,clipIdle=null,clipDrink=null,clipJump=null,clipWalk=null;
-let actIdle=null,actDrink=null,actJump=null,actWalk=null;
+let mixer=null,clipIdle=null,clipDrink=null,clipJump=null,clipWalk=null,clipFall=null;
+let actIdle=null,actDrink=null,actJump=null,actWalk=null,actFall=null;
 const charMats=[];
 let charModel=null;
 const CHAR_Y_OFFSET=0.25; // ← 手動微調角色在平台上的高度（往上加大數值）
@@ -759,14 +759,15 @@ async function loadChar(){
   mixer=new THREE.AnimationMixer(charModel);
   for(const clip of gltf.animations){
     const n=clip.name.toLowerCase();
-    if(n.includes('idle'))clipIdle=clip;
-    else if(n.includes('drink'))clipDrink=clip;
-    else if(n.includes('walk'))clipWalk=clip;
-    else if(n.includes('jump'))clipJump=clip;
+    if(n==='idle')clipIdle=clip;
+    else if(n==='drink')clipDrink=clip;
+    else if(n==='walk')clipWalk=clip;
+    else if(n==='jump')clipJump=clip;
+    else if(n==='fall')clipFall=clip;
   }
 
   // Start idle
-  console.log('Animations found:',gltf.animations.map(c=>c.name),'idle:',!!clipIdle,'drink:',!!clipDrink,'walk:',!!clipWalk,'jump:',!!clipJump);
+  console.log('Animations found:',gltf.animations.map(c=>c.name),'idle:',!!clipIdle,'drink:',!!clipDrink,'walk:',!!clipWalk,'jump:',!!clipJump,'fall:',!!clipFall);
   if(clipIdle){actIdle=mixer.clipAction(clipIdle);actIdle.play()}
   charReady=true;
 }
@@ -897,6 +898,7 @@ function cinematicCam(dt){
 
 // ===== Character Animation State Machine =====
 const PLATFORM_EDGE=1.6; // walk distance to reach platform edge
+let walkStartY=0; // preserve charModel.position.y during walk
 function animateChar(dt){
   if(!charReady||!mixer)return;
   mixer.update(dt);
@@ -905,49 +907,66 @@ function animateChar(dt){
     if(phaseT>=clipDrink.duration*0.45){
       // Drink done → start walking to platform edge
       phase=PHASE.WALK;phaseT=0;
+      walkStartY=charModel?charModel.position.y:CHAR_Y_OFFSET;
       actDrink?.fadeOut(0.3);
       if(clipWalk){
         actWalk=mixer.clipAction(clipWalk);
+        actWalk.setLoop(THREE.LoopRepeat);
         actWalk.reset().fadeIn(0.3).play();
       }
     }
   }
   else if(phase===PHASE.WALK){
-    // Move character toward platform edge over ~2 seconds
-    const walkDur=2.0;
+    const walkDur=2.5;
     const t=Math.min(1,phaseT/walkDur);
-    if(charModel)charModel.position.z=PLATFORM_EDGE*t; // walk forward (model faces -Z, so +Z is forward for rotated model)
+    if(charModel){
+      // Model is rotated PI (faces -Z in local), so local -Z is world +Z
+      // Move along local -Z direction (forward for the character)
+      charModel.position.z=-PLATFORM_EDGE*t;
+      charModel.position.y=walkStartY; // keep height stable
+    }
     if(t>=1){
       // Reached edge → jump
       phase=PHASE.JUMP;phaseT=0;
       actWalk?.fadeOut(0.2);
-      actJump=mixer.clipAction(clipJump);
-      actJump.setLoop(THREE.LoopOnce);actJump.clampWhenFinished=true;
-      actJump.reset().fadeIn(0.2).play();
+      if(clipJump){
+        actJump=mixer.clipAction(clipJump);
+        actJump.setLoop(THREE.LoopOnce);actJump.clampWhenFinished=true;
+        actJump.reset().fadeIn(0.2).play();
+      }
     }
   }
   else if(phase===PHASE.JUMP){
+    // Keep charModel height stable during jump anim
+    if(charModel)charModel.position.y=walkStartY;
     if(phaseT>=clipJump.duration*0.7){
       phase=PHASE.FALL;phaseT=0;
       actJump?.fadeOut(0.3);
-      platformMesh.visible=false; // hide platform as character falls
+      platformMesh.visible=false;
+      // Start fall animation
+      if(clipFall){
+        actFall=mixer.clipAction(clipFall);
+        actFall.setLoop(THREE.LoopRepeat);
+        actFall.reset().fadeIn(0.3).play();
+      }
     }
   }
   else if(phase===PHASE.FALL){
-    const dur=3.0; // longer fall for dramatic long-lens shot
+    const dur=3.0;
     const t=Math.min(1,phaseT/dur);
     const easeIn=t*t;
     charRoot.position.y=PLAT_Y-(PLAT_Y)*easeIn;
     // Rotate to face camera during fall
     if(charModel)charModel.rotation.y=Math.PI*(1-t);
-    // Sky transition: pink → white during fall
+    // Sky transition: pink → white
     updateSky(t);
     if(t>=1){
       phase=PHASE.LAND;phaseT=0;
       charRoot.position.y=0;
-      if(charModel){charModel.position.z=0;charModel.position.x=0} // reset walk offset
+      actFall?.fadeOut(0.3);
+      // Reset charModel local position from walk offset
+      if(charModel){charModel.position.z=0;charModel.position.x=0;charModel.position.y=CHAR_Y_OFFSET}
       createBurst(new THREE.Vector3(0,0,0));
-      // Grow the first plant
       if(firstText){
         const planted=addPlant(firstText,true);
         saveEntry(firstText);
@@ -960,7 +979,6 @@ function animateChar(dt){
       phase=PHASE.DONE;phaseT=0;
       camYaw=0.3;camPitch=0.35;camDist=14;
       camTarget.set(0,3,0);
-      // Character stays on ground as decoration
     }
   }
 }
@@ -1243,7 +1261,7 @@ function tick(){
       const sz=new THREE.Vector3();b.getSize(sz);
       s=` sz:${sz.x.toFixed(2)},${sz.y.toFixed(2)},${sz.z.toFixed(2)} sc:${charModel.scale.x}`;
     }
-    dbg.textContent=`ready:${charReady} idle:${!!clipIdle} walk:${!!clipWalk} phase:${phase} camTgt.y:${camTarget.y.toFixed(1)} root.y:${charRoot.position.y.toFixed(1)}${s}`;
+    dbg.textContent=`ready:${charReady} idle:${!!clipIdle} walk:${!!clipWalk} fall:${!!clipFall} phase:${phase} root.y:${charRoot.position.y.toFixed(1)}${s}`;
   }
 
   renderer.render(scene,camera);
