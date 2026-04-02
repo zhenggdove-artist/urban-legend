@@ -775,7 +775,7 @@ loadChar().catch(e=>console.error('Char load err:',e));
 // ===== Mushroom Cloud Particle Burst (蕈狀雲) =====
 let burst=null;
 function createBurst(pos){
-  const N=2500,pts=[],cols=[],vels=[],sizes=[];
+  const N=12500,pts=[],cols=[],vels=[],sizes=[];
   for(let i=0;i<N;i++){
     const theta=Math.random()*Math.PI*2;
     let vx,vy,vz,px,py,pz,speed;
@@ -881,15 +881,12 @@ function cinematicCam(dt){
     return true;
   }
   if(phase===PHASE.LAND){
+    // Keep a distant, steady shot for landing
     const t=Math.min(1,phaseT/2);
     const ease=t*t*(3-2*t);
-    const orbitY=3*ease;
-    camera.position.lerp(new THREE.Vector3(
-      14*Math.cos(0.35)*Math.sin(0.3),
-      orbitY+14*Math.sin(0.35),
-      14*Math.cos(0.35)*Math.cos(0.3)
-    ),dt*2);
-    camera.lookAt(0,orbitY,0);
+    const lookY=2.0*ease;
+    camera.position.set(0,8,30);
+    camera.lookAt(0,lookY,0);
     return true;
   }
   return false;
@@ -897,8 +894,9 @@ function cinematicCam(dt){
 
 // ===== Character Animation State Machine =====
 const PLATFORM_EDGE=1.6; // walk distance to reach platform edge
-const JUMP_FORWARD=1.2; // forward distance during jump off the edge
+const JUMP_FORWARD=1.6; // forward distance during jump off the edge
 let walkStartY=0;
+let walkStartX=0;
 let edgeZ=0; // charModel.position.z when reaching edge
 let jumpStartZ=0;
 let jumpEndZ=0;
@@ -910,6 +908,7 @@ function animateChar(dt){
     if(phaseT>=clipDrink.duration*0.45){
       phase=PHASE.WALK;phaseT=0;
       walkStartY=charModel?charModel.position.y:CHAR_Y_OFFSET;
+      walkStartX=charModel?charModel.position.x:0;
       actDrink?.fadeOut(0.3);
       if(clipWalk){
         actWalk?.stop();
@@ -925,6 +924,7 @@ function animateChar(dt){
     const walkDur=clipWalk?clipWalk.duration:2.0;
     const t=Math.min(1,phaseT/walkDur);
     if(charModel){
+      charModel.position.x=walkStartX;
       charModel.position.z=-PLATFORM_EDGE*t;
       charModel.position.y=walkStartY;
     }
@@ -944,6 +944,7 @@ function animateChar(dt){
   else if(phase===PHASE.JUMP){
     const jumpEnd=clipJump?clipJump.duration*0.7:0.8;
     if(charModel){
+      charModel.position.x=walkStartX;
       charModel.position.y=walkStartY;
       // Jump forward off the edge
       const jt=Math.min(1,phaseT/jumpEnd);
@@ -967,6 +968,7 @@ function animateChar(dt){
     const easeIn=t*t;
     charRoot.position.y=PLAT_Y-(PLAT_Y)*easeIn;
     if(charModel){
+      charModel.position.x=walkStartX;
       charModel.position.z=jumpEndZ;
       charModel.position.y=walkStartY;
       charModel.rotation.y=Math.PI*(1-t);
