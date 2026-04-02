@@ -51,6 +51,7 @@
 </head>
 <body>
   <canvas id="c"></canvas>
+  <div id="dbg" style="position:fixed;top:0;left:0;color:#ff0;background:rgba(0,0,0,0.7);font:12px monospace;padding:4px;z-index:9999;pointer-events:none"></div>
   <div id="ui">
     <h2>WRITE</h2>
     <textarea id="ta" placeholder="留下你的話..."></textarea>
@@ -739,15 +740,18 @@ async function loadChar(){
   charModel=gltf.scene;
   charModel.rotation.y=Math.PI; // face away from camera (back towards +Z)
 
-  // Desaturate materials to pastel tones
+  // Desaturate materials + disable frustum culling for skinned mesh
   charModel.traverse(o=>{
-    if(o.isMesh&&o.material){
-      const m=o.material;
-      m.color.set('#d4b8c4');
-      m.roughness=0.85;m.metalness=0;
-      m.emissive=new THREE.Color('#d4b8c4');m.emissiveIntensity=0.06;
-      m.side=THREE.DoubleSide;
-      charMats.push(m);
+    if(o.isMesh){
+      o.frustumCulled=false; // skinned mesh bounding box is wrong — must disable
+      if(o.material){
+        const m=o.material;
+        m.color.set('#d4b8c4');
+        m.roughness=0.85;m.metalness=0;
+        m.emissive=new THREE.Color('#d4b8c4');m.emissiveIntensity=0.06;
+        m.side=THREE.DoubleSide;
+        charMats.push(m);
+      }
     }
   });
   charRoot.add(charModel);
@@ -1213,6 +1217,13 @@ function tick(){
   }
 
   updateBugs(globalTime);
+
+  // Debug overlay — remove after confirming character works
+  const dbg=document.getElementById('dbg');
+  if(dbg){
+    dbg.textContent=`charReady:${charReady} model:${!!charModel} mixer:${!!mixer} idle:${!!clipIdle} phase:${phase} camTarget.y:${camTarget.y.toFixed(1)} charRoot.y:${charRoot.position.y.toFixed(1)}`;
+  }
+
   renderer.render(scene,camera);
 }
 
