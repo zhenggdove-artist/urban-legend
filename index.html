@@ -30,7 +30,7 @@
     }
     html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:"Saint","Trebuchet MS",sans-serif}
     button,input,textarea{font-family:"Saint","Trebuchet MS",sans-serif}
-    #ui,#ui *,#pop,#search-panel,#search-panel *,#search-btn,#title{font-family:"Saint","Trebuchet MS",sans-serif}
+    #ui,#ui *,#pop,#search-panel,#search-panel *,#search-btn,#title,#mouth-text-layer{font-family:"Saint","Trebuchet MS",sans-serif}
     #c{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
     #ui{position:absolute;right:6vw;bottom:12vh;left:auto;top:auto;
       width:min(72vw,420px);
@@ -107,6 +107,7 @@
 <body>
   <canvas id="c"></canvas>
   <div id="title">URBAN LEGEND</div>
+  <div id="mouth-text-layer"></div>
   <div id="ui" class="mini">
     <h2>WRITE</h2>
     <textarea id="ta" placeholder="Leave your messae to the world"></textarea>
@@ -1113,11 +1114,7 @@ function resetDrinkGlow(){
     pulseGlow=null;
   }
   if(mouthText){
-    for(const it of mouthText.items){
-      it.texture.dispose();
-      it.sprite.material.dispose();
-    }
-    mouthText.group.parent?.remove(mouthText.group);
+    for(const it of mouthText.items){it.el.remove();}
     mouthText=null;
   }
   for(const info of charMats){
@@ -1389,6 +1386,7 @@ let mouthText=null;
 let mouthBone=null;
 const mouthTmp=new THREE.Vector3();
 const mouthQ=new THREE.Quaternion();
+const mouthLayer=document.getElementById('mouth-text-layer');
 function findMouthBone(){
   if(!charModel)return null;
   let bone=null;
@@ -1414,21 +1412,13 @@ function getMouthWorldPos(){
   }
   return charRoot.localToWorld(new THREE.Vector3(0,charHalfHeight*0.6,0));
 }
-function makeTextSprite(text){
-  const cv=document.createElement('canvas');
-  cv.width=256;cv.height=64;
-  const ctx=cv.getContext('2d');
-  ctx.clearRect(0,0,cv.width,cv.height);
-  ctx.font='32px Saint';
-  ctx.fillStyle='#ff1f1f';
-  ctx.textAlign='center';ctx.textBaseline='middle';
-  ctx.fillText(text,cv.width/2,cv.height/2);
-  const tex=new THREE.CanvasTexture(cv);
-  const mat=new THREE.SpriteMaterial({map:tex,transparent:true,opacity:1,depthWrite:false,depthTest:false});
-  const sp=new THREE.Sprite(mat);
-  sp.scale.set(charHalfHeight*0.55,charHalfHeight*0.2,1);
-  sp.renderOrder=20;
-  return {sprite:sp,texture:tex};
+function makeTextEl(text){
+  const el=document.createElement('div');
+  el.className='mouth-text';
+  el.textContent=text;
+  el.style.opacity='0';
+  mouthLayer.appendChild(el);
+  return el;
 }
 function getRecentTexts(n){
   const arr=[];
@@ -1450,63 +1440,46 @@ function startMouthText(){
     startX=taRect.left+taRect.width*0.5;
     startY=taRect.top+taRect.height*0.5;
   }
-  const startNDC=new THREE.Vector2((startX/W())*2-1, -(startY/H())*2+1);
-  const group=new THREE.Group();
   const items=[];
   for(let i=0;i<10;i++){
-    const {sprite,texture}=makeTextSprite(texts[i]||'...');
-    const off=new THREE.Vector3(
-      (Math.random()-0.5)*charHalfHeight*0.28,
-      (Math.random()-0.5)*charHalfHeight*0.18,
-      (Math.random()-0.5)*charHalfHeight*0.28
-    );
-    const jitter=new THREE.Vector2((Math.random()-0.5)*0.08,(Math.random()-0.5)*0.08);
+    const el=makeTextEl(texts[i]||'...');
+    const jitter=new THREE.Vector2((Math.random()-0.5)*40,(Math.random()-0.5)*24);
     items.push({
-      sprite,texture,
+      el,
       delay:Math.random()*0.3,
       dur:0.9+Math.random()*0.5,
-      off,
-      startNDC:startNDC.clone().add(jitter),
-      baseScale:sprite.scale.clone()
+      start:{x:startX+jitter.x,y:startY+jitter.y}
     });
-    sprite.visible=false;
-    group.add(sprite);
   }
-  charRoot.add(group);
-  mouthText={group,items,time:0};
+  mouthText={items,time:0};
 }
 function updateMouthText(dt){
   if(!mouthText)return;
   mouthText.time+=dt;
   const mouthWorld=getMouthWorldPos().clone();
-  const mouthLocal=charRoot.worldToLocal(mouthWorld);
-  mouthText.group.position.copy(mouthLocal);
+  const mouthScreen=mouthWorld.project(camera);
+  const endX=(mouthScreen.x*0.5+0.5)*W();
+  const endY=(-mouthScreen.y*0.5+0.5)*H();
   let alive=false;
   for(const it of mouthText.items){
     const t=(mouthText.time-it.delay)/it.dur;
-    if(t<0){it.sprite.visible=false;alive=true;continue;}
+    if(t<0){it.el.style.opacity='0';alive=true;continue;}
     if(t<=1){
       alive=true;
-      it.sprite.visible=true;
       const u=Math.min(1,t);
-      // Lerp from UI position (screen) to mouth local
-      const startWorld=new THREE.Vector3(it.startNDC.x,it.startNDC.y,0.5).unproject(camera);
-      const startLocal=charRoot.worldToLocal(startWorld);
-      const endLocal=it.off.clone().multiplyScalar(1-u);
-      it.sprite.position.copy(startLocal.lerp(endLocal,u));
+      const x=it.start.x+(endX-it.start.x)*u;
+      const y=it.start.y+(endY-it.start.y)*u;
       const flick=0.7+0.3*Math.sin((mouthText.time*28)+(it.delay*10));
-      it.sprite.material.opacity=flick*(1-u*0.6);
-      it.sprite.scale.copy(it.baseScale).multiplyScalar(1-u*0.85);
+      it.el.style.opacity=(flick*(1-u*0.6)).toFixed(3);
+      it.el.style.transform=`translate(-50%,-50%) scale(${(1-u*0.85).toFixed(3)})`;
+      it.el.style.left=`${x}px`;
+      it.el.style.top=`${y}px`;
     }else{
-      it.sprite.visible=false;
+      it.el.style.opacity='0';
     }
   }
   if(!alive){
-    for(const it of mouthText.items){
-      it.texture.dispose();
-      it.sprite.material.dispose();
-    }
-    mouthText.group.parent?.remove(mouthText.group);
+    for(const it of mouthText.items){it.el.remove();}
     mouthText=null;
   }
 }
@@ -2011,8 +1984,8 @@ window.addEventListener('resize',()=>{
     #title{position:absolute;top:4vh;left:50%;transform:translateX(-50%);
       font-size:38px;letter-spacing:6px;color:#d6d6d6;font-family:"Saint","Trebuchet MS",sans-serif;
       text-transform:uppercase;z-index:12;pointer-events:none;
-      background:linear-gradient(180deg,#ffffff 0%,#e7e7e7 35%,#bdbdbd 55%,#f2f2f2 100%);
-      -webkit-background-clip:text;background-clip:text;
-      -webkit-text-fill-color:transparent;
-      text-shadow:0 2px 0 #9a9a9a,0 4px 0 #7d7d7d,0 10px 18px rgba(0,0,0,0.35)}
+      text-shadow:0 1px 0 #f7f7f7,0 2px 0 #cfcfcf,0 4px 0 #9a9a9a,0 8px 14px rgba(0,0,0,0.35)}
     @media (max-width:640px){#title{font-size:26px;letter-spacing:4px;top:3vh}}
+    #mouth-text-layer{position:fixed;inset:0;pointer-events:none;z-index:18}
+    .mouth-text{position:absolute;color:#ff1f1f;font-size:16px;letter-spacing:1px;
+      text-shadow:0 1px 0 rgba(255,255,255,0.5);white-space:nowrap}
