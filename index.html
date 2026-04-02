@@ -750,7 +750,39 @@ scene.fog=new THREE.FogExp2('#d8e8f0',0.008);
 groundClip=new THREE.Plane(new THREE.Vector3(0,1,0),0);
 updateSky(0);
 
-// Ground removed (no lower plane visible)
+// Ground — glowing green meadow
+{
+  const gGeo=new THREE.PlaneGeometry(200,200,40,40);
+  gGeo.rotateX(-Math.PI/2);
+  const pa=gGeo.getAttribute('position');
+  for(let i=0;i<pa.count;i++){
+    const x=pa.getX(i),z=pa.getZ(i);
+    pa.setY(i,Math.sin(x*0.04)*Math.cos(z*0.05)*0.4-0.1);
+  }
+  gGeo.computeVertexNormals();
+  scene.add(new THREE.Mesh(gGeo,new THREE.MeshStandardMaterial({
+    color:'#5a9e6a',emissive:'#1a5a2a',emissiveIntensity:0.18,roughness:0.92,metalness:0,
+    envMapIntensity:0
+  })));
+}
+
+// Grass particle scatter
+{
+  const p=[],c=[];
+  for(let i=0;i<3000;i++){
+    const x=(Math.random()-0.5)*80,z=(Math.random()-0.5)*80;
+    const y=Math.sin(x*0.04)*Math.cos(z*0.05)*0.4+Math.random()*0.25;
+    p.push(x,y,z);
+    const sh=0.35+Math.random()*0.3;
+    c.push(sh*0.45,sh*1.05,sh*0.35);
+  }
+  const gg=new THREE.BufferGeometry();
+  gg.setAttribute('position',new THREE.Float32BufferAttribute(p,3));
+  gg.setAttribute('color',new THREE.Float32BufferAttribute(c,3));
+  scene.add(new THREE.Points(gg,new THREE.PointsMaterial({
+    size:0.07,vertexColors:true,transparent:true,opacity:0.45,depthWrite:false,sizeAttenuation:true
+  })));
+}
 
 // Lighting — soft dreamcore
 scene.add(new THREE.HemisphereLight('#87CEEB','#5a9e6a',0.65));
