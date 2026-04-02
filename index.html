@@ -531,9 +531,12 @@ function buildPlantGeo(allSegs,leaves,flowers,stemCol,leafCol,flowerCol,rng,caps
 
 // ===== Generate Plant — 8 distinct types =====
 function makePlant(text){
+  const opts=(arguments.length>1&&arguments[1])?arguments[1]:{};
+  const clipBelow=opts.clipBelow!==undefined?opts.clipBelow:true;
   const seed=hash(text);
   const rng=srand(seed);
-  const plantType=seed%8;
+  let plantType=seed%8;
+  if(opts.forceLSystem)plantType=seed%3;
   // 0-1:tree, 2:fern, 3:mushroom, 4:big flower, 5:vine, 6:coral, 7:cactus
 
   let segs=[],leaves=[],flowers=[],caps=[],bigPetals=[];
@@ -629,6 +632,9 @@ function makePlant(text){
     emissive:emissiveCol,emissiveIntensity:0.15,
     side:THREE.DoubleSide
   });
+  if(clipBelow&&groundClip){
+    mat.clippingPlanes=[groundClip];
+  }
   const mesh=new THREE.Mesh(geo,mat);
   mesh.userData.entryText=text;
   mesh.userData.totalIdx=geo.getIndex().count;
@@ -643,33 +649,51 @@ function makePlant(text){
 
 // ===== Platform Plant Cover (L-System) =====
 const platformPlantRoot=new THREE.Group();
-function addPlatformPlant(x,z,seed){
+function addPlatformPlant(x,y,z,seed,normal){
   let grp;
-  try{grp=makePlant(seed);}catch{return;}
+  try{grp=makePlant(seed,{clipBelow:false,forceLSystem:true});}catch{return;}
   const m=grp.children[0];
   const h=m?.userData?.plantH||3;
-  const targetH=0.85; // keep below belly height
-  const sc=Math.min(1.2,Math.max(0.2,targetH/Math.max(0.1,h)));
+  const targetH=Math.max(0.4,charHalfHeight*0.95); // not higher than half character
+  const sc=Math.min(1.0,Math.max(0.18,targetH/Math.max(0.1,h)));
   grp.scale.setScalar(sc);
-  grp.position.set(x,0.24,z);
-  grp.rotation.y=Math.random()*Math.PI*2;
+  grp.position.set(x,y,z);
+  const n=(normal||new THREE.Vector3(0,1,0)).clone().normalize();
+  const q=new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),n);
+  grp.quaternion.copy(q);
+  grp.rotateOnAxis(n,Math.random()*Math.PI*2);
   if(m?.geometry){m.geometry.setDrawRange(0,m.userData.totalIdx);}
   platformPlantRoot.add(grp);
 }
 function coverPlatformWithPlants(){
   platformPlantRoot.clear();
-  const R=1.85;
-  const inner=180;
-  const rim=120;
+  const R=1.9;
+  const inner=220;
+  const rim=140;
+  // Top cover
   for(let i=0;i<inner;i++){
     const a=Math.random()*Math.PI*2;
     const r=Math.sqrt(Math.random())*R;
-    addPlatformPlant(Math.cos(a)*r,Math.sin(a)*r,`plat-${i}-in`);
+    addPlatformPlant(Math.cos(a)*r,0.22,Math.sin(a)*r,`plat-top-${i}`,new THREE.Vector3(0,1,0));
   }
+  // Rim cover (top edge)
   for(let i=0;i<rim;i++){
     const a=Math.random()*Math.PI*2;
-    const r=R*(0.85+Math.random()*0.25);
-    addPlatformPlant(Math.cos(a)*r,Math.sin(a)*r,`plat-${i}-rim`);
+    const r=R*(0.9+Math.random()*0.18);
+    addPlatformPlant(Math.cos(a)*r,0.22,Math.sin(a)*r,`plat-rim-${i}`,new THREE.Vector3(0,1,0));
+  }
+  // Side cover
+  for(let i=0;i<rim;i++){
+    const a=Math.random()*Math.PI*2;
+    const r=R*1.02;
+    const y=(Math.random()-0.5)*0.6;
+    addPlatformPlant(Math.cos(a)*r,y,Math.sin(a)*r,`plat-side-${i}`,new THREE.Vector3(Math.cos(a),0,Math.sin(a)));
+  }
+  // Bottom cover
+  for(let i=0;i<inner*0.6;i++){
+    const a=Math.random()*Math.PI*2;
+    const r=Math.sqrt(Math.random())*R;
+    addPlatformPlant(Math.cos(a)*r,-0.28,Math.sin(a)*r,`plat-bot-${i}`,new THREE.Vector3(0,-1,0));
   }
 }
 
@@ -681,6 +705,7 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
 renderer.outputColorSpace=THREE.SRGBColorSpace;
 renderer.toneMapping=THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure=1.3;
+renderer.localClippingEnabled=true;
 
 const scene=new THREE.Scene();
 
@@ -716,6 +741,7 @@ function updateSky(t){
 
 // Fog for dreamcore depth
 scene.fog=new THREE.FogExp2('#d8e8f0',0.008);
+groundClip=new THREE.Plane(new THREE.Vector3(0,1,0),0);
 updateSky(0);
 
 // Ground — glowing green meadow
@@ -801,7 +827,6 @@ scene.add(new THREE.Points(gg,new THREE.PointsMaterial({
 // L-system plant cover on platform (hide rim)
 platformPlantRoot.position.set(0,PLAT_Y,0);
 scene.add(platformPlantRoot);
-coverPlatformWithPlants();
 
 // Animation state
 let mixer=null,clipIdle=null,clipDrink=null,clipJump=null,clipWalk=null,clipFall=null;
@@ -811,6 +836,8 @@ let charModel=null;
 let rootBone=null;
 let rootBoneBase=null;
 let baseModelY=0;
+let charHalfHeight=1.2;
+let groundClip=null;
 const CHAR_Y_OFFSET=0.25; // ← 手動微調角色在平台上的高度（往上加大數值）
 
 // Load character (single GLB with mesh + all animations)
@@ -834,6 +861,7 @@ async function loadChar(){
   charModel.updateMatrixWorld(true);
   { // Auto-adjust base Y so feet sit on platform
     const box=new THREE.Box3().setFromObject(charModel);
+    charHalfHeight=(box.max.y-box.min.y)*0.5;
     baseModelY=CHAR_Y_OFFSET-box.min.y+FOOT_LIFT;
     charModel.position.y=baseModelY;
   }
@@ -844,6 +872,17 @@ async function loadChar(){
       o.frustumCulled=false;
       if(o.material){
         o.material.side=THREE.DoubleSide;
+        const mats=Array.isArray(o.material)?o.material:[o.material];
+        for(const m of mats){
+          if(m.color){
+            const hsl={h:0,s:0,l:0};m.color.getHSL(hsl);
+            m.color.setHSL(hsl.h,hsl.s*0.5,hsl.l);
+          }
+          if(m.emissive){
+            const hslE={h:0,s:0,l:0};m.emissive.getHSL(hslE);
+            m.emissive.setHSL(hslE.h,hslE.s*0.5,hslE.l);
+          }
+        }
         charMats.push(o.material);
       }
     }
@@ -873,6 +912,7 @@ async function loadChar(){
   console.log('Animations found:',gltf.animations.map(c=>c.name),'idle:',!!clipIdle,'drink:',!!clipDrink,'walk:',!!clipWalk,'jump:',!!clipJump,'fall:',!!clipFall);
   if(clipIdle){actIdle=mixer.clipAction(clipIdle);actIdle.play()}
   charReady=true;
+  coverPlatformWithPlants();
 }
 loadChar().catch(e=>console.error('Char load err:',e));
 
@@ -1203,7 +1243,7 @@ canvas.addEventListener('pointermove',e=>{
   interacting=true;interTimer=0;
   if(ptrs.size===1){
     camYaw=dragS.yaw+(e.clientX-dragS.x)/W()*4;
-    camPitch=clamp(dragS.pitch+(e.clientY-dragS.y)/H()*2,-0.3,1.4);
+    {const minP=(phase===PHASE.DONE)?0.05:-0.3;camPitch=clamp(dragS.pitch+(e.clientY-dragS.y)/H()*2,minP,1.4);};
   }else if(ptrs.size>=2){
     const p=[...ptrs.values()],d=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y);
     if(pinchD0>0)camDist=clamp(pinchR0*(pinchD0/d),3,50);
