@@ -118,6 +118,7 @@
   </div>
   <div id="plant-label"></div>
   <div id="fade"></div>
+  <audio id="bgm" src="music/4月2日.MP3" loop preload="auto"></audio>
 
 <script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
@@ -1400,6 +1401,14 @@ const ui=document.getElementById('ui'),goBtn=document.getElementById('go');
 const ta=document.getElementById('ta');
 const plantLabel=document.getElementById('plant-label');
 const fade=document.getElementById('fade');
+const bgm=document.getElementById('bgm');
+if(bgm){
+  bgm.volume=0.45;
+  const tryPlay=()=>{bgm.play().catch(()=>{});};
+  // Attempt autoplay; if blocked, start on first user gesture
+  tryPlay();
+  window.addEventListener('pointerdown',tryPlay,{once:true});
+}
 let activeLabelEntry=null;
 const labelBox=new THREE.Box3();
 const labelPos=new THREE.Vector3();
