@@ -702,7 +702,7 @@ const camera=new THREE.PerspectiveCamera(55,W()/H(),0.1,1000);
 
 // ===== Character (GLB) + Cinematic =====
 const PLAT_Y=200; // high enough that ground is invisible from platform
-const PHASE={IDLE:0,DRINK:1,JUMP:2,FALL:3,LAND:4,DONE:5};
+const PHASE={IDLE:0,DRINK:1,WALK:2,JUMP:3,FALL:4,LAND:5,DONE:6};
 let phase=PHASE.IDLE,phaseT=0,firstText='';
 let charReady=false;
 
@@ -727,10 +727,11 @@ gg.setAttribute('color',new THREE.Float32BufferAttribute(gc,3));
 scene.add(new THREE.Points(gg,new THREE.PointsMaterial({size:0.06,vertexColors:true,transparent:true,opacity:0.5,depthWrite:false,sizeAttenuation:true})))}
 
 // Animation state
-let mixer=null,clipIdle=null,clipDrink=null,clipJump=null;
-let actIdle=null,actDrink=null,actJump=null;
+let mixer=null,clipIdle=null,clipDrink=null,clipJump=null,clipWalk=null;
+let actIdle=null,actDrink=null,actJump=null,actWalk=null;
 const charMats=[];
 let charModel=null;
+const CHAR_Y_OFFSET=0.25; // ← 手動微調角色在平台上的高度（往上加大數值）
 
 // Load character (single GLB with mesh + all animations)
 const loader=new GLTFLoader();
@@ -740,18 +741,15 @@ async function loadChar(){
   charModel=gltf.scene;
   charModel.rotation.y=Math.PI; // face away from camera (back towards +Z)
   charModel.scale.setScalar(100); // Mixamo FBX→Blender applies 0.01 scale — undo it
+  charModel.position.y=CHAR_Y_OFFSET; // raise above platform surface
 
-  // Desaturate materials + disable frustum culling for skinned mesh
+  // Keep original textures — only disable frustum culling
   charModel.traverse(o=>{
     if(o.isMesh){
-      o.frustumCulled=false; // skinned mesh bounding box is wrong — must disable
+      o.frustumCulled=false;
       if(o.material){
-        const m=o.material;
-        m.color.set('#d4b8c4');
-        m.roughness=0.85;m.metalness=0;
-        m.emissive=new THREE.Color('#d4b8c4');m.emissiveIntensity=0.06;
-        m.side=THREE.DoubleSide;
-        charMats.push(m);
+        o.material.side=THREE.DoubleSide;
+        charMats.push(o.material);
       }
     }
   });
@@ -763,14 +761,14 @@ async function loadChar(){
     const n=clip.name.toLowerCase();
     if(n.includes('idle'))clipIdle=clip;
     else if(n.includes('drink'))clipDrink=clip;
+    else if(n.includes('walk'))clipWalk=clip;
     else if(n.includes('jump'))clipJump=clip;
   }
 
   // Start idle
-  console.log('Animations found:',gltf.animations.map(c=>c.name),'idle:',!!clipIdle,'drink:',!!clipDrink,'jump:',!!clipJump);
+  console.log('Animations found:',gltf.animations.map(c=>c.name),'idle:',!!clipIdle,'drink:',!!clipDrink,'walk:',!!clipWalk,'jump:',!!clipJump);
   if(clipIdle){actIdle=mixer.clipAction(clipIdle);actIdle.play()}
   charReady=true;
-  console.log('Character loaded, charRoot.position.y:',charRoot.position.y);
 }
 loadChar().catch(e=>console.error('Char load err:',e));
 
@@ -848,30 +846,37 @@ function updateBurst(dt){
 // ===== Cinematic Camera =====
 function cinematicCam(dt){
   if(phase===PHASE.IDLE){
-    // Free orbit — handled by normal orbit controls
-    return false;
+    return false; // free orbit
   }
   if(phase===PHASE.DRINK){
     const cy=charRoot.position.y+1;
     const t=Math.min(1,phaseT/2);
-    camera.position.set(0,cy+1,5+t*1.5);
+    camera.position.set(0,cy+1.5,8+t*2);
     camera.lookAt(0,cy,0);
+    return true;
+  }
+  if(phase===PHASE.WALK){
+    // Follow character walking to platform edge — side view
+    const cy=charRoot.position.y+1;
+    const cx=charModel?charModel.position.x:0;
+    camera.position.set(cx+6,cy+2,8);
+    camera.lookAt(cx,cy,0);
     return true;
   }
   if(phase===PHASE.JUMP){
     const cy=charRoot.position.y+1;
-    camera.position.set(0,cy+1.5,6);
+    camera.position.set(0,cy+2,10);
     camera.lookAt(0,cy,0);
     return true;
   }
   if(phase===PHASE.FALL){
-    const t=Math.min(1,phaseT/2.5);
+    const t=Math.min(1,phaseT/3);
     const ease=t*t*(3-2*t);
     const cy=charRoot.position.y+1;
-    // Swing from behind (+Z) to front (-Z), camera goes down faster
-    const camZ=5*(1-2*ease);
-    const camY=Math.max(1,cy+1-ease*charRoot.position.y);
-    camera.position.set(0,camY,camZ*(1+ease*0.5));
+    // Long lens: camera stays far, swings from behind to front
+    const camZ=30*(1-2*ease); // 5x further (was 5, now 30)
+    const camY=Math.max(2,cy+5-ease*cy*0.8);
+    camera.position.set(0,camY,camZ);
     camera.lookAt(0,charRoot.position.y+0.5,0);
     return true;
   }
@@ -891,15 +896,31 @@ function cinematicCam(dt){
 }
 
 // ===== Character Animation State Machine =====
+const PLATFORM_EDGE=1.6; // walk distance to reach platform edge
 function animateChar(dt){
   if(!charReady||!mixer)return;
   mixer.update(dt);
 
   if(phase===PHASE.DRINK){
     if(phaseT>=clipDrink.duration*0.45){
+      // Drink done → start walking to platform edge
+      phase=PHASE.WALK;phaseT=0;
+      actDrink?.fadeOut(0.3);
+      if(clipWalk){
+        actWalk=mixer.clipAction(clipWalk);
+        actWalk.reset().fadeIn(0.3).play();
+      }
+    }
+  }
+  else if(phase===PHASE.WALK){
+    // Move character toward platform edge over ~2 seconds
+    const walkDur=2.0;
+    const t=Math.min(1,phaseT/walkDur);
+    if(charModel)charModel.position.z=PLATFORM_EDGE*t; // walk forward (model faces -Z, so +Z is forward for rotated model)
+    if(t>=1){
+      // Reached edge → jump
       phase=PHASE.JUMP;phaseT=0;
-      // Cross-fade to jump
-      actDrink?.fadeOut(0.2);
+      actWalk?.fadeOut(0.2);
       actJump=mixer.clipAction(clipJump);
       actJump.setLoop(THREE.LoopOnce);actJump.clampWhenFinished=true;
       actJump.reset().fadeIn(0.2).play();
@@ -908,30 +929,24 @@ function animateChar(dt){
   else if(phase===PHASE.JUMP){
     if(phaseT>=clipJump.duration*0.7){
       phase=PHASE.FALL;phaseT=0;
-      // Stop jump animation, let character stay in last pose during fall
       actJump?.fadeOut(0.3);
-      // Rotate character to face front during fall
+      platformMesh.visible=false; // hide platform as character falls
     }
   }
   else if(phase===PHASE.FALL){
-    const dur=2.5;
+    const dur=3.0; // longer fall for dramatic long-lens shot
     const t=Math.min(1,phaseT/dur);
     const easeIn=t*t;
     charRoot.position.y=PLAT_Y-(PLAT_Y)*easeIn;
     // Rotate to face camera during fall
-    if(charRoot.children[0])charRoot.children[0].rotation.y=Math.PI*(1-t);
+    if(charModel)charModel.rotation.y=Math.PI*(1-t);
     // Sky transition: pink → white during fall
     updateSky(t);
     if(t>=1){
       phase=PHASE.LAND;phaseT=0;
       charRoot.position.y=0;
+      if(charModel){charModel.position.z=0;charModel.position.x=0} // reset walk offset
       createBurst(new THREE.Vector3(0,0,0));
-      // Hide platform
-      platformMesh.visible=false;
-      // Further desaturate character
-      for(const m of charMats){
-        m.color.set('#bde0fe');m.emissive.set('#cdb4db');m.emissiveIntensity=0.1;
-      }
       // Grow the first plant
       if(firstText){
         const planted=addPlant(firstText,true);
@@ -1228,7 +1243,7 @@ function tick(){
       const sz=new THREE.Vector3();b.getSize(sz);
       s=` sz:${sz.x.toFixed(2)},${sz.y.toFixed(2)},${sz.z.toFixed(2)} sc:${charModel.scale.x}`;
     }
-    dbg.textContent=`charReady:${charReady} model:${!!charModel} idle:${!!clipIdle} phase:${phase} camTgt.y:${camTarget.y.toFixed(1)} charRoot.y:${charRoot.position.y.toFixed(1)}${s}`;
+    dbg.textContent=`ready:${charReady} idle:${!!clipIdle} walk:${!!clipWalk} phase:${phase} camTgt.y:${camTarget.y.toFixed(1)} root.y:${charRoot.position.y.toFixed(1)}${s}`;
   }
 
   renderer.render(scene,camera);
