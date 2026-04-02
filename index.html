@@ -102,13 +102,15 @@
     #fade{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;
       transition:opacity 0.6s ease;z-index:20}
     #fade.show{opacity:1}
-    #title{position:absolute;top:3vh;left:50%;
-      transform:translateX(-50%) perspective(200px) rotateX(6deg);
-      font-size:clamp(18px,5.5vw,48px);letter-spacing:0.4em;font-weight:bold;
+    /* ===== TITLE STYLE =====
+       手動微調標題位置：修改 left 值調整水平位置（目前 52% 偏右補償）
+       修改 top 值調整垂直位置 */
+    #title{position:absolute;top:3vh;left:52%;
+      transform:translateX(-10%) perspective(200px) rotateX(6deg);
+      font-size:clamp(18px,5.5vw,48px);letter-spacing:0.35em;font-weight:bold;
       font-family:"Saint","Trebuchet MS",sans-serif;
       text-transform:uppercase;z-index:12;pointer-events:none;
       white-space:nowrap;text-align:center;
-      padding-right:0.4em;
       color:#d4849e;
       -webkit-text-stroke:0.5px rgba(255,255,255,0.3);
       text-shadow:
@@ -118,13 +120,9 @@
         0 4px 0 #986070,
         0 5px 0 #804a58,
         0 7px 10px rgba(0,0,0,0.25);
-      animation:titleGlow 4s ease-in-out infinite}
+      transition:opacity 1.5s ease}
+    #title.fade-out{opacity:0}
     #title span{display:inline-block}
-    @keyframes titleGlow{
-      0%,100%{text-shadow:0 1px 0 #e0a0b8,0 2px 0 #c88a9e,0 3px 0 #b07488,0 4px 0 #986070,0 5px 0 #804a58,0 7px 10px rgba(0,0,0,0.25),0 0 12px rgba(255,180,220,0.5)}
-      33%{text-shadow:0 1px 0 #e0a0b8,0 2px 0 #c88a9e,0 3px 0 #b07488,0 4px 0 #986070,0 5px 0 #804a58,0 7px 10px rgba(0,0,0,0.25),0 0 16px rgba(180,140,255,0.5)}
-      66%{text-shadow:0 1px 0 #e0a0b8,0 2px 0 #c88a9e,0 3px 0 #b07488,0 4px 0 #986070,0 5px 0 #804a58,0 7px 10px rgba(0,0,0,0.25),0 0 16px rgba(100,210,255,0.5)}
-    }
     #mouth-text-layer{position:fixed;inset:0;pointer-events:none;z-index:18}
     .mouth-text{position:absolute;color:#ff1f1f;font-size:16px;letter-spacing:1px;
       text-shadow:0 1px 0 rgba(255,255,255,0.5);white-space:nowrap}
@@ -1709,6 +1707,9 @@ function restartToIdleWithFade(){
 function startCinematic(text){
   firstText=text;
   phase=PHASE.DRINK;phaseT=0;
+  // Fade out title
+  const titleEl=document.getElementById('title');
+  if(titleEl)titleEl.classList.add('fade-out');
   hidePlantLabel();
   pop.classList.remove('show');
   if(aura){
