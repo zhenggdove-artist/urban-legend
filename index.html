@@ -1019,6 +1019,12 @@ let jumpEndZ=0;
 function animateChar(dt){
   if(!charReady||!mixer)return;
   mixer.update(dt);
+
+  // Safety: keep character visible during active phases
+  if(phase!==PHASE.DONE&&phase!==PHASE.LAND){
+    if(!charRoot.visible)charRoot.visible=true;
+    if(charModel&&!charModel.visible)charModel.visible=true;
+  }
   if(rootBone&&rootBoneBase){
     rootBone.position.x=rootBoneBase.x;
     rootBone.position.z=rootBoneBase.z;
