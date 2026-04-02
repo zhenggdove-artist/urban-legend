@@ -124,7 +124,6 @@
 <script type="module">
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
-import {SkeletonUtils} from 'three/addons/utils/SkeletonUtils.js';
 
 const W=()=>window.innerWidth, H=()=>window.innerHeight;
 const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
@@ -1117,15 +1116,27 @@ function updateDrinkGlow(dt){
   drinkGlowT+=dt;
   const k=0; // keep body tint minimal so pulse is visible
   if(!pulseGlow&&charModel){
-    const root=SkeletonUtils.clone(charModel);
-    root.traverse(o=>{
-      if(o.isMesh){
-        o.material=new THREE.MeshBasicMaterial({
-          color:0xfff1a6,transparent:true,opacity:0.85,
-          blending:THREE.AdditiveBlending,depthWrite:false,depthTest:false,
-          side:THREE.BackSide
-        });
-        o.renderOrder=10;
+    const root=new THREE.Group();
+    const makeMat=()=>new THREE.MeshBasicMaterial({
+      color:0xfff1a6,transparent:true,opacity:0.85,
+      blending:THREE.AdditiveBlending,depthWrite:false,depthTest:false,
+      side:THREE.BackSide
+    });
+    charModel.traverse(o=>{
+      if(o.isSkinnedMesh){
+        const outline=new THREE.SkinnedMesh(o.geometry,makeMat());
+        outline.bind(o.skeleton,o.bindMatrix);
+        outline.frustumCulled=false;
+        outline.renderOrder=10;
+        root.add(outline);
+      }else if(o.isMesh){
+        const outline=new THREE.Mesh(o.geometry,makeMat());
+        outline.position.copy(o.position);
+        outline.rotation.copy(o.rotation);
+        outline.scale.copy(o.scale);
+        outline.frustumCulled=false;
+        outline.renderOrder=10;
+        root.add(outline);
       }
     });
     charRoot.add(root);
