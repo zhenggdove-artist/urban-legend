@@ -1984,12 +1984,8 @@ function tick(){
 
   // Plant label under newest grown plant
   if(activeLabelEntry&&activeLabelEntry.mesh){
-    labelBox.setFromObject(activeLabelEntry.mesh);
-    labelCenter.set(
-      (labelBox.min.x+labelBox.max.x)*0.5,
-      labelBox.min.y-0.25,
-      (labelBox.min.z+labelBox.max.z)*0.5
-    );
+    const lp=activeLabelEntry.mesh.position;
+    labelCenter.set(lp.x, lp.y-0.3, lp.z);
     labelPos.copy(labelCenter).project(camera);
     const sx=(labelPos.x*0.5+0.5)*W();
     const sy=(-labelPos.y*0.5+0.5)*H();
