@@ -211,14 +211,17 @@ async function loadEntries(){
   }catch{}
   try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]')}catch{return[]}
 }
-function saveEntry(text){
+function saveEntry(text,username=''){
   const id=Date.now().toString();
+  const part=username?{username}:null;
   const list=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');
-  list.push({text,id,created_at:new Date().toISOString()});
+  list.push({text,id,created_at:new Date().toISOString(),part});
   localStorage.setItem(STORAGE_KEY,JSON.stringify(list));
+  const body={id,text};
+  if(part)body.part=JSON.stringify(part);
   fetch(SUPABASE_URL+'/rest/v1/entries',{
     method:'POST',headers:{...SB_HEADERS,'Prefer':'return=minimal'},
-    body:JSON.stringify({id,text})
+    body:JSON.stringify(body)
   }).catch(()=>{});
 }
 
@@ -863,7 +866,7 @@ const PLAT_Y=200; // high enough that ground is invisible from platform
 const FOOT_LIFT=0.25; // extra lift to keep feet above platform
 const DRINK_START=0.6; // skip early part of drink animation
 const PHASE={IDLE:0,DRINK:1,WALK:2,JUMP:3,FALL:4,LAND:5,DONE:6};
-let phase=PHASE.IDLE,phaseT=0,firstText='';
+let phase=PHASE.IDLE,phaseT=0,firstText='',firstUsername='';
 let charReady=false;
 let pendingStartText=null;
 
@@ -1005,8 +1008,9 @@ async function loadChar(){
   charReady=true;
   if(pendingStartText&&clipDrink&&mixer){
     const t=pendingStartText;
+    const u=firstUsername;
     pendingStartText=null;
-    startCinematic(t);
+    startCinematic(t,u);
   }
 }
 loadChar().catch(e=>console.error('Char load err:',e));
@@ -1416,8 +1420,8 @@ function animateChar(dt){
       if(charModel)charModel.visible=false;
       createBurst(new THREE.Vector3(0,0,0));
       if(firstText){
-        const planted=addPlant(firstText,true);
-        saveEntry(firstText);
+        const planted=addPlant(firstText,true,null,firstUsername);
+        saveEntry(firstText,firstUsername);
         if(planted){clearGlow();addGlow(planted)}
       }
     }
@@ -1555,7 +1559,7 @@ function updateMouthText(dt){
   }
 }
 
-function addPlant(text,grow=true,ts=null){
+function addPlant(text,grow=true,ts=null,username=''){
   let grp;
   try{grp=makePlant(text)}catch(e){console.error('Plant err:',e);return null}
   // Spread outward; 50% chance to grow on existing plant at mid height
@@ -1585,7 +1589,7 @@ function addPlant(text,grow=true,ts=null){
     grp.userData.phase=Math.random()*Math.PI*2;
   }
   plantRoot.add(grp);
-  plantEntries.push({mesh:grp,text,ts:ts||new Date().toISOString(),pendingLabel:!!grow});
+  plantEntries.push({mesh:grp,text,ts:ts||new Date().toISOString(),pendingLabel:!!grow,username:username||''});
   // Spawn bugs around this plant's position
   spawnBugsAt(grp.position.x,grp.position.z,3+Math.floor(Math.random()*4));
   if(grow)lastPlantedPos=grp.position.clone();
@@ -1707,21 +1711,21 @@ const labelPos=new THREE.Vector3();
 const labelCenter=new THREE.Vector3();
 function showPlantLabel(entry){
   activeLabelEntry=entry;
-  plantLabel.textContent=entry.text;
+  plantLabel.textContent=entry.username?entry.text+' — '+entry.username:entry.text;
   plantLabel.style.display='block';
 }
 function hidePlantLabel(){
   activeLabelEntry=null;
   plantLabel.style.display='none';
 }
-function restartWithFade(text){
+function restartWithFade(text,username=''){
   if(fade.classList.contains('show'))return;
   fade.classList.add('show');
-  setTimeout(()=>{startCinematic(text)},320);
+  setTimeout(()=>{startCinematic(text,username)},320);
   setTimeout(()=>{fade.classList.remove('show')},720);
 }
 function resetToStart(){
-  phase=PHASE.IDLE;phaseT=0;firstText='';
+  phase=PHASE.IDLE;phaseT=0;firstText='';firstUsername='';
   hidePlantLabel();
   pop.classList.remove('show');
   if(aura){
@@ -1755,8 +1759,8 @@ function restartToIdleWithFade(){
     if(titleEl)titleEl.classList.remove('fade-out');
   },720);
 }
-function startCinematic(text){
-  firstText=text;
+function startCinematic(text,username=''){
+  firstText=text;firstUsername=username;
   phase=PHASE.DRINK;phaseT=0;
   // Fade out title
   const titleEl=document.getElementById('title');
@@ -1799,24 +1803,26 @@ goBtn.addEventListener('click',(e)=>{
   e.stopPropagation();
   startBgm();
   const text=ta.value.trim();
+  const uname=(document.getElementById('username')?.value||'').trim();
   if(!text)return;
   ta.value='';goBtn.disabled=true;
+  if(document.getElementById('username'))document.getElementById('username').value='';
   ui.classList.add('mini');
   if(!charReady||!mixer||!clipDrink){
-    pendingStartText=text;
+    pendingStartText=text;firstUsername=uname;
     return;
   }
   if(phase===PHASE.DONE&&charReady&&mixer&&clipDrink){
     // Fade out/in and restart from platform
-    restartWithFade(text);
+    restartWithFade(text,uname);
   }else if(phase===PHASE.IDLE&&charReady&&mixer&&clipDrink){
     // Trigger cinematic sequence (first run)
-    startCinematic(text);
+    startCinematic(text,uname);
   }else if(phase===PHASE.IDLE){
     // Model not loaded yet — skip cinematic, plant directly
     phase=PHASE.DONE;
-    const planted=addPlant(text,true);
-    saveEntry(text);
+    const planted=addPlant(text,true,null,uname);
+    saveEntry(text,uname);
     if(planted){clearGlow();addGlow(planted)}
     interacting=false;interTimer=0;
     if(lastPlantedPos)camTarget.set(lastPlantedPos.x,2,lastPlantedPos.z);
@@ -1836,14 +1842,14 @@ function renderSearchList(query){
   const q=query.trim().toLowerCase();
   // Sort by time, newest first
   const sorted=[...plantEntries].sort((a,b)=>(b.ts||'').localeCompare(a.ts||''));
-  const matches=q?sorted.filter(e=>e.text.toLowerCase().includes(q)):sorted;
+  const matches=q?sorted.filter(e=>e.text.toLowerCase().includes(q)||(e.username&&e.username.toLowerCase().includes(q))):sorted;
   for(const m of matches){
     const div=document.createElement('div');
-    div.className='sr-item';div.textContent=m.text;
+    div.className='sr-item';div.textContent=m.username?m.text+' — '+m.username:m.text;
     div.addEventListener('click',(ev)=>{
       ev.stopPropagation();
       clearGlow();addGlow(m.mesh);
-      pop.textContent=m.text;pop.classList.add('show');
+      pop.textContent=m.username?m.text+' — '+m.username:m.text;pop.classList.add('show');
     });
     searchResults.appendChild(div);
     if(q)addGlow(m.mesh);
@@ -1884,7 +1890,15 @@ canvas.addEventListener('pointerdown',(e)=>{
 async function loadSaved(){
   try{
     const entries=await loadEntries();
-    for(const e of entries){if(e.text)addPlant(e.text,false,e.created_at||null)}
+    for(const e of entries){
+      if(!e.text)continue;
+      let uname='';
+      if(e.part){
+        const p=typeof e.part==='string'?JSON.parse(e.part):e.part;
+        if(p&&p.username)uname=p.username;
+      }
+      addPlant(e.text,false,e.created_at||null,uname);
+    }
   }catch(e){console.error('Load err:',e)}
 }
 
