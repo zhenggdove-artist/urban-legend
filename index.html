@@ -2047,6 +2047,7 @@ document.getElementById('jump-btn').addEventListener('pointerdown',e=>{
 
 // ===== Keyboard movement (WASD/arrows for desktop) =====
 const keysDown=new Set();
+let kbActive=false; // track if keyboard was driving movement
 window.addEventListener('keydown',e=>{keysDown.add(e.key.toLowerCase())});
 window.addEventListener('keyup',e=>{keysDown.delete(e.key.toLowerCase())});
 function updateKeyboardJoy(){
@@ -2056,7 +2057,8 @@ function updateKeyboardJoy(){
   if(keysDown.has('s')||keysDown.has('arrowdown'))ky=1;
   if(keysDown.has('a')||keysDown.has('arrowleft'))kx=-1;
   if(keysDown.has('d')||keysDown.has('arrowright'))kx=1;
-  joyX=kx;joyY=ky;
+  if(kx||ky){joyX=kx;joyY=ky;kbActive=true}
+  else if(kbActive){joyX=0;joyY=0;kbActive=false}
   if(keysDown.has(' ')&&!isJumping){
     keysDown.delete(' ');
     document.getElementById('jump-btn').dispatchEvent(new PointerEvent('pointerdown'));
