@@ -205,7 +205,7 @@ URBANLEGEND
   <div id="plant-label"></div>
   <div id="game-controls">
     <div id="joystick-zone"><div id="joystick-base"><div id="joystick-stick"></div></div></div>
-    <button id="jump-btn">JUMP</button>
+    <button id="jump-btn"></button>
   </div>
   <div id="fade"></div>
   <audio id="bgm" loop preload="auto" playsinline></audio>
@@ -892,7 +892,7 @@ const camera=new THREE.PerspectiveCamera(55,W()/H(),0.1,1000);
 
 // ===== Character (GLB) + Cinematic =====
 const PLAT_Y=100;
-const FOOT_LIFT=0.25;
+const FOOT_LIFT=0.5;
 const DRINK_START=0.6;
 const PHASE={IDLE:0,DRINK:1,EXPLORE:2,FALL:3,LAND:4,DONE:5};
 let phase=PHASE.EXPLORE,phaseT=0,firstText='',firstUsername='';
@@ -900,7 +900,7 @@ let charReady=false;
 let pendingStartText=null;
 
 // Straight staircase config — from (100,0,0) to (0,PLAT_Y,0)
-const STAIR_STEPS=200;
+const STAIR_STEPS=600;
 const stairPath=[];
 const stairStart=new THREE.Vector3(100,0,0);
 const stairEnd=new THREE.Vector3(0,PLAT_Y,0);
@@ -987,7 +987,7 @@ const arrowGroup=new THREE.Group();
 scene.add(arrowGroup);
 
 // Animation state
-let mixer=null,clipIdle=null,clipDrink=null,clipJump=null,clipWalk=null,clipFall=null;
+let mixer=null,clipIdle=null,clipDrink=null,clipJump=null,clipWalk=null,clipFall=null,clipRun=null;
 let actIdle=null,actDrink=null,actJump=null,actWalk=null,actFall=null;
 const charMats=[];
 let charModel=null;
@@ -1084,12 +1084,13 @@ async function loadChar(){
     if(n==='idle')clipIdle=clip;
     else if(n==='drink')clipDrink=clip;
     else if(n==='walk')clipWalk=clip;
+    else if(n==='run'||n==='running')clipRun=clip;
     else if(n==='jump')clipJump=clip;
     else if(n==='fall')clipFall=clip;
   }
 
   // Start idle
-  console.log('Animations found:',gltf.animations.map(c=>c.name),'idle:',!!clipIdle,'drink:',!!clipDrink,'walk:',!!clipWalk,'jump:',!!clipJump,'fall:',!!clipFall);
+  console.log('Animations found:',gltf.animations.map(c=>c.name),'idle:',!!clipIdle,'drink:',!!clipDrink,'walk:',!!clipWalk,'run:',!!clipRun,'jump:',!!clipJump,'fall:',!!clipFall);
   if(clipIdle){actIdle=mixer.clipAction(clipIdle);actIdle.play()}
   charReady=true;
   if(pendingStartText&&clipDrink&&mixer){
@@ -1378,26 +1379,20 @@ function cinematicCam(dt){
 }
 
 // ===== Character Animation State Machine =====
-const EXPLORE_SPEED=8; // world units per second on staircase
-const PLATFORM_MOVE_SPEED=4; // world units per second on platform
+const EXPLORE_SPEED=8; // world units per second
 const GRAVITY=25;
 const JUMP_VEL=10;
 let exploreWalkPlaying=false;
 
-function getPathPos(t){
-  const ct=Math.max(0,Math.min(1,t));
-  const idx=ct*(stairPath.length-1);
-  const i=Math.floor(idx);
-  const f=idx-i;
-  if(i>=stairPath.length-1)return stairPath[stairPath.length-1].clone();
-  return stairPath[i].clone().lerp(stairPath[i+1],f);
-}
-function getPathDir(t){
-  const ct=Math.max(0,Math.min(1,t));
-  const eps=0.01;
-  const a=getPathPos(Math.max(0,ct-eps));
-  const b=getPathPos(Math.min(1,ct+eps));
-  return b.sub(a).normalize();
+// Terrain height at any XZ position
+function getTerrainHeight(x,z,curY){
+  // Platform first (takes priority if already near platform height)
+  const platDist=Math.sqrt(x*x+z*z);
+  if(platDist<4.5&&curY>PLAT_Y-5) return PLAT_Y;
+  // Straight staircase: (100,0,0) → (0,PLAT_Y,0), width 12 in Z
+  const stairT=(100-x)/100;
+  if(stairT>=0&&stairT<=1&&Math.abs(z)<6) return stairT*PLAT_Y;
+  return 0; // ground
 }
 
 function showControls(v){
@@ -1441,11 +1436,12 @@ function animateChar(dt){
   else if(phase===PHASE.EXPLORE){
     const moving=Math.abs(joyX)>0.15||Math.abs(joyY)>0.15;
 
-    // Switch walk/idle animation
-    if(moving&&!exploreWalkPlaying&&clipWalk&&!isJumping){
+    // Switch run/idle animation (prefer clipRun over clipWalk)
+    const moveClip=clipRun||clipWalk;
+    if(moving&&!exploreWalkPlaying&&moveClip&&!isJumping){
       actIdle?.fadeOut(0.2);
       actWalk?.stop();
-      actWalk=mixer.clipAction(clipWalk);
+      actWalk=mixer.clipAction(moveClip);
       actWalk.setLoop(THREE.LoopRepeat);
       actWalk.reset().fadeIn(0.2).play();
       exploreWalkPlaying=true;
@@ -1458,95 +1454,89 @@ function animateChar(dt){
       exploreWalkPlaying=false;
     }
 
-    if(!onPlatform){
-      // On staircase — smooth movement along path (distance-based)
-      if(moving&&!isJumping){
-        const spd=(EXPLORE_SPEED*dt)/stairPathLength; // convert world speed to pathT delta
-        pathT=Math.max(0,Math.min(1,pathT-joyY*spd)); // joyY negative = forward
-      }
-      // Jumping on stairs — physics
-      if(isJumping){
-        charVelY-=GRAVITY*dt;
-        charRoot.position.y+=charVelY*dt;
-        // Land back on staircase when falling below stair height
-        const stairPos=getPathPos(pathT);
-        if(charVelY<0&&charRoot.position.y<=stairPos.y){
-          charRoot.position.y=stairPos.y;
-          charVelY=0;isJumping=false;
-          actJump?.fadeOut(0.2);
-          if(clipIdle){
-            actIdle=mixer.clipAction(clipIdle);
-            actIdle.reset().fadeIn(0.2).play();
-          }
-          exploreWalkPlaying=false;
+    // 360-degree camera-relative movement
+    if(moving&&!isJumping){
+      const fwdX=-Math.sin(camYaw),fwdZ=-Math.cos(camYaw);
+      const rightX=-Math.cos(camYaw),rightZ=Math.sin(camYaw);
+      let mdx=-joyY*fwdX+joyX*rightX;
+      let mdz=-joyY*fwdZ+joyX*rightZ;
+      const ml=Math.sqrt(mdx*mdx+mdz*mdz);
+      if(ml>0){mdx/=ml;mdz/=ml}
+      const spd=EXPLORE_SPEED*dt;
+      const nx=charRoot.position.x+mdx*spd;
+      const nz=charRoot.position.z+mdz*spd;
+      const curH=charRoot.position.y;
+      const newH=getTerrainHeight(nx,nz,curH);
+      const maxClimb=2.0,maxDrop=3.0;
+      if(newH-curH<maxClimb){
+        if(curH-newH>maxDrop){
+          // Large drop — start falling
+          charRoot.position.x=nx;charRoot.position.z=nz;
+          isJumping=true;charVelY=0;
+        }else{
+          charRoot.position.x=nx;charRoot.position.z=nz;
+          charRoot.position.y=newH;
         }
+      }
+      // Face movement direction
+      const moveAngle=Math.atan2(mdx,mdz);
+      if(charModel)charModel.rotation.y=moveAngle+Math.PI;
+    }
+    // Always set model offset
+    if(charModel)charModel.position.set(0,baseModelY||0,0);
+
+    // Jumping physics
+    if(isJumping){
+      charVelY-=GRAVITY*dt;
+      charRoot.position.y+=charVelY*dt;
+      // Allow XZ movement during jump
+      if(moving){
+        const fwdX=-Math.sin(camYaw),fwdZ=-Math.cos(camYaw);
+        const rightX=-Math.cos(camYaw),rightZ=Math.sin(camYaw);
+        let mdx=-joyY*fwdX+joyX*rightX;
+        let mdz=-joyY*fwdZ+joyX*rightZ;
+        const ml=Math.sqrt(mdx*mdx+mdz*mdz);
+        if(ml>0){mdx/=ml;mdz/=ml}
+        charRoot.position.x+=mdx*EXPLORE_SPEED*dt*0.5;
+        charRoot.position.z+=mdz*EXPLORE_SPEED*dt*0.5;
+      }
+
+      // Switch to fall animation when descending past platform (launched off)
+      if(charVelY<0&&charRoot.position.y<PLAT_Y-2&&!platformMesh.visible){
+        if(!actFall||!actFall.isRunning()){
+          actJump?.fadeOut(0.2);
+          if(clipFall){
+            actFall=mixer.clipAction(clipFall);
+            actFall.setLoop(THREE.LoopRepeat);
+            actFall.reset().fadeIn(0.2).play();
+          }
+        }
+        const fallProgress=1-Math.max(0,charRoot.position.y/PLAT_Y);
+        updateSky(fallProgress);
+      }
+
+      if(charRoot.position.y<=0&&!platformMesh.visible){
+        // Landed on ground from platform launch — explosion + plant
+        charRoot.position.y=0;
+        isJumping=false;
+        showControls(false);
+        phase=PHASE.LAND;phaseT=0;
+        actFall?.fadeOut(0.3);actJump?.fadeOut(0.1);
+        if(charModel){charModel.position.set(0,baseModelY,0);charModel.rotation.y=Math.PI}
+        charRoot.visible=false;
+        if(charModel)charModel.visible=false;
+        createBurst(new THREE.Vector3(charRoot.position.x,0,charRoot.position.z));
+        if(firstText){
+          const planted=addPlant(firstText,true,null,firstUsername);
+          saveEntry(firstText,firstUsername);
+          if(planted){clearGlow();addGlow(planted)}
+        }
+        platformMesh.visible=true;stairGroup.visible=true;arrowGroup.visible=true;
       }else{
-        const pos=getPathPos(pathT);
-        const dir=getPathDir(pathT);
-        charRoot.position.copy(pos);
-        if(charModel){
-          charModel.position.set(0,baseModelY||0,0);
-          const angle=Math.atan2(dir.x,dir.z);
-          charModel.rotation.y=angle+Math.PI;
-        }
-      }
-      // Reached top?
-      if(pathT>=1&&!isJumping){
-        onPlatform=true;
-        charRoot.position.set(stairPath[stairPath.length-1].x,PLAT_Y,stairPath[stairPath.length-1].z);
-        // Show WRITE button when reaching platform
-        if(ui.classList.contains('hidden'))ui.classList.remove('hidden');
-      }
-    }else{
-      // On platform — free XZ movement
-      if(moving&&!isJumping){
-        const angle=Math.atan2(-joyX,-joyY);
-        const spd=PLATFORM_MOVE_SPEED*dt;
-        charRoot.position.x+=Math.sin(angle)*spd;
-        charRoot.position.z+=Math.cos(angle)*spd;
-        if(charModel)charModel.rotation.y=angle+Math.PI;
-      }
-
-      // Jumping physics
-      if(isJumping){
-        charVelY-=GRAVITY*dt;
-        charRoot.position.y+=charVelY*dt;
-
-        // Switch to fall animation when descending past platform
-        if(charVelY<0&&charRoot.position.y<PLAT_Y-2&&!platformMesh.visible){
-          if(!actFall||!actFall.isRunning()){
-            actJump?.fadeOut(0.2);
-            if(clipFall){
-              actFall=mixer.clipAction(clipFall);
-              actFall.setLoop(THREE.LoopRepeat);
-              actFall.reset().fadeIn(0.2).play();
-            }
-          }
-          // Cinematic fall camera
-          const fallProgress=1-Math.max(0,charRoot.position.y/PLAT_Y);
-          updateSky(fallProgress);
-        }
-
-        if(charRoot.position.y<=0){
-          // Landed on ground — explosion + plant
-          charRoot.position.y=0;
-          isJumping=false;
-          showControls(false);
-          phase=PHASE.LAND;phaseT=0;
-          actFall?.fadeOut(0.3);actJump?.fadeOut(0.1);
-          if(charModel){charModel.position.set(0,baseModelY,0);charModel.rotation.y=Math.PI}
-          charRoot.visible=false;
-          if(charModel)charModel.visible=false;
-          createBurst(new THREE.Vector3(charRoot.position.x,0,charRoot.position.z));
-          if(firstText){
-            const planted=addPlant(firstText,true,null,firstUsername);
-            saveEntry(firstText,firstUsername);
-            if(planted){clearGlow();addGlow(planted)}
-          }
-          platformMesh.visible=true;stairGroup.visible=true;arrowGroup.visible=true;
-        }else if(platformMesh.visible&&charRoot.position.y<=PLAT_Y&&charVelY<0&&charRoot.position.y>PLAT_Y-1){
-          // Still above platform — land back on platform
-          charRoot.position.y=PLAT_Y;
+        // Land on terrain (stair, ground, or platform)
+        const terrH=getTerrainHeight(charRoot.position.x,charRoot.position.z,charRoot.position.y);
+        if(charVelY<0&&charRoot.position.y<=terrH){
+          charRoot.position.y=terrH;
           charVelY=0;isJumping=false;
           actJump?.fadeOut(0.2);
           if(clipIdle){
@@ -1555,18 +1545,13 @@ function animateChar(dt){
           }
           exploreWalkPlaying=false;
         }
-      }
-
-      // Check if walked off platform edge (no jump, just walked off)
-      const distFromCenter=Math.sqrt(charRoot.position.x**2+charRoot.position.z**2);
-      if(!isJumping&&distFromCenter>4.5){
-        isJumping=true;
-        charVelY=0;
-        platformMesh.visible=false;
-        stairGroup.visible=false;
-        arrowGroup.visible=false;
       }
     }
+
+    // Detect platform status
+    const platDist=Math.sqrt(charRoot.position.x**2+charRoot.position.z**2);
+    onPlatform=platDist<4.5&&charRoot.position.y>=PLAT_Y-1;
+    if(onPlatform&&ui.classList.contains('hidden'))ui.classList.remove('hidden');
   }
   else if(phase===PHASE.FALL){
     const dur=3.0;
@@ -2205,8 +2190,8 @@ function tick(){
     }
     if(phase===PHASE.EXPLORE&&!interacting){
       // Follow camera behind character
-      camPitch+=(0.3-camPitch)*dt*2;
-      camDist+=(10-camDist)*dt*2;
+      camPitch+=(0.35-camPitch)*dt*2;
+      camDist+=(14-camDist)*dt*2;
       if(charModel){
         const targetYaw=charModel.rotation.y;
         camYaw+=(targetYaw-camYaw)*dt*3;
