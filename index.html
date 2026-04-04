@@ -1402,24 +1402,23 @@ function cinematicCam(dt){
   }
   if(phase===PHASE.FALL){
     if(autoWalkPhase) return false; // use orbit cam during auto-walk on platform
-    const t=Math.min(1,phaseT/3);
-    const ease=t*t*(3-2*t);
     const cy=charRoot.position.y;
-    const camY=Math.max(1.5,cy+1.5-ease*cy*0.3);
-    // Camera on -Z side, close to character, facing away from stairs (+X)
-    const camOffX=-2;
-    const camOffZ=-4;
+    // Camera on +X side (stairs side), looking outward (-X), constant distance
+    const camOffX=5;
+    const camOffZ=0;
+    const camY=cy+2;
     camera.position.set(charRoot.position.x+camOffX,camY,charRoot.position.z+camOffZ);
-    camera.lookAt(charRoot.position.x,cy+0.3,charRoot.position.z);
+    // Look at character but slightly toward -X (away from stairs)
+    camera.lookAt(charRoot.position.x-2,cy,charRoot.position.z);
     return true;
   }
   if(phase===PHASE.LAND){
     const t=Math.min(1,phaseT/2);
     const ease=t*t*(3-2*t);
     const lookY=2.0*ease;
-    // Camera close, on -Z side to avoid showing staircase
-    camera.position.set(-3,4,-8);
-    camera.lookAt(0,lookY,0);
+    // Camera on +X side looking outward (-X), away from stairs
+    camera.position.set(8,4,0);
+    camera.lookAt(-2,lookY,0);
     return true;
   }
   return false;
