@@ -67,7 +67,7 @@
     #ui.mini::after{content:'WRITE';font-size:10px;letter-spacing:1.5px;color:#E84887;text-transform:uppercase;font-family:"Bristol","Saint","Trebuchet MS",sans-serif}
     #ui.mini.done-state::after{content:'RETURN'}
     #ui.hidden{opacity:0;pointer-events:none}
-    #ui h2{font-size:14px;letter-spacing:2px;color:#E84887;margin:10px 12px 4px;font-family:"Bristol","Saint","Trebuchet MS",sans-serif;
+    #ui h2{font-size:14px;letter-spacing:2px;color:#E84887;margin:10px 12px 4px;font-family:"Saint","Trebuchet MS",sans-serif;
       text-shadow:0 1px 0 rgba(255,255,255,0.7)}
     #ui textarea{width:calc(100% - 24px);height:96px;margin:6px 12px 10px;
       background:radial-gradient(circle at 25% 15%,#fff 0%,#fbe3f3 55%,#f3c8e3 100%);
@@ -77,7 +77,7 @@
     #go{margin:0 12px 12px;width:calc(100% - 24px);height:38px;
       background:radial-gradient(circle at 25% 20%,#fff 0%,#e7cfff 55%,#d7b8ff 100%);
       border:2px solid var(--bubble-edge);color:#E84887;text-transform:uppercase;letter-spacing:3px;
-      cursor:pointer;font-family:"Bristol","Saint","Trebuchet MS",sans-serif;border-radius:999px;
+      cursor:pointer;font-family:"Saint","Trebuchet MS",sans-serif;border-radius:999px;
       box-shadow:0 6px 14px var(--bubble-shadow)}
     #go:disabled{opacity:0.4;cursor:not-allowed}
     #pop{position:absolute;bottom:80px;left:50%;transform:translateX(-50%);
@@ -1402,30 +1402,33 @@ function cinematicCam(dt){
   }
   if(phase===PHASE.FALL){
     if(autoWalkPhase) return false; // use orbit cam during auto-walk on platform
-    const cy=charRoot.position.y;
-    // Camera on +X side (stairs side), looking outward (-X), constant distance
-    const camOffX=5;
-    const camOffZ=0;
-    const camY=cy+2;
-    camera.position.set(charRoot.position.x+camOffX,camY,charRoot.position.z+camOffZ);
-    // Look at character but slightly toward -X (away from stairs)
-    camera.lookAt(charRoot.position.x-2,cy,charRoot.position.z);
+    const t=Math.min(1,phaseT/3);
+    const ease=t*t*(3-2*t);
+    const cy=charRoot.position.y+1;
+    // Tag-K style but rotated 180°: camera swings along X axis (stairs→outward)
+    // Starts at +X (stairs side), swings to -X (outward)
+    const camX=15*(1-2*ease);
+    const camY=Math.max(2,cy+3.5-ease*cy*0.7);
+    camera.position.set(camX,camY,0);
+    camera.lookAt(0,charRoot.position.y+0.5,0);
     return true;
   }
   if(phase===PHASE.LAND){
-    const t=Math.min(1,phaseT/2);
-    const ease=t*t*(3-2*t);
-    const lookY=2.0*ease;
-    // Camera on +X side looking outward (-X), away from stairs, further back
-    camera.position.set(18,6,0);
-    camera.lookAt(-2,lookY,0);
+    // Orbit around plant/explosion position with wide shot
+    const plantPos=lastPlantedPos||new THREE.Vector3(0,0,0);
+    const orbitAngle=globalTime*0.5;
+    const orbitR=20;
+    const camX=plantPos.x+orbitR*Math.sin(orbitAngle);
+    const camZ=plantPos.z+orbitR*Math.cos(orbitAngle);
+    camera.position.set(camX,8,camZ);
+    camera.lookAt(plantPos.x,2,plantPos.z);
     return true;
   }
   return false;
 }
 
 // ===== Character Animation State Machine =====
-const EXPLORE_MAX_SPEED=5.76; // max speed (+20% from 4.8)
+const EXPLORE_MAX_SPEED=8.64; // max speed (150% of 5.76)
 const EXPLORE_ACCEL=6; // acceleration (units/sec²)
 const EXPLORE_DECEL=12; // deceleration when releasing joystick
 let curSpeed=0; // current movement speed
