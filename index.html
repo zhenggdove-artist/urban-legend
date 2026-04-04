@@ -71,7 +71,7 @@
       background:radial-gradient(circle at 30% 20%,#fff3fb 0%,var(--bubble-1) 55%,var(--bubble-2) 100%);
       right:22px;bottom:24px;left:auto;top:auto}
     #ui.mini h2,#ui.mini textarea,#ui.mini button#go,#ui.mini #username,#ui.mini div{display:none}
-    #ui.mini::after{content:'WRITE';font-size:10px;letter-spacing:1.5px;color:#7555a8;text-transform:uppercase;font-family:"FFComma","Saint","Trebuchet MS",sans-serif}
+    #ui.mini::after{content:'WRITE';font-size:10px;letter-spacing:1.5px;color:#7555a8;text-transform:uppercase;font-family:"Saint","Trebuchet MS",sans-serif}
     #ui.mini.done-state::after{content:'RETURN'}
     #ui.hidden{opacity:0;pointer-events:none}
     #ui h2{font-size:14px;letter-spacing:2px;color:#E84887;margin:10px 12px 4px;font-family:"Saint","Trebuchet MS",sans-serif;
@@ -102,7 +102,7 @@
       border-radius:999px;cursor:pointer;z-index:14;font-family:inherit;font-size:0;
       display:flex;align-items:center;justify-content:center;
       box-shadow:0 6px 14px var(--bubble-shadow)}
-    #search-btn::before{content:"›";font-size:22px;color:#7555a8;text-shadow:0 1px 0 rgba(255,255,255,0.7);font-family:"FFComma","Saint","Trebuchet MS",sans-serif}
+    #search-btn::before{content:"›";font-size:22px;color:#7555a8;text-shadow:0 1px 0 rgba(255,255,255,0.7);font-family:"Saint","Trebuchet MS",sans-serif}
     #search-panel{position:absolute;bottom:86px;left:22px;width:min(70vw,330px);
       background:radial-gradient(circle at 30% 20%,#fff 0%,var(--bubble-1) 55%,var(--bubble-2) 100%);
       border:2px solid var(--bubble-edge);
@@ -1076,7 +1076,7 @@ async function loadChar(){
   }catch{}
   if(!gltf)gltf=await loader.loadAsync('character.glb');
   charModel=gltf.scene;
-  charModel.rotation.y=Math.PI; // model visual face is +Z; PI faces -Z (toward camera)
+  charModel.rotation.y=0; // model visual face is +Z; camera at +Z side
   charModel.scale.setScalar(100); // Mixamo FBX→Blender applies 0.01 scale — undo it
   charModel.position.y=CHAR_Y_OFFSET; // raise above platform surface
   charModel.updateMatrixWorld(true);
@@ -1946,7 +1946,7 @@ function addPlant(text,grow=true,ts=null,username=''){
 }
 
 // ===== Camera =====
-let camYaw=Math.PI,camPitch=0.25,camDist=6;
+let camYaw=0,camPitch=0.25,camDist=6;
 let camTarget=new THREE.Vector3(stairPath[0].x,1.5,stairPath[0].z);
 let interacting=false,interTimer=0;
 let lastPlantedPos=null; // world position of the most recently planted plant
@@ -2178,12 +2178,12 @@ function resetToStart(){
   }
   resetDrinkGlow();
   charRoot.visible=true;
-  if(charModel){charModel.visible=true;charModel.position.set(0,baseModelY,0);charModel.rotation.y=Math.PI}
+  if(charModel){charModel.visible=true;charModel.position.set(0,baseModelY,0);charModel.rotation.y=0}
   charRoot.position.set(stairPath[0].x,0,stairPath[0].z);
   platformMesh.visible=false;stairGroup.visible=true;
   arrowBridge.visible=true;arrowGroup.visible=false;
   camTarget.set(stairPath[0].x,1.5,stairPath[0].z);
-  camYaw=Math.PI;camPitch=0.25;camDist=6;
+  camYaw=0;camPitch=0.25;camDist=6;
   ui.classList.add('mini');ui.classList.add('hidden');ui.classList.remove('done-state');
   updateSky(0);
   actFall?.stop();actJump?.stop();actWalk?.stop();actDrink?.stop();
@@ -2457,17 +2457,12 @@ function tick(){
     const lp=activeLabelEntry.mesh.position;
     labelCenter.set(lp.x, lp.y-0.3, lp.z);
     labelPos.copy(labelCenter).project(camera);
-    const sx=(labelPos.x*0.5+0.5)*W();
-    const sy=(-labelPos.y*0.5+0.5)*H();
-    plantLabel.style.left=`${sx}px`;
-    plantLabel.style.top=`${sy}px`;
-    const rect=plantLabel.getBoundingClientRect();
-    let lx=sx,ly=sy;
-    const pad=10;
-    if(rect.left<pad)lx+=pad-rect.left;
-    if(rect.right>W()-pad)lx-=rect.right-(W()-pad);
-    if(rect.top<pad)ly+=pad-rect.top;
-    if(rect.bottom>H()-pad)ly-=rect.bottom-(H()-pad);
+    let lx=(labelPos.x*0.5+0.5)*W();
+    let ly=(-labelPos.y*0.5+0.5)*H();
+    // Clamp to viewport using estimated label size (avoid getBoundingClientRect jitter)
+    const lw=120,lh=30,pad=10;
+    lx=Math.max(pad+lw/2,Math.min(W()-pad-lw/2,lx));
+    ly=Math.max(pad,Math.min(H()-pad-lh,ly));
     plantLabel.style.left=`${lx}px`;
     plantLabel.style.top=`${ly}px`;
   }
