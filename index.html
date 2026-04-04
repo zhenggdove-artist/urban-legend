@@ -162,23 +162,23 @@
     #game-controls{position:fixed;bottom:0;left:0;right:0;height:40vh;z-index:15;
       pointer-events:none;display:block}
     #game-controls.hide{display:none}
-    #joystick-zone{position:absolute;left:20px;bottom:20px;width:140px;height:140px;
+    #joystick-zone{position:absolute;left:20px;bottom:90px;width:70px;height:70px;
       pointer-events:auto;touch-action:none}
     #joystick-base{position:absolute;inset:0;border-radius:50%;
       background:radial-gradient(circle at 30% 20%,rgba(255,243,251,0.7),rgba(233,196,230,0.5));
       border:2px solid var(--bubble-edge);
       box-shadow:inset 0 0 0 2px rgba(255,255,255,0.5),0 6px 14px var(--bubble-shadow)}
-    #joystick-stick{position:absolute;width:56px;height:56px;border-radius:50%;
+    #joystick-stick{position:absolute;width:28px;height:28px;border-radius:50%;
       left:50%;top:50%;transform:translate(-50%,-50%);
       background:radial-gradient(circle at 35% 25%,#fff 0%,var(--bubble-1) 50%,var(--bubble-2) 100%);
       border:2px solid var(--bubble-edge);
       box-shadow:0 4px 10px var(--bubble-shadow)}
-    #jump-btn{position:absolute;right:20px;bottom:20px;width:100px;height:100px;
+    #jump-btn{position:absolute;right:20px;bottom:90px;width:50px;height:50px;
       border-radius:50%;cursor:pointer;pointer-events:auto;touch-action:none;
       background:radial-gradient(circle at 30% 20%,#fff3fb 0%,var(--bubble-1) 55%,var(--bubble-2) 100%);
       border:2px solid var(--bubble-edge);
       box-shadow:inset 0 0 0 2px rgba(255,255,255,0.5),0 6px 14px var(--bubble-shadow);
-      font-family:"GoldenGirdle","Saint",sans-serif;font-size:13px;letter-spacing:1.5px;
+      font-family:"GoldenGirdle","Saint",sans-serif;font-size:10px;letter-spacing:1px;
       color:var(--bubble-text);text-transform:uppercase;display:flex;align-items:center;justify-content:center}
     #jump-btn:active{transform:scale(0.92)}
   </style>
@@ -891,7 +891,7 @@ scene.add(new THREE.AmbientLight('#ffffff',0.35));
 const camera=new THREE.PerspectiveCamera(55,W()/H(),0.1,1000);
 
 // ===== Character (GLB) + Cinematic =====
-const PLAT_Y=25;
+const PLAT_Y=100;
 const FOOT_LIFT=0.25;
 const DRINK_START=0.6;
 const PHASE={IDLE:0,DRINK:1,EXPLORE:2,FALL:3,LAND:4,DONE:5};
@@ -899,14 +899,18 @@ let phase=PHASE.EXPLORE,phaseT=0,firstText='',firstUsername='';
 let charReady=false;
 let pendingStartText=null;
 
-// Spiral staircase config
-const STAIR_RADIUS=80,STAIR_REVS=4,STAIR_STEPS=600;
+// Straight staircase config — from (100,0,0) to (0,PLAT_Y,0)
+const STAIR_STEPS=200;
 const stairPath=[];
+const stairStart=new THREE.Vector3(100,0,0);
+const stairEnd=new THREE.Vector3(0,PLAT_Y,0);
 for(let i=0;i<=STAIR_STEPS;i++){
   const t=i/STAIR_STEPS;
-  const a=t*2*Math.PI*STAIR_REVS;
-  stairPath.push(new THREE.Vector3(STAIR_RADIUS*Math.cos(a),t*PLAT_Y,STAIR_RADIUS*Math.sin(a)));
+  stairPath.push(new THREE.Vector3().lerpVectors(stairStart,stairEnd,t));
 }
+// Pre-compute total path length for smooth movement
+let stairPathLength=0;
+for(let i=1;i<stairPath.length;i++) stairPathLength+=stairPath[i].distanceTo(stairPath[i-1]);
 
 // Explorer state
 let pathT=0;
@@ -944,18 +948,18 @@ platformTop.position.y=0.25;
 platformMesh.add(platformSide,platformTop);
 platformMesh.position.set(0,PLAT_Y,0);scene.add(platformMesh);
 
-// Spiral staircase — InstancedMesh for performance
+// Straight staircase — InstancedMesh for performance
 const stairGroup=new THREE.Group();
 {
-  const stepGeo=new THREE.BoxGeometry(3.0,0.18,4.0); // 3x longer steps, wider
+  const stepGeo=new THREE.BoxGeometry(12.0,0.18,2.0); // width 4x (12), depth half (2)
   const stairMesh=new THREE.InstancedMesh(stepGeo,platformMat,STAIR_STEPS);
   const dummy=new THREE.Object3D();
+  const stairDir=new THREE.Vector3().subVectors(stairEnd,stairStart).normalize();
+  const stairAngle=Math.atan2(stairDir.x,stairDir.z);
   for(let i=0;i<STAIR_STEPS;i++){
     const p=stairPath[i];
-    const p2=stairPath[Math.min(i+1,STAIR_STEPS)];
     dummy.position.copy(p);
-    const angle=Math.atan2(p2.x-p.x,p2.z-p.z);
-    dummy.rotation.set(0,angle,0);
+    dummy.rotation.set(0,stairAngle,0);
     dummy.updateMatrix();
     stairMesh.setMatrixAt(i,dummy.matrix);
   }
@@ -966,7 +970,7 @@ scene.add(stairGroup);
 
 // Flashing arrow at platform edge — jump point
 // Arrow at the platform edge — positioned away from staircase arrival point
-const arrowJumpPos=new THREE.Vector3(0,PLAT_Y+0.35,-2.0);
+const arrowJumpPos=new THREE.Vector3(0,PLAT_Y+0.35,-3.0);
 const arrowGroup=new THREE.Group();
 {
   const shape=new THREE.Shape();
@@ -1374,7 +1378,7 @@ function cinematicCam(dt){
 }
 
 // ===== Character Animation State Machine =====
-const EXPLORE_SPEED=12; // path units per second on staircase
+const EXPLORE_SPEED=8; // world units per second on staircase
 const PLATFORM_MOVE_SPEED=4; // world units per second on platform
 const GRAVITY=25;
 const JUMP_VEL=10;
@@ -1455,22 +1459,39 @@ function animateChar(dt){
     }
 
     if(!onPlatform){
-      // On staircase — move along path
-      if(moving){
-        const spd=EXPLORE_SPEED*dt/PLAT_Y; // normalize to 0..1 path range
+      // On staircase — smooth movement along path (distance-based)
+      if(moving&&!isJumping){
+        const spd=(EXPLORE_SPEED*dt)/stairPathLength; // convert world speed to pathT delta
         pathT=Math.max(0,Math.min(1,pathT-joyY*spd)); // joyY negative = forward
       }
-      const pos=getPathPos(pathT);
-      const dir=getPathDir(pathT);
-      charRoot.position.copy(pos);
-      if(charModel){
-        charModel.position.set(0,baseModelY||0,0);
-        // Face movement direction
-        const angle=Math.atan2(dir.x,dir.z);
-        charModel.rotation.y=angle+Math.PI;
+      // Jumping on stairs — physics
+      if(isJumping){
+        charVelY-=GRAVITY*dt;
+        charRoot.position.y+=charVelY*dt;
+        // Land back on staircase when falling below stair height
+        const stairPos=getPathPos(pathT);
+        if(charVelY<0&&charRoot.position.y<=stairPos.y){
+          charRoot.position.y=stairPos.y;
+          charVelY=0;isJumping=false;
+          actJump?.fadeOut(0.2);
+          if(clipIdle){
+            actIdle=mixer.clipAction(clipIdle);
+            actIdle.reset().fadeIn(0.2).play();
+          }
+          exploreWalkPlaying=false;
+        }
+      }else{
+        const pos=getPathPos(pathT);
+        const dir=getPathDir(pathT);
+        charRoot.position.copy(pos);
+        if(charModel){
+          charModel.position.set(0,baseModelY||0,0);
+          const angle=Math.atan2(dir.x,dir.z);
+          charModel.rotation.y=angle+Math.PI;
+        }
       }
       // Reached top?
-      if(pathT>=1){
+      if(pathT>=1&&!isJumping){
         onPlatform=true;
         charRoot.position.set(stairPath[stairPath.length-1].x,PLAT_Y,stairPath[stairPath.length-1].z);
         // Show WRITE button when reaching platform
@@ -1753,7 +1774,7 @@ function addPlant(text,grow=true,ts=null,username=''){
 }
 
 // ===== Camera =====
-let camYaw=Math.PI,camPitch=0.2,camDist=7.5;
+let camYaw=Math.PI,camPitch=0.3,camDist=12;
 let camTarget=new THREE.Vector3(stairPath[0].x,1.5,stairPath[0].z);
 let interacting=false,interTimer=0;
 let lastPlantedPos=null; // world position of the most recently planted plant
@@ -1801,7 +1822,7 @@ canvas.addEventListener('wheel',e=>{e.preventDefault();if(phase!==PHASE.IDLE&&ph
   const stick=document.getElementById('joystick-stick');
   const base=document.getElementById('joystick-base');
   let joyPtrId=null,joyCenter={x:0,y:0};
-  const STICK_MAX=40;
+  const STICK_MAX=20;
   zone.addEventListener('pointerdown',e=>{
     e.preventDefault();e.stopPropagation();
     zone.setPointerCapture(e.pointerId);
@@ -1831,7 +1852,7 @@ canvas.addEventListener('wheel',e=>{e.preventDefault();if(phase!==PHASE.IDLE&&ph
 // ===== Jump Button =====
 document.getElementById('jump-btn').addEventListener('pointerdown',e=>{
   e.preventDefault();e.stopPropagation();
-  if(phase!==PHASE.EXPLORE||!onPlatform||isJumping)return;
+  if(phase!==PHASE.EXPLORE||isJumping)return;
   isJumping=true;
   charVelY=JUMP_VEL;
   actWalk?.fadeOut(0.1);actIdle?.fadeOut(0.1);
@@ -1863,7 +1884,7 @@ function updateKeyboardJoy(){
   if(keysDown.has('a')||keysDown.has('arrowleft'))kx=-1;
   if(keysDown.has('d')||keysDown.has('arrowright'))kx=1;
   if(kx||ky){joyX=kx;joyY=ky}
-  if(keysDown.has(' ')&&onPlatform&&!isJumping){
+  if(keysDown.has(' ')&&!isJumping){
     keysDown.delete(' ');
     document.getElementById('jump-btn').dispatchEvent(new PointerEvent('pointerdown'));
   }
@@ -1976,7 +1997,7 @@ function resetToStart(){
   charRoot.position.set(stairPath[0].x,0,stairPath[0].z);
   platformMesh.visible=true;stairGroup.visible=true;arrowGroup.visible=true;
   camTarget.set(stairPath[0].x,1.5,stairPath[0].z);
-  camYaw=Math.PI;camPitch=0.2;camDist=7.5;
+  camYaw=Math.PI;camPitch=0.3;camDist=12;
   ui.classList.add('mini');ui.classList.add('hidden');
   updateSky(0);
   actFall?.stop();actJump?.stop();actWalk?.stop();actDrink?.stop();
@@ -2018,7 +2039,7 @@ function startCinematic(text,username=''){
   charRoot.position.y=PLAT_Y;
   platformMesh.visible=true;stairGroup.visible=true;arrowGroup.visible=true;
   camTarget.set(charRoot.position.x,PLAT_Y+1,charRoot.position.z);
-  camYaw=Math.PI;camPitch=0.2;camDist=7.5;
+  camYaw=Math.PI;camPitch=0.3;camDist=12;
   updateSky(0);
   actFall?.stop();actJump?.stop();actWalk?.stop();
   actIdle?.fadeOut(0.2);
