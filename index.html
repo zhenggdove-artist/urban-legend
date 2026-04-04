@@ -891,19 +891,20 @@ scene.add(new THREE.AmbientLight('#ffffff',0.35));
 const camera=new THREE.PerspectiveCamera(55,W()/H(),0.1,1000);
 
 // ===== Character (GLB) + Cinematic =====
-const PLAT_Y=100;
+const PLAT_Y=200; // final floating platform height (above plants)
 const FOOT_LIFT=0.8;
 const DRINK_START=0.6;
-const PHASE={IDLE:0,DRINK:1,EXPLORE:2,FALL:3,LAND:4,DONE:5};
+const STAIR_TOP_Y=30; // height at top of stairs
+const PHASE={IDLE:0,DRINK:1,EXPLORE:2,ASCEND:6,FALL:3,LAND:4,DONE:5};
 let phase=PHASE.EXPLORE,phaseT=0,firstText='',firstUsername='';
 let charReady=false;
 let pendingStartText=null;
 
-// Straight staircase config — from (100,0,0) to (0,PLAT_Y,0)
-const STAIR_STEPS=200;
+// Straight staircase config — from (100,0,0) to (0,STAIR_TOP_Y,0)
+const STAIR_STEPS=100;
 const stairPath=[];
-const stairStart=new THREE.Vector3(200,0,0);
-const stairEnd=new THREE.Vector3(0,PLAT_Y,0);
+const stairStart=new THREE.Vector3(100,0,0);
+const stairEnd=new THREE.Vector3(0,STAIR_TOP_Y,0);
 for(let i=0;i<=STAIR_STEPS;i++){
   const t=i/STAIR_STEPS;
   stairPath.push(new THREE.Vector3().lerpVectors(stairStart,stairEnd,t));
@@ -940,25 +941,28 @@ const platformMat=new THREE.MeshPhysicalMaterial({
   emissive:new THREE.Color('#E84887'),
   emissiveIntensity:0.08
 });
+// Flying disc platform — starts as bridge step, flies up to PLAT_Y
 const platformMesh=new THREE.Group();
 const platformSide=new THREE.Mesh(new THREE.CylinderGeometry(4,4.5,0.5,32,1,true),platformMat);
 const platformTop=new THREE.Mesh(new THREE.CircleGeometry(4,32),platformMat);
 platformTop.rotation.x=-Math.PI/2;
 platformTop.position.y=0.25;
 platformMesh.add(platformSide,platformTop);
-platformMesh.position.set(0,PLAT_Y,0);scene.add(platformMesh);
+platformMesh.position.set(0,PLAT_Y,0);
+platformMesh.visible=false; // hidden until ascend
+scene.add(platformMesh);
 
 // Straight staircase — InstancedMesh with visible edges
 const stairGroup=new THREE.Group();
+const stepEdgeMat=new THREE.MeshPhysicalMaterial({
+  color:'#c03870',roughness:0.35,metalness:0.15,
+  clearcoat:0.8,iridescence:0.6,
+  emissive:new THREE.Color('#c03870'),emissiveIntensity:0.05
+});
+let bridgePos; // bridge step world position (used for ASCEND trigger)
 {
   const stepH=0.35;
-  const stepGeo=new THREE.BoxGeometry(12.0,stepH,4.0); // depth doubled to 4
-  // Darker edge material for step contrast
-  const stepEdgeMat=new THREE.MeshPhysicalMaterial({
-    color:'#c03870',roughness:0.35,metalness:0.15,
-    clearcoat:0.8,iridescence:0.6,
-    emissive:new THREE.Color('#c03870'),emissiveIntensity:0.05
-  });
+  const stepGeo=new THREE.BoxGeometry(12.0,stepH,4.0);
   const stairMesh=new THREE.InstancedMesh(stepGeo,stepEdgeMat,STAIR_STEPS);
   const dummy=new THREE.Object3D();
   const stairDir=new THREE.Vector3().subVectors(stairEnd,stairStart).normalize();
@@ -972,39 +976,45 @@ const stairGroup=new THREE.Group();
   }
   stairMesh.instanceMatrix.needsUpdate=true;
   stairGroup.add(stairMesh);
-  // Top bridging step — extends forward from stair end toward platform center
+  // Top bridge step — this will "detach" and fly up as disc
   const bridgeGeo=new THREE.BoxGeometry(12.0,stepH,9.0);
   const bridge=new THREE.Mesh(bridgeGeo,stepEdgeMat);
   const lastP=stairPath[stairPath.length-1];
-  // Offset 4 units forward along stair direction (toward platform)
   const stairDirXZ=new THREE.Vector2(stairDir.x,stairDir.z).normalize();
-  bridge.position.set(lastP.x+stairDirXZ.x*4,lastP.y,lastP.z+stairDirXZ.y*4);
+  bridgePos=new THREE.Vector3(lastP.x+stairDirXZ.x*4,lastP.y,lastP.z+stairDirXZ.y*4);
+  bridge.position.copy(bridgePos);
   bridge.rotation.set(0,stairAngle,0);
+  bridge.name='bridge';
   stairGroup.add(bridge);
 }
 scene.add(stairGroup);
 
-// 3D yellow arrow pointing down — floating above platform jump point
-const arrowJumpPos=new THREE.Vector3(0,PLAT_Y,-3.0);
-const arrowGroup=new THREE.Group();
-const arrowFloatBase=PLAT_Y+3.5; // float height above platform
-{
-  // Cone (arrow head) pointing down
-  const coneGeo=new THREE.ConeGeometry(0.5,1.2,8);
-  const arrowMat=new THREE.MeshPhysicalMaterial({
-    color:'#ffcc00',emissive:new THREE.Color('#ff9900'),emissiveIntensity:0.6,
-    roughness:0.3,metalness:0.2,transparent:true,opacity:0.9
-  });
-  const cone=new THREE.Mesh(coneGeo,arrowMat);
-  cone.rotation.x=Math.PI; // point downward
-  cone.position.y=0;
-  // Shaft (thin cylinder)
-  const shaftGeo=new THREE.CylinderGeometry(0.12,0.12,0.8,8);
-  const shaft=new THREE.Mesh(shaftGeo,arrowMat);
-  shaft.position.y=1.0; // above cone
-  arrowGroup.add(cone,shaft);
-  arrowGroup.position.set(arrowJumpPos.x,arrowFloatBase,arrowJumpPos.z);
+// Yellow arrow material (shared)
+const arrowMat=new THREE.MeshPhysicalMaterial({
+  color:'#ffcc00',emissive:new THREE.Color('#ff9900'),emissiveIntensity:0.6,
+  roughness:0.3,metalness:0.2,transparent:true,opacity:0.9
+});
+function makeArrow3D(){
+  const g=new THREE.Group();
+  const cone=new THREE.Mesh(new THREE.ConeGeometry(0.5,1.2,8),arrowMat);
+  cone.rotation.x=Math.PI;
+  const shaft=new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.12,0.8,8),arrowMat);
+  shaft.position.y=1.0;
+  g.add(cone,shaft);
+  return g;
 }
+
+// Arrow above bridge step (stair top)
+const arrowBridge=makeArrow3D();
+arrowBridge.position.set(bridgePos.x,bridgePos.y+3.5,bridgePos.z);
+scene.add(arrowBridge);
+
+// Arrow above flying platform (hidden until platform arrives at top)
+const arrowGroup=makeArrow3D();
+const arrowJumpPos=new THREE.Vector3(0,PLAT_Y,-3.0);
+const arrowFloatBase=PLAT_Y+3.5;
+arrowGroup.position.set(arrowJumpPos.x,arrowFloatBase,arrowJumpPos.z);
+arrowGroup.visible=false;
 scene.add(arrowGroup);
 
 // Animation state
@@ -1379,13 +1389,14 @@ function cinematicCam(dt){
     return false; // follow cam
   }
   if(phase===PHASE.FALL){
+    if(autoWalkPhase) return false; // use orbit cam during auto-walk on platform
     const t=Math.min(1,phaseT/3);
     const ease=t*t*(3-2*t);
     const cy=charRoot.position.y+1;
     const camZ=8*(1-2*ease);
     const camY=Math.max(2,cy+2.2-ease*cy*0.65);
-    camera.position.set(0,camY,camZ);
-    camera.lookAt(0,charRoot.position.y+0.5,0);
+    camera.position.set(charRoot.position.x,camY,charRoot.position.z+camZ);
+    camera.lookAt(charRoot.position.x,charRoot.position.y+0.5,charRoot.position.z);
     return true;
   }
   if(phase===PHASE.LAND){
@@ -1407,15 +1418,19 @@ let curSpeed=0; // current movement speed
 const GRAVITY=25;
 const JUMP_VEL=10;
 let exploreWalkPlaying=false;
+let autoWalkPhase=false;let autoWalkT=0; // auto-walk to edge after drink
 
 // Terrain height at any XZ position
 function getTerrainHeight(x,z,curY){
-  // Platform first (takes priority if already near platform height)
-  const platDist=Math.sqrt(x*x+z*z);
-  if(platDist<4.5&&curY>PLAT_Y-5) return PLAT_Y;
-  // Straight staircase: (200,0,0) → (0,PLAT_Y,0), width 12 in Z
-  const stairT=(200-x)/200;
-  if(stairT>=0&&stairT<=1&&Math.abs(z)<6) return stairT*PLAT_Y;
+  // Flying platform (only when visible and character is near it)
+  if(platformMesh.visible){
+    const px=platformMesh.position.x,py=platformMesh.position.y,pz=platformMesh.position.z;
+    const pd=Math.sqrt((x-px)**2+(z-pz)**2);
+    if(pd<4.5&&Math.abs(curY-py)<3) return py;
+  }
+  // Straight staircase: (100,0,0) → (0,STAIR_TOP_Y,0), width 12 in Z
+  const stairT=(100-x)/100;
+  if(stairT>=0&&stairT<=1&&Math.abs(z)<6) return stairT*STAIR_TOP_Y;
   return 0; // ground
 }
 
@@ -1445,16 +1460,23 @@ function animateChar(dt){
     if(phaseT<0.8)startMouthText();
     if(phaseT>=drinkDur){
       startDrinkGlow();
-      // Transition to EXPLORE — show controls, stay on platform
-      phase=PHASE.EXPLORE;phaseT=0;
-      pathT=1;onPlatform=true;isJumping=false;charVelY=0;
-      showControls(true);
+      // After drink: auto-walk to platform edge then fall
+      phase=PHASE.FALL;phaseT=0;
+      autoWalkPhase=true;autoWalkT=0;
+      onPlatform=true;isJumping=false;charVelY=0;
+      showControls(false);
       actDrink?.fadeOut(0.3);
-      if(clipIdle&&mixer){
-        actIdle=mixer.clipAction(clipIdle);
-        actIdle.reset().fadeIn(0.3).play();
+      // Start walk/run animation for auto-walk to edge
+      const moveClip=clipRun||clipWalk;
+      if(moveClip&&mixer){
+        actWalk=mixer.clipAction(moveClip);
+        actWalk.setLoop(THREE.LoopRepeat);
+        actWalk.reset().fadeIn(0.3).play();
       }
-      exploreWalkPlaying=false;
+      exploreWalkPlaying=true;
+      // Face toward edge (toward -Z)
+      if(charModel)charModel.rotation.y=Math.PI;
+      charRoot.userData.fallStartY=PLAT_Y;
     }
   }
   else if(phase===PHASE.EXPLORE){
@@ -1564,7 +1586,8 @@ function animateChar(dt){
             saveEntry(firstText,firstUsername);
             if(planted){clearGlow();addGlow(planted)}
           }
-          platformMesh.visible=true;stairGroup.visible=true;arrowGroup.visible=true;
+          platformMesh.visible=true;stairGroup.visible=true;
+          arrowBridge.visible=true;arrowGroup.visible=false;
         }else{
           // Low fall — just land normally
           charVelY=0;
@@ -1592,20 +1615,104 @@ function animateChar(dt){
       }
     }
 
-    // Detect platform status
-    const platDist=Math.sqrt(charRoot.position.x**2+charRoot.position.z**2);
-    onPlatform=platDist<4.5&&charRoot.position.y>=PLAT_Y-1;
-    if(onPlatform&&ui.classList.contains('hidden'))ui.classList.remove('hidden');
+    // Detect if character reached bridge step at stair top → trigger ASCEND
+    if(!isJumping&&bridgePos){
+      const bdx=charRoot.position.x-bridgePos.x;
+      const bdz=charRoot.position.z-bridgePos.z;
+      if(Math.sqrt(bdx*bdx+bdz*bdz)<5&&Math.abs(charRoot.position.y-bridgePos.y)<2){
+        // Character on bridge — start ASCEND
+        phase=PHASE.ASCEND;phaseT=0;
+        showControls(false);
+        arrowBridge.visible=false;
+        // Show flying disc at bridge position
+        platformMesh.position.copy(bridgePos);
+        platformMesh.visible=true;
+        charRoot.position.set(bridgePos.x,bridgePos.y,bridgePos.z);
+        // Play idle
+        actWalk?.fadeOut(0.2);
+        if(clipIdle&&mixer){actIdle=mixer.clipAction(clipIdle);actIdle.reset().fadeIn(0.2).play()}
+        exploreWalkPlaying=false;curSpeed=0;
+      }
+    }
+    // Detect if on flying platform (during EXPLORE after DRINK)
+    if(platformMesh.visible){
+      const px=platformMesh.position.x,pz=platformMesh.position.z;
+      const pd=Math.sqrt((charRoot.position.x-px)**2+(charRoot.position.z-pz)**2);
+      onPlatform=pd<4.5&&Math.abs(charRoot.position.y-platformMesh.position.y)<2;
+    }else{onPlatform=false}
+  }
+  else if(phase===PHASE.ASCEND){
+    // Flying disc rises from bridge to PLAT_Y over 5 seconds
+    const ASCEND_DUR=5.0;
+    const t=Math.min(1,phaseT/ASCEND_DUR);
+    const ease=t*t*(3-2*t); // smoothstep
+    const startY=bridgePos.y;
+    const curPlatY=startY+(PLAT_Y-startY)*ease;
+    const curPlatX=bridgePos.x*(1-ease); // move toward center (x=0)
+    const curPlatZ=bridgePos.z*(1-ease);
+    platformMesh.position.set(curPlatX,curPlatY,curPlatZ);
+    charRoot.position.set(curPlatX,curPlatY,curPlatZ);
+    if(charModel)charModel.position.set(0,baseModelY||0,0);
+    // Camera follows
+    camTarget.x+=(curPlatX-camTarget.x)*dt*4;
+    camTarget.y+=(curPlatY+1.5-camTarget.y)*dt*4;
+    camTarget.z+=(curPlatZ-camTarget.z)*dt*4;
+    if(t>=1){
+      // Arrived — show WRITE button (no movement controls)
+      phase=PHASE.IDLE;phaseT=0;
+      onPlatform=true;isJumping=false;charVelY=0;
+      platformMesh.position.set(0,PLAT_Y,0);
+      charRoot.position.set(0,PLAT_Y,0);
+      arrowGroup.visible=true;
+      showControls(false);
+      ui.classList.remove('hidden');
+      ui.classList.remove('mini');
+    }
   }
   else if(phase===PHASE.FALL){
+    // Auto-walk to edge phase before actual fall
+    if(autoWalkPhase){
+      autoWalkT+=dt;
+      const WALK_DUR=1.5; // seconds to walk to edge
+      const edgeZ=-4.0; // platform edge in -Z
+      const walkProgress=Math.min(1,autoWalkT/WALK_DUR);
+      const easeWalk=walkProgress*walkProgress*(3-2*walkProgress); // smoothstep
+      charRoot.position.z=easeWalk*edgeZ;
+      if(charModel){
+        charModel.position.set(0,baseModelY||0,0);
+        charModel.rotation.y=Math.PI; // face walk direction
+      }
+      // Camera follows
+      camTarget.x+=(charRoot.position.x-camTarget.x)*dt*4;
+      camTarget.y+=(PLAT_Y+1.5-camTarget.y)*dt*4;
+      camTarget.z+=(charRoot.position.z-camTarget.z)*dt*4;
+      if(walkProgress>=1){
+        // Reached edge — jump off
+        autoWalkPhase=false;
+        phaseT=0;
+        actWalk?.fadeOut(0.2);
+        exploreWalkPlaying=false;
+        // Play jump then fall animation
+        if(clipJump&&mixer){
+          actJump=mixer.clipAction(clipJump);
+          actJump.setLoop(THREE.LoopOnce);actJump.clampWhenFinished=true;
+          actJump.reset().fadeIn(0.2).play();
+        }
+        setTimeout(()=>{
+          actJump?.fadeOut(0.2);
+          if(clipFall&&mixer){
+            actFall=mixer.clipAction(clipFall);
+            actFall.setLoop(THREE.LoopRepeat);
+            actFall.reset().fadeIn(0.2).play();
+          }
+        },400);
+        charRoot.userData.fallStartY=PLAT_Y;
+      }
+      return; // skip normal fall logic during walk
+    }
     const dur=3.0;
     const t=Math.min(1,phaseT/dur);
     const easeIn=t*t;
-    const startY=charRoot.position.y>1?charRoot.position.y:PLAT_Y;
-    if(phaseT<dt*2){
-      // Store starting Y on first frame
-      charRoot.userData.fallStartY=charRoot.position.y||PLAT_Y;
-    }
     const fy=charRoot.userData.fallStartY||PLAT_Y;
     charRoot.position.y=fy-fy*easeIn;
     if(charModel){
@@ -1628,7 +1735,8 @@ function animateChar(dt){
       }
       platformMesh.visible=true;
       stairGroup.visible=true;
-      arrowGroup.visible=true;
+      arrowBridge.visible=true;
+      arrowGroup.visible=false;
     }
   }
   else if(phase===PHASE.LAND){
@@ -2011,6 +2119,7 @@ function restartWithFade(text,username=''){
 function resetToStart(){
   phase=PHASE.EXPLORE;phaseT=0;firstText='';firstUsername='';
   pathT=0;onPlatform=false;isJumping=false;charVelY=0;curSpeed=0;
+  autoWalkPhase=false;autoWalkT=0;
   showControls(true);exploreWalkPlaying=false;
   hidePlantLabel();
   pop.classList.remove('show');
@@ -2024,7 +2133,8 @@ function resetToStart(){
   charRoot.visible=true;
   if(charModel){charModel.visible=true;charModel.position.set(0,baseModelY,0);charModel.rotation.y=0}
   charRoot.position.set(stairPath[0].x,0,stairPath[0].z);
-  platformMesh.visible=true;stairGroup.visible=true;arrowGroup.visible=true;
+  platformMesh.visible=false;stairGroup.visible=true;
+  arrowBridge.visible=true;arrowGroup.visible=false;
   camTarget.set(stairPath[0].x,1.5,stairPath[0].z);
   camYaw=Math.PI;camPitch=0.3;camDist=6;
   ui.classList.add('mini');ui.classList.add('hidden');
@@ -2064,10 +2174,12 @@ function startCinematic(text,username=''){
   if(charModel){charModel.visible=true;charModel.position.set(0,baseModelY,0);charModel.rotation.y=0}
   pathT=1;onPlatform=true;isJumping=false;charVelY=0;
   showControls(false);
-  // Character stays on platform where they were
-  charRoot.position.y=PLAT_Y;
-  platformMesh.visible=true;stairGroup.visible=true;arrowGroup.visible=true;
-  camTarget.set(charRoot.position.x,PLAT_Y+1,charRoot.position.z);
+  // Character stays on platform at PLAT_Y
+  charRoot.position.set(0,PLAT_Y,0);
+  platformMesh.position.set(0,PLAT_Y,0);
+  platformMesh.visible=true;stairGroup.visible=true;
+  arrowGroup.visible=false; // hide arrow during drink
+  camTarget.set(0,PLAT_Y+1,0);
   camYaw=Math.PI;camPitch=0.3;camDist=6;
   updateSky(0);
   actFall?.stop();actJump?.stop();actWalk?.stop();
@@ -2101,11 +2213,12 @@ goBtn.addEventListener('click',(e)=>{
     pendingStartText=text;firstUsername=uname;
     return;
   }
-  if(phase===PHASE.DONE&&charReady&&mixer&&clipDrink){
-    restartWithFade(text,uname);
+  if((phase===PHASE.IDLE)&&charReady&&mixer&&clipDrink){
+    // On platform — start drink then auto-fall
+    startCinematic(text,uname);
   }else if(phase===PHASE.EXPLORE&&charReady&&mixer&&clipDrink){
     startCinematic(text,uname);
-  }else if(phase===PHASE.EXPLORE){
+  }else if(phase===PHASE.IDLE||phase===PHASE.EXPLORE){
     // Model not loaded yet — plant directly
     phase=PHASE.DONE;
     showControls(false);
@@ -2217,6 +2330,12 @@ function tick(){
     arrowGroup.children.forEach(c=>{if(c.material)c.material.opacity=op});
     arrowGroup.rotation.y=globalTime*1.5;
   }
+  if(arrowBridge.visible){
+    arrowBridge.position.y=bridgePos.y+3.5+Math.sin(globalTime*2)*0.6;
+    const op2=0.5+Math.sin(globalTime*6)*0.4;
+    arrowBridge.children.forEach(c=>{if(c.material)c.material.opacity=op2});
+    arrowBridge.rotation.y=globalTime*1.5;
+  }
   updateBurst(dt);
   updateAura(dt);
   updateDrinkGlow(dt);
@@ -2226,7 +2345,7 @@ function tick(){
   }else{
     setPlantsDim(0);
   }
-  if(phase===PHASE.IDLE||phase===PHASE.DRINK||phase===PHASE.EXPLORE){
+  if(phase===PHASE.IDLE||phase===PHASE.DRINK||phase===PHASE.EXPLORE||phase===PHASE.ASCEND){
     updateSky(0);
   }
 
