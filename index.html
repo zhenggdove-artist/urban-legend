@@ -861,7 +861,7 @@ updateSky(0);
 
 // Ground — glowing green meadow (circular to avoid square edge)
 {
-  const R=120;
+  const R=360;
   const gGeo=new THREE.CircleGeometry(R,80);
   gGeo.rotateX(-Math.PI/2);
   const pa=gGeo.getAttribute('position');
@@ -879,8 +879,8 @@ updateSky(0);
 // Grass particle scatter (circular spread)
 {
   const p=[],c=[];
-  const R=80;
-  for(let i=0;i<3000;i++){
+  const R=240;
+  for(let i=0;i<9000;i++){
     const a=Math.random()*Math.PI*2;
     const r=Math.sqrt(Math.random())*R;
     const x=Math.cos(a)*r,z=Math.sin(a)*r;
