@@ -1061,7 +1061,7 @@ async function loadChar(){
   }catch{}
   if(!gltf)gltf=await loader.loadAsync('character.glb');
   charModel=gltf.scene;
-  charModel.rotation.y=0; // model visual face is +Z; rotation.y=0 keeps it facing +Z
+  charModel.rotation.y=Math.PI/2; // model visual face is +Z; PI/2 faces -X (toward camera)
   charModel.scale.setScalar(100); // Mixamo FBX→Blender applies 0.01 scale — undo it
   charModel.position.y=CHAR_Y_OFFSET; // raise above platform surface
   charModel.updateMatrixWorld(true);
@@ -1367,13 +1367,27 @@ function updateDrinkGlow(dt){
       if('emissiveIntensity' in m)m.emissiveIntensity=(info.baseEmissiveIntensity||0)+k;
     }
   }
-  if(phase===PHASE.FALL||phase===PHASE.LAND||phase===PHASE.DONE)resetDrinkGlow();
+  if(phase===PHASE.LAND||phase===PHASE.DONE)resetDrinkGlow();
 }
 
 // ===== Cinematic Camera =====
 function cinematicCam(dt){
   if(phase===PHASE.IDLE||phase===PHASE.DRINK){
     return false; // orbit cam
+  }
+  if(phase===PHASE.ASCEND){
+    // Camera pulls up high, filming platform + character rising
+    const py=platformMesh.position.y;
+    const camH=py+12; // camera stays above the platform
+    const camR=18; // horizontal distance from platform
+    const angle=globalTime*0.3; // slow orbit while ascending
+    camera.position.set(
+      platformMesh.position.x+camR*Math.sin(angle),
+      camH,
+      platformMesh.position.z+camR*Math.cos(angle)
+    );
+    camera.lookAt(platformMesh.position.x,py+1,platformMesh.position.z);
+    return true;
   }
   if(phase===PHASE.EXPLORE){
     if(isJumping&&!platformMesh.visible&&charRoot.position.y<PLAT_Y-2){
@@ -1411,7 +1425,7 @@ function cinematicCam(dt){
 }
 
 // ===== Character Animation State Machine =====
-const EXPLORE_MAX_SPEED=4.8; // max speed (60% of old 8)
+const EXPLORE_MAX_SPEED=5.76; // max speed (+20% from 4.8)
 const EXPLORE_ACCEL=6; // acceleration (units/sec²)
 const EXPLORE_DECEL=12; // deceleration when releasing joystick
 let curSpeed=0; // current movement speed
@@ -1663,10 +1677,14 @@ function animateChar(dt){
       onPlatform=true;isJumping=false;charVelY=0;
       platformMesh.position.set(0,PLAT_Y,0);
       charRoot.position.set(0,PLAT_Y,0);
+      if(charModel)charModel.rotation.y=0; // face +Z toward camera (camYaw=0 puts camera at +Z)
       arrowGroup.visible=true;
       showControls(false);
       ui.classList.remove('hidden');
       ui.classList.remove('mini');
+      // Set camera to front view
+      camYaw=0;camPitch=0.2;camDist=7;
+      camTarget.set(0,PLAT_Y+1,0);
     }
   }
   else if(phase===PHASE.FALL){
@@ -1911,7 +1929,7 @@ function addPlant(text,grow=true,ts=null,username=''){
 }
 
 // ===== Camera =====
-let camYaw=Math.PI,camPitch=0.3,camDist=6;
+let camYaw=-Math.PI/2,camPitch=0.25,camDist=6;
 let camTarget=new THREE.Vector3(stairPath[0].x,1.5,stairPath[0].z);
 let interacting=false,interTimer=0;
 let lastPlantedPos=null; // world position of the most recently planted plant
@@ -2131,12 +2149,12 @@ function resetToStart(){
   }
   resetDrinkGlow();
   charRoot.visible=true;
-  if(charModel){charModel.visible=true;charModel.position.set(0,baseModelY,0);charModel.rotation.y=0}
+  if(charModel){charModel.visible=true;charModel.position.set(0,baseModelY,0);charModel.rotation.y=Math.PI/2}
   charRoot.position.set(stairPath[0].x,0,stairPath[0].z);
   platformMesh.visible=false;stairGroup.visible=true;
   arrowBridge.visible=true;arrowGroup.visible=false;
   camTarget.set(stairPath[0].x,1.5,stairPath[0].z);
-  camYaw=Math.PI;camPitch=0.3;camDist=6;
+  camYaw=-Math.PI/2;camPitch=0.25;camDist=6;
   ui.classList.add('mini');ui.classList.add('hidden');
   updateSky(0);
   actFall?.stop();actJump?.stop();actWalk?.stop();actDrink?.stop();
@@ -2180,7 +2198,7 @@ function startCinematic(text,username=''){
   platformMesh.visible=true;stairGroup.visible=true;
   arrowGroup.visible=false; // hide arrow during drink
   camTarget.set(0,PLAT_Y+1,0);
-  camYaw=Math.PI;camPitch=0.3;camDist=6;
+  camYaw=0;camPitch=0.2;camDist=7;
   updateSky(0);
   actFall?.stop();actJump?.stop();actWalk?.stop();
   actIdle?.fadeOut(0.2);
@@ -2355,7 +2373,8 @@ function tick(){
     if(interTimer>2)interacting=false;
     if(phase===PHASE.DONE&&!interacting)camYaw+=dt*0.06;
     if(!interacting&&(phase===PHASE.IDLE||phase===PHASE.DRINK)){
-      camYaw+=((Math.PI)-camYaw)*dt*2.0;
+      // On platform: keep camera in front (camYaw=0)
+      camYaw+=(0-camYaw)*dt*2.0;
       camPitch+=(0.2-camPitch)*dt*2.0;
       camDist+=(7.5-camDist)*dt*2.0;
     }
@@ -2364,7 +2383,7 @@ function tick(){
       camPitch+=(0.35-camPitch)*dt*2;
       camDist+=(6-camDist)*dt*2;
     }
-    if(phase===PHASE.IDLE||phase===PHASE.DRINK||phase===PHASE.EXPLORE){
+    if(phase===PHASE.IDLE||phase===PHASE.DRINK||phase===PHASE.EXPLORE||phase===PHASE.ASCEND){
       camTarget.x+=(charRoot.position.x-camTarget.x)*dt*4;
       camTarget.y+=(charRoot.position.y+1.5-camTarget.y)*dt*4;
       camTarget.z+=(charRoot.position.z-camTarget.z)*dt*4;
