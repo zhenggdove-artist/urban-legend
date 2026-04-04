@@ -1458,8 +1458,8 @@ function animateChar(dt){
     if(moving&&!isJumping){
       const fwdX=-Math.sin(camYaw),fwdZ=-Math.cos(camYaw);
       const rightX=-Math.cos(camYaw),rightZ=Math.sin(camYaw);
-      let mdx=-joyY*fwdX+joyX*rightX;
-      let mdz=-joyY*fwdZ+joyX*rightZ;
+      let mdx=-joyY*fwdX-joyX*rightX;
+      let mdz=-joyY*fwdZ-joyX*rightZ;
       const ml=Math.sqrt(mdx*mdx+mdz*mdz);
       if(ml>0){mdx/=ml;mdz/=ml}
       const spd=EXPLORE_SPEED*dt;
@@ -1493,8 +1493,8 @@ function animateChar(dt){
       if(moving){
         const fwdX=-Math.sin(camYaw),fwdZ=-Math.cos(camYaw);
         const rightX=-Math.cos(camYaw),rightZ=Math.sin(camYaw);
-        let mdx=-joyY*fwdX+joyX*rightX;
-        let mdz=-joyY*fwdZ+joyX*rightZ;
+        let mdx=-joyY*fwdX-joyX*rightX;
+        let mdz=-joyY*fwdZ-joyX*rightZ;
         const ml=Math.sqrt(mdx*mdx+mdz*mdz);
         if(ml>0){mdx/=ml;mdz/=ml}
         charRoot.position.x+=mdx*EXPLORE_SPEED*dt*0.5;
@@ -2103,8 +2103,13 @@ function renderSearchList(query){
 searchBtn.addEventListener('click',e=>{
   e.stopPropagation();
   searchPanel.classList.toggle('show');
-  if(searchPanel.classList.contains('show')){searchInput.focus();renderSearchList('')}
-  else{clearGlow();searchResults.innerHTML='';searchInput.value=''}
+  if(searchPanel.classList.contains('show')){
+    searchInput.focus();renderSearchList('');
+    if(phase===PHASE.EXPLORE)showControls(false);
+  }else{
+    clearGlow();searchResults.innerHTML='';searchInput.value='';
+    if(phase===PHASE.EXPLORE)showControls(true);
+  }
 });
 
 searchInput.addEventListener('input',()=>{
@@ -2117,6 +2122,7 @@ canvas.addEventListener('pointerdown',(e)=>{
     searchPanel.classList.remove('show');
     searchResults.innerHTML='';
     searchInput.value='';
+    if(phase===PHASE.EXPLORE)showControls(true);
   }else if(pop.classList.contains('show')){
     pop.classList.remove('show');
   }else if(glowMeshes.length>0){
@@ -2197,7 +2203,7 @@ function tick(){
         let diff=targetYaw-camYaw;
         while(diff>Math.PI)diff-=2*Math.PI;
         while(diff<-Math.PI)diff+=2*Math.PI;
-        camYaw+=diff*dt*3;
+        camYaw+=diff*dt*1.5;
       }
     }
     if(phase===PHASE.IDLE||phase===PHASE.DRINK||phase===PHASE.EXPLORE){
