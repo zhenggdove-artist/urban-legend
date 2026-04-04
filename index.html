@@ -892,7 +892,7 @@ const camera=new THREE.PerspectiveCamera(55,W()/H(),0.1,1000);
 
 // ===== Character (GLB) + Cinematic =====
 const PLAT_Y=100;
-const FOOT_LIFT=0.5;
+const FOOT_LIFT=0.8;
 const DRINK_START=0.6;
 const PHASE={IDLE:0,DRINK:1,EXPLORE:2,FALL:3,LAND:4,DONE:5};
 let phase=PHASE.EXPLORE,phaseT=0,firstText='',firstUsername='';
@@ -902,7 +902,7 @@ let pendingStartText=null;
 // Straight staircase config — from (100,0,0) to (0,PLAT_Y,0)
 const STAIR_STEPS=200;
 const stairPath=[];
-const stairStart=new THREE.Vector3(100,0,0);
+const stairStart=new THREE.Vector3(200,0,0);
 const stairEnd=new THREE.Vector3(0,PLAT_Y,0);
 for(let i=0;i<=STAIR_STEPS;i++){
   const t=i/STAIR_STEPS;
@@ -951,8 +951,8 @@ platformMesh.position.set(0,PLAT_Y,0);scene.add(platformMesh);
 // Straight staircase — InstancedMesh with visible edges
 const stairGroup=new THREE.Group();
 {
-  const stepH=0.35; // shorter than 0.5 gap so individual steps are visible
-  const stepGeo=new THREE.BoxGeometry(12.0,stepH,2.0);
+  const stepH=0.35;
+  const stepGeo=new THREE.BoxGeometry(12.0,stepH,4.0); // depth doubled to 4
   // Darker edge material for step contrast
   const stepEdgeMat=new THREE.MeshPhysicalMaterial({
     color:'#c03870',roughness:0.35,metalness:0.15,
@@ -972,11 +972,13 @@ const stairGroup=new THREE.Group();
   }
   stairMesh.instanceMatrix.needsUpdate=true;
   stairGroup.add(stairMesh);
-  // Top bridging step — square matching platform diameter for smooth walk-on
-  const bridgeGeo=new THREE.BoxGeometry(12.0,stepH,9.0); // depth=9 covers gap to platform
+  // Top bridging step — extends forward from stair end toward platform center
+  const bridgeGeo=new THREE.BoxGeometry(12.0,stepH,9.0);
   const bridge=new THREE.Mesh(bridgeGeo,stepEdgeMat);
   const lastP=stairPath[stairPath.length-1];
-  bridge.position.set(lastP.x,lastP.y,lastP.z);
+  // Offset 4 units forward along stair direction (toward platform)
+  const stairDirXZ=new THREE.Vector2(stairDir.x,stairDir.z).normalize();
+  bridge.position.set(lastP.x+stairDirXZ.x*4,lastP.y,lastP.z+stairDirXZ.y*4);
   bridge.rotation.set(0,stairAngle,0);
   stairGroup.add(bridge);
 }
@@ -1056,7 +1058,7 @@ async function loadChar(){
   { // Auto-adjust base Y so feet sit on platform
     const box=new THREE.Box3().setFromObject(charModel);
     charHalfHeight=(box.max.y-box.min.y)*0.5;
-    baseModelY=CHAR_Y_OFFSET-box.min.y+FOOT_LIFT+charHalfHeight;
+    baseModelY=CHAR_Y_OFFSET-box.min.y+FOOT_LIFT;
     charModel.position.y=baseModelY;
   }
 
@@ -1411,11 +1413,9 @@ function getTerrainHeight(x,z,curY){
   // Platform first (takes priority if already near platform height)
   const platDist=Math.sqrt(x*x+z*z);
   if(platDist<4.5&&curY>PLAT_Y-5) return PLAT_Y;
-  // Straight staircase: (100,0,0) → (0,PLAT_Y,0), width 12 in Z
-  const stairT=(100-x)/100;
-  // Near top (stairT>0.95): wider Z range for bridge step
-  const halfZ=stairT>0.95?6:6;
-  if(stairT>=0&&stairT<=1&&Math.abs(z)<halfZ) return stairT*PLAT_Y;
+  // Straight staircase: (200,0,0) → (0,PLAT_Y,0), width 12 in Z
+  const stairT=(200-x)/200;
+  if(stairT>=0&&stairT<=1&&Math.abs(z)<6) return stairT*PLAT_Y;
   return 0; // ground
 }
 
@@ -1512,6 +1512,9 @@ function animateChar(dt){
 
     // Jumping physics
     if(isJumping){
+      // Track fall start height
+      if(!charRoot.userData.fallStartY||charRoot.userData.fallStartY<charRoot.position.y)
+        charRoot.userData.fallStartY=charRoot.position.y;
       charVelY-=GRAVITY*dt;
       charRoot.position.y+=charVelY*dt;
       // Allow XZ movement during jump
@@ -1526,8 +1529,9 @@ function animateChar(dt){
         charRoot.position.z+=mdz*curSpeed*dt*0.5;
       }
 
-      // Switch to fall animation when descending past platform (launched off)
-      if(charVelY<0&&charRoot.position.y<PLAT_Y-2&&!platformMesh.visible){
+      // Switch to fall animation when descending significantly
+      const isBigFall=charRoot.userData.fallStartY>50;
+      if(charVelY<0&&isBigFall){
         if(!actFall||!actFall.isRunning()){
           actJump?.fadeOut(0.2);
           if(clipFall){
@@ -1540,29 +1544,44 @@ function animateChar(dt){
         updateSky(fallProgress);
       }
 
-      if(charRoot.position.y<=0&&!platformMesh.visible){
-        // Landed on ground from platform launch — explosion + plant
+      if(charRoot.position.y<=0){
+        // Landed on ground
         charRoot.position.y=0;
         isJumping=false;
-        showControls(false);
-        phase=PHASE.LAND;phaseT=0;
-        actFall?.fadeOut(0.3);actJump?.fadeOut(0.1);
-        if(charModel){charModel.position.set(0,baseModelY,0);charModel.rotation.y=0}
-        charRoot.visible=false;
-        if(charModel)charModel.visible=false;
-        createBurst(new THREE.Vector3(charRoot.position.x,0,charRoot.position.z));
-        if(firstText){
-          const planted=addPlant(firstText,true,null,firstUsername);
-          saveEntry(firstText,firstUsername);
-          if(planted){clearGlow();addGlow(planted)}
+        const fellFromHigh=charRoot.userData.fallStartY>50;
+        charRoot.userData.fallStartY=0;
+        if(fellFromHigh){
+          // Explosion — plant only if text was entered (from platform arrow)
+          showControls(false);
+          phase=PHASE.LAND;phaseT=0;
+          actFall?.fadeOut(0.3);actJump?.fadeOut(0.1);
+          if(charModel){charModel.position.set(0,baseModelY,0);charModel.rotation.y=0}
+          charRoot.visible=false;
+          if(charModel)charModel.visible=false;
+          createBurst(new THREE.Vector3(charRoot.position.x,0,charRoot.position.z));
+          if(firstText){
+            const planted=addPlant(firstText,true,null,firstUsername);
+            saveEntry(firstText,firstUsername);
+            if(planted){clearGlow();addGlow(planted)}
+          }
+          platformMesh.visible=true;stairGroup.visible=true;arrowGroup.visible=true;
+        }else{
+          // Low fall — just land normally
+          charVelY=0;
+          actJump?.fadeOut(0.2);
+          if(clipIdle){
+            actIdle=mixer.clipAction(clipIdle);
+            actIdle.reset().fadeIn(0.2).play();
+          }
+          exploreWalkPlaying=false;
         }
-        platformMesh.visible=true;stairGroup.visible=true;arrowGroup.visible=true;
       }else{
-        // Land on terrain (stair, ground, or platform)
+        // Land on terrain (stair or platform)
         const terrH=getTerrainHeight(charRoot.position.x,charRoot.position.z,charRoot.position.y);
         if(charVelY<0&&charRoot.position.y<=terrH){
           charRoot.position.y=terrH;
           charVelY=0;isJumping=false;
+          charRoot.userData.fallStartY=0;
           actJump?.fadeOut(0.2);
           if(clipIdle){
             actIdle=mixer.clipAction(clipIdle);
@@ -1807,7 +1826,7 @@ canvas.addEventListener('pointermove',e=>{
   if(!canOrbit)return;
   interacting=true;interTimer=0;
   if(ptrs.size===1){
-    camYaw=dragS.yaw+(e.clientX-dragS.x)/W()*4;
+    camYaw=dragS.yaw-(e.clientX-dragS.x)/W()*4;
     {const minP=(phase===PHASE.DONE)?0.05:-0.3;camPitch=clamp(dragS.pitch+(e.clientY-dragS.y)/H()*2,minP,1.4);};
   }else if(ptrs.size>=2){
     const p=[...ptrs.values()],d=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y);
@@ -2222,16 +2241,9 @@ function tick(){
       camDist+=(7.5-camDist)*dt*2.0;
     }
     if(phase===PHASE.EXPLORE&&!interacting){
-      // TPS follow camera — behind character (rotation.y + PI)
+      // TPS camera — only auto-adjust pitch/dist, no auto yaw rotation
       camPitch+=(0.35-camPitch)*dt*2;
       camDist+=(6-camDist)*dt*2;
-      if(charModel){
-        const targetYaw=charModel.rotation.y+Math.PI;
-        let diff=targetYaw-camYaw;
-        while(diff>Math.PI)diff-=2*Math.PI;
-        while(diff<-Math.PI)diff+=2*Math.PI;
-        camYaw+=diff*dt*1.5;
-      }
     }
     if(phase===PHASE.IDLE||phase===PHASE.DRINK||phase===PHASE.EXPLORE){
       camTarget.x+=(charRoot.position.x-camTarget.x)*dt*4;
