@@ -933,7 +933,7 @@ const camera=new THREE.PerspectiveCamera(55,W()/H(),0.1,1000);
 const PLAT_Y=200; // final floating platform height (above plants)
 const FOOT_LIFT=0.8;
 const DRINK_START=0.6;
-const STAIR_TOP_Y=30; // height at top of stairs
+const STAIR_TOP_Y=10; // height at top of stairs
 const PHASE={IDLE:0,DRINK:1,EXPLORE:2,ASCEND:6,FALL:3,LAND:4,DONE:5};
 let phase=PHASE.EXPLORE,phaseT=0,firstText='',firstUsername='';
 let charReady=false;
@@ -2180,7 +2180,7 @@ canvas.addEventListener('click',e=>{
       ui.classList.add('mini');return;
     }
   }
-  if(phase!==PHASE.DONE)return;
+  if(phase!==PHASE.DONE&&phase!==PHASE.EXPLORE)return;
   if(!plantRoot.children.length)return;
   const rect=canvas.getBoundingClientRect();
   raycaster.setFromCamera({x:((e.clientX-rect.left)/rect.width)*2-1,y:-((e.clientY-rect.top)/rect.height)*2+1},camera);
@@ -2190,8 +2190,14 @@ canvas.addEventListener('click',e=>{
     while(o&&!o.userData.entryText)o=o.parent;
     if(o?.userData.entryText){
       const uname=o.userData.entryUsername||o.parent?.userData.entryUsername||'';
-      pop.textContent=uname?o.userData.entryText+' — '+uname:o.userData.entryText;
-      pop.classList.add('show');
+      // Find matching plantEntry for showPlantLabel
+      const entry=plantEntries.find(pe=>pe.mesh===o);
+      if(entry){
+        showPlantLabel(entry);
+      }else{
+        pop.textContent=uname?o.userData.entryText+' — '+uname:o.userData.entryText;
+        pop.classList.add('show');
+      }
     }
   }
 });
