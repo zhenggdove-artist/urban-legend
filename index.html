@@ -1427,6 +1427,7 @@ const GRAVITY=25;
 const JUMP_VEL=10;
 let exploreWalkPlaying=false;
 let autoWalkPhase=false;let autoWalkT=0; // auto-walk to edge after drink
+let jumpVelX=0,jumpVelZ=0; // horizontal momentum preserved from jump
 
 // Terrain height at any XZ position
 function getTerrainHeight(x,z,curY){
@@ -1547,7 +1548,9 @@ function animateChar(dt){
         charRoot.userData.fallStartY=charRoot.position.y;
       charVelY-=GRAVITY*dt;
       charRoot.position.y+=charVelY*dt;
-      // Allow XZ movement during jump
+      // Apply preserved horizontal momentum + active input
+      charRoot.position.x+=jumpVelX*dt;
+      charRoot.position.z+=jumpVelZ*dt;
       if(moving){
         const fwdX=-Math.sin(camYaw),fwdZ=-Math.cos(camYaw);
         const rightX=-Math.cos(camYaw),rightZ=Math.sin(camYaw);
@@ -1555,8 +1558,8 @@ function animateChar(dt){
         let mdz=-joyY*fwdZ-joyX*rightZ;
         const ml=Math.sqrt(mdx*mdx+mdz*mdz);
         if(ml>0){mdx/=ml;mdz/=ml}
-        charRoot.position.x+=mdx*curSpeed*dt*0.5;
-        charRoot.position.z+=mdz*curSpeed*dt*0.5;
+        charRoot.position.x+=mdx*curSpeed*dt*0.3;
+        charRoot.position.z+=mdz*curSpeed*dt*0.3;
       }
 
       // Switch to fall animation when descending significantly
@@ -2008,6 +2011,16 @@ document.getElementById('jump-btn').addEventListener('pointerdown',e=>{
   if(phase!==PHASE.EXPLORE||isJumping)return;
   isJumping=true;
   charVelY=JUMP_VEL;
+  // Preserve horizontal momentum at jump time
+  if(curSpeed>0.1){
+    const fwdX=-Math.sin(camYaw),fwdZ=-Math.cos(camYaw);
+    const rightX=-Math.cos(camYaw),rightZ=Math.sin(camYaw);
+    let mdx=-joyY*fwdX-joyX*rightX;
+    let mdz=-joyY*fwdZ-joyX*rightZ;
+    const ml=Math.sqrt(mdx*mdx+mdz*mdz);
+    if(ml>0){mdx/=ml;mdz/=ml}
+    jumpVelX=mdx*curSpeed;jumpVelZ=mdz*curSpeed;
+  }else{jumpVelX=0;jumpVelZ=0;}
   actWalk?.fadeOut(0.1);actIdle?.fadeOut(0.1);
   if(clipJump&&mixer){
     actJump=mixer.clipAction(clipJump);
