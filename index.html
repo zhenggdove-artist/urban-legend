@@ -1704,6 +1704,8 @@ function animateChar(dt){
     const ASCEND_DUR=3.0;
     const t=Math.min(1,phaseT/ASCEND_DUR);
     const ease=t*t*(3-2*t); // smoothstep
+    // Reduce fog so ground stays green when viewed from high up
+    if(scene.fog)scene.fog.density=0.008*(1-ease*0.9);
     const startY=bridgePos.y;
     const curPlatY=startY+(PLAT_Y-startY)*ease;
     const curPlatX=bridgePos.x*(1-ease); // move toward center (x=0)
@@ -2264,6 +2266,7 @@ function resetToStart(){
   camYaw=0;camPitch=0.25;camDist=6;
   ui.classList.add('mini');ui.classList.add('hidden');ui.classList.remove('done-state');
   updateSky(0);
+  if(scene.fog)scene.fog.density=0.008;
   actFall?.stop();actJump?.stop();actWalk?.stop();actDrink?.stop();
   if(clipIdle&&mixer){
     actIdle=mixer.clipAction(clipIdle);
