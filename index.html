@@ -900,7 +900,7 @@ let charReady=false;
 let pendingStartText=null;
 
 // Straight staircase config — from (100,0,0) to (0,PLAT_Y,0)
-const STAIR_STEPS=600;
+const STAIR_STEPS=200;
 const stairPath=[];
 const stairStart=new THREE.Vector3(100,0,0);
 const stairEnd=new THREE.Vector3(0,PLAT_Y,0);
@@ -951,7 +951,7 @@ platformMesh.position.set(0,PLAT_Y,0);scene.add(platformMesh);
 // Straight staircase — InstancedMesh for performance
 const stairGroup=new THREE.Group();
 {
-  const stepGeo=new THREE.BoxGeometry(12.0,0.18,2.0); // width 4x (12), depth half (2)
+  const stepGeo=new THREE.BoxGeometry(12.0,0.55,2.0); // width 12, height 0.55 (covers 0.5 Y gap), depth 2
   const stairMesh=new THREE.InstancedMesh(stepGeo,platformMat,STAIR_STEPS);
   const dummy=new THREE.Object3D();
   const stairDir=new THREE.Vector3().subVectors(stairEnd,stairStart).normalize();
@@ -1030,14 +1030,14 @@ async function loadChar(){
   }catch{}
   if(!gltf)gltf=await loader.loadAsync('character.glb');
   charModel=gltf.scene;
-  charModel.rotation.y=Math.PI; // face away from camera (back towards +Z)
+  charModel.rotation.y=0; // model visual face is +Z; rotation.y=0 keeps it facing +Z
   charModel.scale.setScalar(100); // Mixamo FBX→Blender applies 0.01 scale — undo it
   charModel.position.y=CHAR_Y_OFFSET; // raise above platform surface
   charModel.updateMatrixWorld(true);
   { // Auto-adjust base Y so feet sit on platform
     const box=new THREE.Box3().setFromObject(charModel);
     charHalfHeight=(box.max.y-box.min.y)*0.5;
-    baseModelY=CHAR_Y_OFFSET-box.min.y+FOOT_LIFT;
+    baseModelY=CHAR_Y_OFFSET-box.min.y+FOOT_LIFT+charHalfHeight;
     charModel.position.y=baseModelY;
   }
 
@@ -1478,9 +1478,9 @@ function animateChar(dt){
           charRoot.position.y=newH;
         }
       }
-      // Face movement direction
+      // Face movement direction (model visual face is +Z, so rotation.y = moveAngle)
       const moveAngle=Math.atan2(mdx,mdz);
-      if(charModel)charModel.rotation.y=moveAngle+Math.PI;
+      if(charModel)charModel.rotation.y=moveAngle;
     }
     // Always set model offset
     if(charModel)charModel.position.set(0,baseModelY||0,0);
@@ -1522,7 +1522,7 @@ function animateChar(dt){
         showControls(false);
         phase=PHASE.LAND;phaseT=0;
         actFall?.fadeOut(0.3);actJump?.fadeOut(0.1);
-        if(charModel){charModel.position.set(0,baseModelY,0);charModel.rotation.y=Math.PI}
+        if(charModel){charModel.position.set(0,baseModelY,0);charModel.rotation.y=0}
         charRoot.visible=false;
         if(charModel)charModel.visible=false;
         createBurst(new THREE.Vector3(charRoot.position.x,0,charRoot.position.z));
@@ -1566,14 +1566,14 @@ function animateChar(dt){
     charRoot.position.y=fy-fy*easeIn;
     if(charModel){
       charModel.position.set(0,baseModelY||0,0);
-      charModel.rotation.y=Math.PI*(1-t);
+      charModel.rotation.y=0;
     }
     updateSky(t);
     if(t>=1){
       phase=PHASE.LAND;phaseT=0;
       charRoot.position.y=0;
       actFall?.fadeOut(0.3);
-      if(charModel){charModel.position.set(0,baseModelY,0);charModel.rotation.y=Math.PI}
+      if(charModel){charModel.position.set(0,baseModelY,0);charModel.rotation.y=0}
       charRoot.visible=false;
       if(charModel)charModel.visible=false;
       createBurst(new THREE.Vector3(charRoot.position.x,0,charRoot.position.z));
@@ -1978,7 +1978,7 @@ function resetToStart(){
   }
   resetDrinkGlow();
   charRoot.visible=true;
-  if(charModel){charModel.visible=true;charModel.position.set(0,baseModelY,0);charModel.rotation.y=Math.PI}
+  if(charModel){charModel.visible=true;charModel.position.set(0,baseModelY,0);charModel.rotation.y=0}
   charRoot.position.set(stairPath[0].x,0,stairPath[0].z);
   platformMesh.visible=true;stairGroup.visible=true;arrowGroup.visible=true;
   camTarget.set(stairPath[0].x,1.5,stairPath[0].z);
@@ -2017,7 +2017,7 @@ function startCinematic(text,username=''){
   }
   resetDrinkGlow();
   charRoot.visible=true;
-  if(charModel){charModel.visible=true;charModel.position.set(0,baseModelY,0);charModel.rotation.y=Math.PI}
+  if(charModel){charModel.visible=true;charModel.position.set(0,baseModelY,0);charModel.rotation.y=0}
   pathT=1;onPlatform=true;isJumping=false;charVelY=0;
   showControls(false);
   // Character stays on platform where they were
@@ -2189,12 +2189,15 @@ function tick(){
       camDist+=(7.5-camDist)*dt*2.0;
     }
     if(phase===PHASE.EXPLORE&&!interacting){
-      // Follow camera behind character
+      // TPS follow camera — behind character (rotation.y + PI)
       camPitch+=(0.35-camPitch)*dt*2;
       camDist+=(14-camDist)*dt*2;
       if(charModel){
-        const targetYaw=charModel.rotation.y;
-        camYaw+=(targetYaw-camYaw)*dt*3;
+        const targetYaw=charModel.rotation.y+Math.PI;
+        let diff=targetYaw-camYaw;
+        while(diff>Math.PI)diff-=2*Math.PI;
+        while(diff<-Math.PI)diff+=2*Math.PI;
+        camYaw+=diff*dt*3;
       }
     }
     if(phase===PHASE.IDLE||phase===PHASE.DRINK||phase===PHASE.EXPLORE){
