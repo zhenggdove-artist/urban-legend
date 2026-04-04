@@ -57,7 +57,7 @@
       background:radial-gradient(circle at 30% 20%,#fff3fb 0%,var(--bubble-1) 55%,var(--bubble-2) 100%);
       right:22px;bottom:24px;left:auto;top:auto}
     #ui.mini h2,#ui.mini textarea,#ui.mini button#go,#ui.mini #username,#ui.mini div{display:none}
-    #ui.mini::after{content:'WRITE';font-size:11px;letter-spacing:1.5px;color:var(--bubble-text);text-transform:uppercase;font-family:"GoldenGirdle","Saint","Trebuchet MS",sans-serif}
+    #ui.mini::after{content:'WRITE';font-size:10px;letter-spacing:1.5px;color:#E84887;text-transform:uppercase;font-family:"GoldenGirdle","Saint","Trebuchet MS",sans-serif}
     #ui.mini.done-state::after{content:'RETURN'}
     #ui.hidden{opacity:0;pointer-events:none}
     #ui h2{font-size:14px;letter-spacing:2px;color:var(--bubble-text);margin:10px 12px 4px;
@@ -1397,18 +1397,21 @@ function cinematicCam(dt){
     if(autoWalkPhase) return false; // use orbit cam during auto-walk on platform
     const t=Math.min(1,phaseT/3);
     const ease=t*t*(3-2*t);
-    const cy=charRoot.position.y+1;
-    const camZ=8*(1-2*ease);
-    const camY=Math.max(2,cy+2.2-ease*cy*0.65);
-    camera.position.set(charRoot.position.x,camY,charRoot.position.z+camZ);
-    camera.lookAt(charRoot.position.x,charRoot.position.y+0.5,charRoot.position.z);
+    const cy=charRoot.position.y;
+    const camY=Math.max(2,cy+3-ease*cy*0.5);
+    // Camera on -X side (opposite of stairs at +X) to avoid showing staircase
+    const camOffX=-10*(1-ease*0.5);
+    const camOffZ=4;
+    camera.position.set(charRoot.position.x+camOffX,camY,charRoot.position.z+camOffZ);
+    camera.lookAt(charRoot.position.x,cy+0.5,charRoot.position.z);
     return true;
   }
   if(phase===PHASE.LAND){
     const t=Math.min(1,phaseT/2);
     const ease=t*t*(3-2*t);
     const lookY=2.0*ease;
-    camera.position.set(0,8,30);
+    // Camera on -X side to avoid showing staircase
+    camera.position.set(-15,8,10);
     camera.lookAt(0,lookY,0);
     return true;
   }
@@ -2033,7 +2036,7 @@ function updateKeyboardJoy(){
   if(keysDown.has('s')||keysDown.has('arrowdown'))ky=1;
   if(keysDown.has('a')||keysDown.has('arrowleft'))kx=-1;
   if(keysDown.has('d')||keysDown.has('arrowright'))kx=1;
-  if(kx||ky){joyX=kx;joyY=ky}
+  joyX=kx;joyY=ky;
   if(keysDown.has(' ')&&!isJumping){
     keysDown.delete(' ');
     document.getElementById('jump-btn').dispatchEvent(new PointerEvent('pointerdown'));
@@ -2131,7 +2134,7 @@ function restartWithFade(text,username=''){
 }
 function resetToStart(){
   phase=PHASE.EXPLORE;phaseT=0;firstText='';firstUsername='';
-  pathT=0;onPlatform=false;isJumping=false;charVelY=0;curSpeed=0;
+  pathT=0;onPlatform=false;isJumping=false;charVelY=0;curSpeed=0;charRoot.userData.fallStartY=0;
   autoWalkPhase=false;autoWalkT=0;
   showControls(true);exploreWalkPlaying=false;
   hidePlantLabel();
