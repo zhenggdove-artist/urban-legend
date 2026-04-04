@@ -1454,8 +1454,12 @@ function getTerrainHeight(x,z,curY){
     if(pd<4.5&&Math.abs(curY-py)<3) return py;
   }
   // Straight staircase: (0,0,140) → (0,STAIR_TOP_Y,40), width 12 in X
+  // Only collide if character is already near stair surface (avoid invisible walls at ground level)
   const stairT=(140-z)/100;
-  if(stairT>=0&&stairT<=1&&Math.abs(x)<6) return stairT*STAIR_TOP_Y;
+  if(stairT>=0&&stairT<=1&&Math.abs(x)<6){
+    const stairH=stairT*STAIR_TOP_Y;
+    if(Math.abs(curY-stairH)<3) return stairH;
+  }
   return 0; // ground
 }
 
@@ -1651,6 +1655,7 @@ function animateChar(dt){
         phase=PHASE.ASCEND;phaseT=0;
         showControls(false);
         arrowBridge.visible=false;
+        stairGroup.visible=false; // hide stairs from ASCEND until RETURN
         // Show flying disc at bridge position
         platformMesh.position.copy(bridgePos);
         platformMesh.visible=true;
@@ -1788,7 +1793,7 @@ function animateChar(dt){
       }
       charRoot.userData.fallLandPos=null;
       platformMesh.visible=true;
-      stairGroup.visible=true;
+      stairGroup.visible=false;
       arrowBridge.visible=true;
       arrowGroup.visible=false;
     }
@@ -2247,7 +2252,7 @@ function startCinematic(text,username=''){
   // Character stays on platform at PLAT_Y
   charRoot.position.set(0,PLAT_Y,0);
   platformMesh.position.set(0,PLAT_Y,0);
-  platformMesh.visible=true;stairGroup.visible=true;
+  platformMesh.visible=true;stairGroup.visible=false;
   arrowGroup.visible=false; // hide arrow during drink
   camTarget.set(0,PLAT_Y+1,0);
   camYaw=0;camPitch=0.2;camDist=7;
