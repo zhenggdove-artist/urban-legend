@@ -160,8 +160,8 @@
       text-shadow:0 1px 0 rgba(255,255,255,0.5);white-space:nowrap}
     /* ===== Game Controls ===== */
     #game-controls{position:fixed;bottom:0;left:0;right:0;height:40vh;z-index:15;
-      pointer-events:none;display:none}
-    #game-controls.show{display:block}
+      pointer-events:none;display:block}
+    #game-controls.hide{display:none}
     #joystick-zone{position:absolute;left:20px;bottom:20px;width:140px;height:140px;
       pointer-events:auto;touch-action:none}
     #joystick-base{position:absolute;inset:0;border-radius:50%;
@@ -189,7 +189,7 @@
 URBANLEGEND
   </div>
   <div id="mouth-text-layer"></div>
-  <div id="ui" class="mini">
+  <div id="ui" class="mini hidden">
     <h2>WRITE</h2>
     <textarea id="ta" placeholder="Leave your message to the world"></textarea>
     <div style="margin:0 12px 6px;font-size:11px;letter-spacing:1px;color:var(--bubble-text);opacity:0.7">let everyone know who you are, if you want to</div>
@@ -895,12 +895,12 @@ const PLAT_Y=25;
 const FOOT_LIFT=0.25;
 const DRINK_START=0.6;
 const PHASE={IDLE:0,DRINK:1,EXPLORE:2,FALL:3,LAND:4,DONE:5};
-let phase=PHASE.IDLE,phaseT=0,firstText='',firstUsername='';
+let phase=PHASE.EXPLORE,phaseT=0,firstText='',firstUsername='';
 let charReady=false;
 let pendingStartText=null;
 
 // Spiral staircase config
-const STAIR_RADIUS=4,STAIR_REVS=6,STAIR_STEPS=48;
+const STAIR_RADIUS=80,STAIR_REVS=4,STAIR_STEPS=600;
 const stairPath=[];
 for(let i=0;i<=STAIR_STEPS;i++){
   const t=i/STAIR_STEPS;
@@ -909,10 +909,10 @@ for(let i=0;i<=STAIR_STEPS;i++){
 }
 
 // Explorer state
-let pathT=0; // 0=bottom of stairs, 1=top
+let pathT=0;
 let onPlatform=false;
 let charVelY=0,isJumping=false;
-let joyX=0,joyY=0; // joystick input -1..1
+let joyX=0,joyY=0;
 
 const charRoot=new THREE.Group();
 charRoot.position.set(stairPath[0].x,0,stairPath[0].z);
@@ -937,38 +937,36 @@ const platformMat=new THREE.MeshPhysicalMaterial({
   emissiveIntensity:0.08
 });
 const platformMesh=new THREE.Group();
-const platformSide=new THREE.Mesh(new THREE.CylinderGeometry(1.8,2.0,0.5,24,1,true),platformMat);
-const platformTop=new THREE.Mesh(new THREE.CircleGeometry(1.8,24),platformMat);
+const platformSide=new THREE.Mesh(new THREE.CylinderGeometry(4,4.5,0.5,32,1,true),platformMat);
+const platformTop=new THREE.Mesh(new THREE.CircleGeometry(4,32),platformMat);
 platformTop.rotation.x=-Math.PI/2;
 platformTop.position.y=0.25;
 platformMesh.add(platformSide,platformTop);
 platformMesh.position.set(0,PLAT_Y,0);scene.add(platformMesh);
 
-// Spiral staircase
+// Spiral staircase — InstancedMesh for performance
 const stairGroup=new THREE.Group();
 {
-  const stepGeo=new THREE.BoxGeometry(1.6,0.18,0.7);
+  const stepGeo=new THREE.BoxGeometry(3.0,0.18,4.0); // 3x longer steps, wider
+  const stairMesh=new THREE.InstancedMesh(stepGeo,platformMat,STAIR_STEPS);
+  const dummy=new THREE.Object3D();
   for(let i=0;i<STAIR_STEPS;i++){
     const p=stairPath[i];
-    const p2=stairPath[i+1];
-    const step=new THREE.Mesh(stepGeo,platformMat);
-    step.position.copy(p);
-    step.lookAt(p2);
-    step.rotation.x=0;step.rotation.z=0;
-    stairGroup.add(step);
+    const p2=stairPath[Math.min(i+1,STAIR_STEPS)];
+    dummy.position.copy(p);
+    const angle=Math.atan2(p2.x-p.x,p2.z-p.z);
+    dummy.rotation.set(0,angle,0);
+    dummy.updateMatrix();
+    stairMesh.setMatrixAt(i,dummy.matrix);
   }
-  // Central pole
-  const pole=new THREE.Mesh(
-    new THREE.CylinderGeometry(0.15,0.15,PLAT_Y,12),
-    platformMat
-  );
-  pole.position.set(0,PLAT_Y/2,0);
-  stairGroup.add(pole);
+  stairMesh.instanceMatrix.needsUpdate=true;
+  stairGroup.add(stairMesh);
 }
 scene.add(stairGroup);
 
 // Flashing arrow at platform edge — jump point
-const arrowJumpPos=new THREE.Vector3(0,PLAT_Y+0.35,STAIR_RADIUS+0.5);
+// Arrow at the platform edge — positioned away from staircase arrival point
+const arrowJumpPos=new THREE.Vector3(0,PLAT_Y+0.35,-2.0);
 const arrowGroup=new THREE.Group();
 {
   const shape=new THREE.Shape();
@@ -1376,7 +1374,7 @@ function cinematicCam(dt){
 }
 
 // ===== Character Animation State Machine =====
-const EXPLORE_SPEED=8; // path units per second on staircase
+const EXPLORE_SPEED=12; // path units per second on staircase
 const PLATFORM_MOVE_SPEED=4; // world units per second on platform
 const GRAVITY=25;
 const JUMP_VEL=10;
@@ -1400,7 +1398,7 @@ function getPathDir(t){
 
 function showControls(v){
   const el=document.getElementById('game-controls');
-  if(v)el.classList.add('show');else el.classList.remove('show');
+  if(v)el.classList.remove('hide');else el.classList.add('hide');
 }
 
 function animateChar(dt){
@@ -1424,9 +1422,9 @@ function animateChar(dt){
     if(phaseT<0.8)startMouthText();
     if(phaseT>=drinkDur){
       startDrinkGlow();
-      // Transition to EXPLORE — show controls
+      // Transition to EXPLORE — show controls, stay on platform
       phase=PHASE.EXPLORE;phaseT=0;
-      pathT=0;onPlatform=false;isJumping=false;charVelY=0;
+      pathT=1;onPlatform=true;isJumping=false;charVelY=0;
       showControls(true);
       actDrink?.fadeOut(0.3);
       if(clipIdle&&mixer){
@@ -1475,6 +1473,8 @@ function animateChar(dt){
       if(pathT>=1){
         onPlatform=true;
         charRoot.position.set(stairPath[stairPath.length-1].x,PLAT_Y,stairPath[stairPath.length-1].z);
+        // Show WRITE button when reaching platform
+        if(ui.classList.contains('hidden'))ui.classList.remove('hidden');
       }
     }else{
       // On platform — free XZ movement
@@ -1538,7 +1538,7 @@ function animateChar(dt){
 
       // Check if walked off platform edge (no jump, just walked off)
       const distFromCenter=Math.sqrt(charRoot.position.x**2+charRoot.position.z**2);
-      if(!isJumping&&distFromCenter>2.2){
+      if(!isJumping&&distFromCenter>4.5){
         isJumping=true;
         charVelY=0;
         platformMesh.visible=false;
@@ -1754,7 +1754,7 @@ function addPlant(text,grow=true,ts=null,username=''){
 
 // ===== Camera =====
 let camYaw=Math.PI,camPitch=0.2,camDist=7.5;
-let camTarget=new THREE.Vector3(stairPath[0].x,1,stairPath[0].z);
+let camTarget=new THREE.Vector3(stairPath[0].x,1.5,stairPath[0].z);
 let interacting=false,interTimer=0;
 let lastPlantedPos=null; // world position of the most recently planted plant
 const ptrs=new Map();
@@ -1959,9 +1959,9 @@ function restartWithFade(text,username=''){
   setTimeout(()=>{fade.classList.remove('show')},720);
 }
 function resetToStart(){
-  phase=PHASE.IDLE;phaseT=0;firstText='';firstUsername='';
+  phase=PHASE.EXPLORE;phaseT=0;firstText='';firstUsername='';
   pathT=0;onPlatform=false;isJumping=false;charVelY=0;
-  showControls(false);exploreWalkPlaying=false;
+  showControls(true);exploreWalkPlaying=false;
   hidePlantLabel();
   pop.classList.remove('show');
   if(aura){
@@ -1975,8 +1975,9 @@ function resetToStart(){
   if(charModel){charModel.visible=true;charModel.position.set(0,baseModelY,0);charModel.rotation.y=Math.PI}
   charRoot.position.set(stairPath[0].x,0,stairPath[0].z);
   platformMesh.visible=true;stairGroup.visible=true;arrowGroup.visible=true;
-  camTarget.set(stairPath[0].x,1,stairPath[0].z);
+  camTarget.set(stairPath[0].x,1.5,stairPath[0].z);
   camYaw=Math.PI;camPitch=0.2;camDist=7.5;
+  ui.classList.add('mini');ui.classList.add('hidden');
   updateSky(0);
   actFall?.stop();actJump?.stop();actWalk?.stop();actDrink?.stop();
   if(clipIdle&&mixer){
@@ -1990,7 +1991,6 @@ function restartToIdleWithFade(){
   setTimeout(()=>{resetToStart();},320);
   setTimeout(()=>{
     fade.classList.remove('show');
-    ui.classList.add('mini');
     const titleEl=document.getElementById('title');
     if(titleEl)titleEl.classList.remove('fade-out');
   },720);
@@ -2012,10 +2012,12 @@ function startCinematic(text,username=''){
   resetDrinkGlow();
   charRoot.visible=true;
   if(charModel){charModel.visible=true;charModel.position.set(0,baseModelY,0);charModel.rotation.y=Math.PI}
-  pathT=0;onPlatform=false;isJumping=false;charVelY=0;
-  charRoot.position.set(stairPath[0].x,0,stairPath[0].z);
+  pathT=1;onPlatform=true;isJumping=false;charVelY=0;
+  showControls(false);
+  // Character stays on platform where they were
+  charRoot.position.y=PLAT_Y;
   platformMesh.visible=true;stairGroup.visible=true;arrowGroup.visible=true;
-  camTarget.set(stairPath[0].x,1,stairPath[0].z);
+  camTarget.set(charRoot.position.x,PLAT_Y+1,charRoot.position.z);
   camYaw=Math.PI;camPitch=0.2;camDist=7.5;
   updateSky(0);
   actFall?.stop();actJump?.stop();actWalk?.stop();
@@ -2050,14 +2052,13 @@ goBtn.addEventListener('click',(e)=>{
     return;
   }
   if(phase===PHASE.DONE&&charReady&&mixer&&clipDrink){
-    // Fade out/in and restart from platform
     restartWithFade(text,uname);
-  }else if(phase===PHASE.IDLE&&charReady&&mixer&&clipDrink){
-    // Trigger cinematic sequence (first run)
+  }else if(phase===PHASE.EXPLORE&&charReady&&mixer&&clipDrink){
     startCinematic(text,uname);
-  }else if(phase===PHASE.IDLE){
-    // Model not loaded yet — skip cinematic, plant directly
+  }else if(phase===PHASE.EXPLORE){
+    // Model not loaded yet — plant directly
     phase=PHASE.DONE;
+    showControls(false);
     const planted=addPlant(text,true,null,uname);
     saveEntry(text,uname);
     if(planted){clearGlow();addGlow(planted)}
