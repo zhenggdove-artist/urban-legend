@@ -196,6 +196,19 @@
       font-family:"GoldenGirdle","Saint",sans-serif;font-size:10px;letter-spacing:1px;
       color:var(--bubble-text);text-transform:uppercase;display:flex;align-items:center;justify-content:center}
     #jump-btn:active{transform:scale(0.92)}
+    /* Artist statement overlay */
+    #statement-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;
+      background:rgba(0,0,0,0.55);z-index:300;align-items:center;justify-content:center}
+    #statement-overlay.show{display:flex}
+    #statement-box{max-width:min(88vw,520px);max-height:80vh;overflow-y:auto;
+      background:radial-gradient(circle at 30% 20%,#fff8fc 0%,#f3d5ea 55%,#e8b8d8 100%);
+      border:2px solid var(--bubble-edge);border-radius:22px;padding:28px 24px;
+      font-family:"Saint",sans-serif;color:#3a2050;font-size:14px;line-height:1.9;
+      letter-spacing:0.8px;white-space:pre-wrap;word-break:break-word;
+      box-shadow:0 12px 40px rgba(0,0,0,0.3);text-align:center}
+    #statement-box .st-title{font-size:17px;font-weight:bold;color:#7555a8;margin-bottom:14px;letter-spacing:2px}
+    #statement-box .st-sign{margin-top:16px;font-size:13px;color:#9a7bbb;letter-spacing:1.5px}
+    #statement-box .st-hint{margin-top:12px;font-size:11px;color:#bba8d0;letter-spacing:1px}
     /* Bulk plant panel (Shift+A) */
     #bulk-panel{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
       width:360px;max-height:80vh;background:radial-gradient(circle at 30% 20%,#fff3fb 0%,#f3d5ea 55%,#e8b8d8 100%);
@@ -229,6 +242,23 @@ URBANLEGEND
     <button id="go" disabled>PLANT</button>
   </div>
   <div id="pop"></div>
+  <div id="statement-overlay">
+    <div id="statement-box">
+      <div class="st-title">Urban Legend — 終究都會是一朵花</div>
+隨著不明墜落的身影疊加，
+它們逐漸合成了全新的背景日常。
+那些無解的消逝漸漸剝落了寫實的色彩，人們看慣了清洗過後的地面，也習慣了繞道而行。
+
+最終它們成了不可考證的都市傳說
+—那些來自虛擬裂縫的靈光，
+帶著人們最後留下的話語
+落成了這座陌生森林的養分。
+
+作品以隱藏的二維條碼鑲嵌在各個無可疑的墜樓命案現場
+      <div class="st-sign">— GGDOVE</div>
+      <div class="st-hint">點擊任意空白處關閉</div>
+    </div>
+  </div>
   <div id="bulk-panel">
     <button class="close-x" onclick="document.getElementById('bulk-panel').classList.remove('show')">&times;</button>
     <h3>BULK PLANT</h3>
@@ -1057,6 +1087,38 @@ arrowGroup.position.set(arrowJumpPos.x,arrowFloatBase,arrowJumpPos.z);
 arrowGroup.visible=false;
 scene.add(arrowGroup);
 
+// Mario-style ? block near staircase start
+const qBlockGroup=new THREE.Group();
+{
+  const qSize=2.0;
+  // Create canvas texture with "?" on yellow
+  function makeQFace(){
+    const cv=document.createElement('canvas');cv.width=128;cv.height=128;
+    const cx=cv.getContext('2d');
+    cx.fillStyle='#f5c542';cx.fillRect(0,0,128,128);
+    // Dark border lines
+    cx.strokeStyle='#b8860b';cx.lineWidth=6;cx.strokeRect(3,3,122,122);
+    // Inner highlight
+    cx.strokeStyle='#ffe88a';cx.lineWidth=3;cx.strokeRect(10,10,108,108);
+    // Question mark
+    cx.fillStyle='#8B4513';cx.font='bold 80px sans-serif';cx.textAlign='center';cx.textBaseline='middle';
+    cx.fillText('?',64,68);
+    const tex=new THREE.CanvasTexture(cv);
+    return new THREE.MeshStandardMaterial({map:tex,roughness:0.5,metalness:0.1});
+  }
+  const qMats=[makeQFace(),makeQFace(),makeQFace(),makeQFace(),makeQFace(),makeQFace()];
+  const qGeo=new THREE.BoxGeometry(qSize,qSize,qSize);
+  const qMesh=new THREE.Mesh(qGeo,qMats);
+  qBlockGroup.add(qMesh);
+  // Position: above staircase start, floating at character jump height
+  const qY=4.5;
+  qBlockGroup.position.set(stairPath[0].x, qY, stairPath[0].z);
+  qBlockGroup.userData.baseY=qY;
+  qBlockGroup.userData.hit=false;
+  qBlockGroup.userData.bounceT=-1;
+  scene.add(qBlockGroup);
+}
+
 // Animation state
 let mixer=null,clipIdle=null,clipDrink=null,clipJump=null,clipWalk=null,clipFall=null,clipRun=null;
 let actIdle=null,actDrink=null,actJump=null,actWalk=null,actFall=null;
@@ -1594,6 +1656,18 @@ function animateChar(dt){
         charRoot.userData.fallStartY=charRoot.position.y;
       charVelY-=GRAVITY*dt;
       charRoot.position.y+=charVelY*dt;
+      // ? block collision — hit from below while rising
+      if(!qBlockGroup.userData.hit&&charVelY>0){
+        const qp=qBlockGroup.position;
+        const dx=charRoot.position.x-qp.x,dz=charRoot.position.z-qp.z;
+        const headY=charRoot.position.y+(baseModelY?Math.abs(baseModelY)*2:2.5);
+        if(Math.abs(dx)<1.5&&Math.abs(dz)<1.5&&headY>=qp.y-1.0&&headY<=qp.y+0.5){
+          qBlockGroup.userData.hit=true;
+          qBlockGroup.userData.bounceT=0;
+          charVelY=0; // stop rising
+          document.getElementById('statement-overlay').classList.add('show');
+        }
+      }
       // Apply preserved horizontal momentum + active input
       charRoot.position.x+=jumpVelX*dt;
       charRoot.position.z+=jumpVelZ*dt;
@@ -2128,6 +2202,11 @@ document.getElementById('bulk-go').addEventListener('click',()=>{
   document.getElementById('bulk-panel').classList.remove('show');
 });
 
+// Statement overlay dismiss
+document.getElementById('statement-overlay').addEventListener('click',()=>{
+  document.getElementById('statement-overlay').classList.remove('show');
+});
+
 // ===== Keyboard movement (WASD/arrows for desktop) =====
 const keysDown=new Set();
 let kbActive=false; // track if keyboard was driving movement
@@ -2267,6 +2346,7 @@ function resetToStart(){
   ui.classList.add('mini');ui.classList.add('hidden');ui.classList.remove('done-state');
   updateSky(0);
   if(scene.fog)scene.fog.density=0.008;
+  qBlockGroup.userData.hit=false;qBlockGroup.userData.bounceT=-1;
   actFall?.stop();actJump?.stop();actWalk?.stop();actDrink?.stop();
   if(clipIdle&&mixer){
     actIdle=mixer.clipAction(clipIdle);
@@ -2463,6 +2543,24 @@ function tick(){
     const op2=0.5+Math.sin(globalTime*6)*0.4;
     arrowBridge.children.forEach(c=>{if(c.material)c.material.opacity=op2});
     arrowBridge.rotation.y=globalTime*1.5;
+  }
+  // ? block: idle float + bounce on hit
+  {
+    const qd=qBlockGroup.userData;
+    if(qd.bounceT>=0){
+      qd.bounceT+=dt;
+      const bDur=0.35;
+      if(qd.bounceT<bDur){
+        const bt=qd.bounceT/bDur;
+        qBlockGroup.position.y=qd.baseY+Math.sin(bt*Math.PI)*1.5;
+      }else{
+        qBlockGroup.position.y=qd.baseY;
+        qd.bounceT=-1;
+      }
+    }else{
+      qBlockGroup.position.y=qd.baseY+Math.sin(globalTime*1.8)*0.3;
+    }
+    qBlockGroup.rotation.y=globalTime*0.4;
   }
   updateBurst(dt);
   updateAura(dt);
