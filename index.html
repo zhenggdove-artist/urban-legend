@@ -66,12 +66,12 @@
     @media (max-width: 640px){
       #ui{right:6vw;bottom:12vh;width:min(78vw,320px)}
     }
-    #ui.mini{width:82px;height:58px;padding:0;cursor:pointer;border-radius:999px;
+    #ui.mini{width:41px;height:29px;padding:0;cursor:pointer;border-radius:999px;
       display:flex;align-items:center;justify-content:center;
       background:radial-gradient(circle at 30% 20%,#fff3fb 0%,var(--bubble-1) 55%,var(--bubble-2) 100%);
       right:22px;bottom:24px;left:auto;top:auto}
     #ui.mini h2,#ui.mini textarea,#ui.mini button#go,#ui.mini #username,#ui.mini div{display:none}
-    #ui.mini::after{content:'WRITE';font-size:10px;letter-spacing:1.5px;color:#7555a8;text-transform:uppercase;font-family:"Saint","Trebuchet MS",sans-serif}
+    #ui.mini::after{content:'WRITE';font-size:6px;letter-spacing:1px;color:#7555a8;text-transform:uppercase;font-family:"Saint","Trebuchet MS",sans-serif}
     #ui.mini.done-state::after{content:'RETURN'}
     #ui.hidden{opacity:0;pointer-events:none}
     #ui h2{font-size:14px;letter-spacing:2px;color:#E84887;margin:10px 12px 4px;font-family:"Saint","Trebuchet MS",sans-serif;
@@ -96,13 +96,13 @@
     #pop.show{display:block}
     #pop::-webkit-scrollbar{width:4px}
     #pop::-webkit-scrollbar-thumb{background:rgba(180,170,230,0.6);border-radius:2px}
-    #search-btn{position:absolute;bottom:24px;left:22px;width:82px;height:58px;
+    #search-btn{position:absolute;bottom:24px;left:22px;width:41px;height:29px;
       background:radial-gradient(circle at 30% 20%,#fff 0%,var(--bubble-1) 55%,var(--bubble-2) 100%);
       border:2px solid var(--bubble-edge);color:var(--bubble-text);
       border-radius:999px;cursor:pointer;z-index:14;font-family:inherit;font-size:0;
       display:flex;align-items:center;justify-content:center;
       box-shadow:0 6px 14px var(--bubble-shadow)}
-    #search-btn::before{content:"›";font-size:22px;color:#7555a8;text-shadow:0 1px 0 rgba(255,255,255,0.7);font-family:"Saint","Trebuchet MS",sans-serif}
+    #search-btn::before{content:"›";font-size:14px;color:#7555a8;text-shadow:0 1px 0 rgba(255,255,255,0.7);font-family:"Saint","Trebuchet MS",sans-serif}
     #search-panel{position:absolute;bottom:86px;left:22px;width:min(70vw,330px);
       background:radial-gradient(circle at 30% 20%,#fff 0%,var(--bubble-1) 55%,var(--bubble-2) 100%);
       border:2px solid var(--bubble-edge);
@@ -915,11 +915,11 @@ let phase=PHASE.EXPLORE,phaseT=0,firstText='',firstUsername='';
 let charReady=false;
 let pendingStartText=null;
 
-// Straight staircase config — from (100,0,0) to (0,STAIR_TOP_Y,0)
+// Straight staircase config — along +Z axis, away from fall/plant area
 const STAIR_STEPS=100;
 const stairPath=[];
-const stairStart=new THREE.Vector3(0,0,100);
-const stairEnd=new THREE.Vector3(0,STAIR_TOP_Y,0);
+const stairStart=new THREE.Vector3(0,0,140);
+const stairEnd=new THREE.Vector3(0,STAIR_TOP_Y,40);
 for(let i=0;i<=STAIR_STEPS;i++){
   const t=i/STAIR_STEPS;
   stairPath.push(new THREE.Vector3().lerpVectors(stairStart,stairEnd,t));
@@ -1453,8 +1453,8 @@ function getTerrainHeight(x,z,curY){
     const pd=Math.sqrt((x-px)**2+(z-pz)**2);
     if(pd<4.5&&Math.abs(curY-py)<3) return py;
   }
-  // Straight staircase: (0,0,100) → (0,STAIR_TOP_Y,0), width 12 in X
-  const stairT=(100-z)/100;
+  // Straight staircase: (0,0,140) → (0,STAIR_TOP_Y,40), width 12 in X
+  const stairT=(140-z)/100;
   if(stairT>=0&&stairT<=1&&Math.abs(x)<6) return stairT*STAIR_TOP_Y;
   return 0; // ground
 }
@@ -1745,6 +1745,28 @@ function animateChar(dt){
     const t=Math.min(1,phaseT/dur);
     const easeIn=t*t;
     const fy=charRoot.userData.fallStartY||PLAT_Y;
+    // Pre-calculate plant landing position on first frame
+    if(!charRoot.userData.fallLandPos){
+      // Predict where the plant will grow
+      const rr=srand(hash(firstText||'')+plantEntries.length);
+      let landX=0,landZ=0;
+      if(plantEntries.length>0&&rr()>0.5){
+        const existing=plantEntries[Math.floor(rr()*plantEntries.length)];
+        landX=existing.mesh.position.x;landZ=existing.mesh.position.z;
+      }else{
+        const angle=rr()*Math.PI*2;
+        const spread=0.6+Math.sqrt(plantEntries.length+1)*0.45;
+        const r=spread*(0.6+rr()*0.8);
+        landX=Math.cos(angle)*r;landZ=Math.sin(angle)*r;
+      }
+      charRoot.userData.fallLandPos={x:landX,z:landZ};
+      charRoot.userData.fallStartX=charRoot.position.x;
+      charRoot.userData.fallStartZ=charRoot.position.z;
+    }
+    const lp=charRoot.userData.fallLandPos;
+    // Move character XZ toward plant position during fall
+    charRoot.position.x=charRoot.userData.fallStartX+(lp.x-charRoot.userData.fallStartX)*easeIn;
+    charRoot.position.z=charRoot.userData.fallStartZ+(lp.z-charRoot.userData.fallStartZ)*easeIn;
     charRoot.position.y=fy-fy*easeIn;
     if(charModel){
       charModel.position.set(0,baseModelY||0,0);
@@ -1753,17 +1775,18 @@ function animateChar(dt){
     updateSky(t);
     if(t>=1){
       phase=PHASE.LAND;phaseT=0;
-      charRoot.position.y=0;
+      charRoot.position.set(lp.x,0,lp.z);
       actFall?.fadeOut(0.3);
       if(charModel){charModel.position.set(0,baseModelY,0);charModel.rotation.y=0}
       charRoot.visible=false;
       if(charModel)charModel.visible=false;
-      createBurst(new THREE.Vector3(charRoot.position.x,0,charRoot.position.z));
+      createBurst(new THREE.Vector3(lp.x,0,lp.z));
       if(firstText){
         const planted=addPlant(firstText,true,null,firstUsername);
         saveEntry(firstText,firstUsername);
         if(planted){clearGlow();addGlow(planted)}
       }
+      charRoot.userData.fallLandPos=null;
       platformMesh.visible=true;
       stairGroup.visible=true;
       arrowBridge.visible=true;
@@ -2165,7 +2188,7 @@ function restartWithFade(text,username=''){
 }
 function resetToStart(){
   phase=PHASE.EXPLORE;phaseT=0;firstText='';firstUsername='';
-  pathT=0;onPlatform=false;isJumping=false;charVelY=0;curSpeed=0;charRoot.userData.fallStartY=0;
+  pathT=0;onPlatform=false;isJumping=false;charVelY=0;curSpeed=0;charRoot.userData.fallStartY=0;charRoot.userData.fallLandPos=null;
   autoWalkPhase=false;autoWalkT=0;
   showControls(true);exploreWalkPlaying=false;
   hidePlantLabel();
@@ -2452,19 +2475,10 @@ function tick(){
     g.rotation.z=Math.cos(globalTime*0.85+ph*0.8)*0.01+Math.cos(globalTime*1.9+ph*1.3)*0.005;
   }
 
-  // Plant label under newest grown plant
+  // Plant label — fixed at bottom center of screen (no 3D tracking to avoid jitter)
   if(activeLabelEntry&&activeLabelEntry.mesh){
-    const lp=activeLabelEntry.mesh.position;
-    labelCenter.set(lp.x, lp.y-0.3, lp.z);
-    labelPos.copy(labelCenter).project(camera);
-    let lx=(labelPos.x*0.5+0.5)*W();
-    let ly=(-labelPos.y*0.5+0.5)*H();
-    // Clamp to viewport using estimated label size (avoid getBoundingClientRect jitter)
-    const lw=120,lh=30,pad=10;
-    lx=Math.max(pad+lw/2,Math.min(W()-pad-lw/2,lx));
-    ly=Math.max(pad,Math.min(H()-pad-lh,ly));
-    plantLabel.style.left=`${lx}px`;
-    plantLabel.style.top=`${ly}px`;
+    plantLabel.style.left=`${W()/2}px`;
+    plantLabel.style.top=`${H()*0.78}px`;
   }
 
   // Update glow opacity pulse for highlighted plants
