@@ -1390,17 +1390,7 @@ function cinematicCam(dt){
     return true;
   }
   if(phase===PHASE.EXPLORE){
-    if(isJumping&&!platformMesh.visible&&charRoot.position.y<PLAT_Y-2){
-      // Cinematic camera during fall from platform
-      const cy=charRoot.position.y;
-      const t=1-Math.max(0,cy/PLAT_Y);
-      const camZ=8*(1-2*t);
-      const camY=Math.max(2,cy+3);
-      camera.position.set(charRoot.position.x,camY,charRoot.position.z+camZ);
-      camera.lookAt(charRoot.position.x,cy+0.5,charRoot.position.z);
-      return true;
-    }
-    return false; // follow cam
+    return false; // always use orbit/follow cam during explore
   }
   if(phase===PHASE.FALL){
     if(autoWalkPhase) return false; // use orbit cam during auto-walk on platform
@@ -1929,7 +1919,7 @@ function addPlant(text,grow=true,ts=null,username=''){
 }
 
 // ===== Camera =====
-let camYaw=-Math.PI/2,camPitch=0.25,camDist=6;
+let camYaw=Math.PI/2,camPitch=0.25,camDist=6;
 let camTarget=new THREE.Vector3(stairPath[0].x,1.5,stairPath[0].z);
 let interacting=false,interTimer=0;
 let lastPlantedPos=null; // world position of the most recently planted plant
@@ -2154,7 +2144,7 @@ function resetToStart(){
   platformMesh.visible=false;stairGroup.visible=true;
   arrowBridge.visible=true;arrowGroup.visible=false;
   camTarget.set(stairPath[0].x,1.5,stairPath[0].z);
-  camYaw=-Math.PI/2;camPitch=0.25;camDist=6;
+  camYaw=Math.PI/2;camPitch=0.25;camDist=6;
   ui.classList.add('mini');ui.classList.add('hidden');
   updateSky(0);
   actFall?.stop();actJump?.stop();actWalk?.stop();actDrink?.stop();
@@ -2371,18 +2361,7 @@ function tick(){
   if(!cinematicCam(dt)){
     interTimer+=dt;
     if(interTimer>2)interacting=false;
-    if(phase===PHASE.DONE&&!interacting)camYaw+=dt*0.06;
-    if(!interacting&&(phase===PHASE.IDLE||phase===PHASE.DRINK)){
-      // On platform: keep camera in front (camYaw=0)
-      camYaw+=(0-camYaw)*dt*2.0;
-      camPitch+=(0.2-camPitch)*dt*2.0;
-      camDist+=(7.5-camDist)*dt*2.0;
-    }
-    if(phase===PHASE.EXPLORE&&!interacting){
-      // TPS camera — only auto-adjust pitch/dist, no auto yaw rotation
-      camPitch+=(0.35-camPitch)*dt*2;
-      camDist+=(6-camDist)*dt*2;
-    }
+    // No auto camera yaw/pitch/dist adjustments — fully manual orbit control
     if(phase===PHASE.IDLE||phase===PHASE.DRINK||phase===PHASE.EXPLORE||phase===PHASE.ASCEND){
       camTarget.x+=(charRoot.position.x-camTarget.x)*dt*4;
       camTarget.y+=(charRoot.position.y+1.5-camTarget.y)*dt*4;
