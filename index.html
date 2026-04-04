@@ -200,6 +200,7 @@
     #statement-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;
       background:rgba(0,0,0,0.55);z-index:300;align-items:center;justify-content:center}
     #statement-overlay.show{display:flex}
+    #statement-box{transition:transform 0.3s ease-out}
     #statement-box{max-width:min(88vw,520px);max-height:80vh;overflow-y:auto;
       background:radial-gradient(circle at 30% 20%,#fff8fc 0%,#f3d5ea 55%,#e8b8d8 100%);
       border:2px solid var(--bubble-edge);border-radius:22px;padding:28px 24px;
@@ -1114,8 +1115,9 @@ const qBlockGroup=new THREE.Group();
   const qY=4.5;
   qBlockGroup.position.set(stairPath[0].x, qY, stairPath[0].z);
   qBlockGroup.userData.baseY=qY;
-  qBlockGroup.userData.hit=false;
   qBlockGroup.userData.bounceT=-1;
+  qBlockGroup.userData.flashT=-1;
+  qBlockGroup.userData.pendingStatement=false;
   scene.add(qBlockGroup);
 }
 
@@ -1656,16 +1658,16 @@ function animateChar(dt){
         charRoot.userData.fallStartY=charRoot.position.y;
       charVelY-=GRAVITY*dt;
       charRoot.position.y+=charVelY*dt;
-      // ? block collision — hit from below while rising
-      if(!qBlockGroup.userData.hit&&charVelY>0){
+      // ? block collision — hit from below while rising (cooldown-based, multi-hit)
+      if(qBlockGroup.userData.bounceT<0&&charVelY>0){
         const qp=qBlockGroup.position;
         const dx=charRoot.position.x-qp.x,dz=charRoot.position.z-qp.z;
         const headY=charRoot.position.y+(baseModelY?Math.abs(baseModelY)*2:2.5);
         if(Math.abs(dx)<1.5&&Math.abs(dz)<1.5&&headY>=qp.y-1.0&&headY<=qp.y+0.5){
-          qBlockGroup.userData.hit=true;
           qBlockGroup.userData.bounceT=0;
-          charVelY=0; // stop rising
-          document.getElementById('statement-overlay').classList.add('show');
+          qBlockGroup.userData.flashT=0;
+          qBlockGroup.userData.pendingStatement=true;
+          charVelY=0;
         }
       }
       // Apply preserved horizontal momentum + active input
@@ -1701,6 +1703,20 @@ function animateChar(dt){
         // Landed on ground
         charRoot.position.y=0;
         isJumping=false;
+        // Show statement after landing from ? block hit
+        if(qBlockGroup.userData.pendingStatement){
+          qBlockGroup.userData.pendingStatement=false;
+          const so=document.getElementById('statement-overlay');
+          so.classList.add('show');
+          so.style.opacity='0';
+          so.querySelector('#statement-box').style.transform='scale(0.3)';
+          let stT=0;
+          const stAnim=()=>{stT+=16;const p=Math.min(1,stT/400);const e=1-(1-p)*(1-p);
+            so.style.opacity=e.toFixed(3);
+            so.querySelector('#statement-box').style.transform=`scale(${(0.3+0.7*e).toFixed(3)})`;
+            if(p<1)requestAnimationFrame(stAnim);};
+          requestAnimationFrame(stAnim);
+        }
         const fellFromHigh=charRoot.userData.fallStartY>50;
         charRoot.userData.fallStartY=0;
         if(fellFromHigh){
@@ -2346,7 +2362,7 @@ function resetToStart(){
   ui.classList.add('mini');ui.classList.add('hidden');ui.classList.remove('done-state');
   updateSky(0);
   if(scene.fog)scene.fog.density=0.008;
-  qBlockGroup.userData.hit=false;qBlockGroup.userData.bounceT=-1;
+  qBlockGroup.userData.bounceT=-1;qBlockGroup.userData.flashT=-1;qBlockGroup.userData.pendingStatement=false;
   actFall?.stop();actJump?.stop();actWalk?.stop();actDrink?.stop();
   if(clipIdle&&mixer){
     actIdle=mixer.clipAction(clipIdle);
@@ -2544,7 +2560,7 @@ function tick(){
     arrowBridge.children.forEach(c=>{if(c.material)c.material.opacity=op2});
     arrowBridge.rotation.y=globalTime*1.5;
   }
-  // ? block: idle float + bounce on hit
+  // ? block: idle float + bounce on hit + red flash
   {
     const qd=qBlockGroup.userData;
     if(qd.bounceT>=0){
@@ -2559,6 +2575,19 @@ function tick(){
       }
     }else{
       qBlockGroup.position.y=qd.baseY+Math.sin(globalTime*1.8)*0.3;
+    }
+    // Red flash after hit
+    if(qd.flashT!==undefined&&qd.flashT>=0){
+      qd.flashT+=dt;
+      const flashDur=0.4;
+      const qMesh=qBlockGroup.children[0];
+      if(qd.flashT<flashDur){
+        const fl=Math.sin(qd.flashT/flashDur*Math.PI);
+        qMesh.material.forEach(m=>{m.emissive.setRGB(fl,0,0);m.emissiveIntensity=fl*2});
+      }else{
+        qMesh.material.forEach(m=>{m.emissive.setRGB(0,0,0);m.emissiveIntensity=0});
+        qd.flashT=-1;
+      }
     }
     qBlockGroup.rotation.y=globalTime*0.4;
   }
