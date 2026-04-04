@@ -918,7 +918,7 @@ let pendingStartText=null;
 // Straight staircase config — from (100,0,0) to (0,STAIR_TOP_Y,0)
 const STAIR_STEPS=100;
 const stairPath=[];
-const stairStart=new THREE.Vector3(100,0,0);
+const stairStart=new THREE.Vector3(0,0,100);
 const stairEnd=new THREE.Vector3(0,STAIR_TOP_Y,0);
 for(let i=0;i<=STAIR_STEPS;i++){
   const t=i/STAIR_STEPS;
@@ -1076,7 +1076,7 @@ async function loadChar(){
   }catch{}
   if(!gltf)gltf=await loader.loadAsync('character.glb');
   charModel=gltf.scene;
-  charModel.rotation.y=Math.PI/2; // model visual face is +Z; PI/2 faces -X (toward camera)
+  charModel.rotation.y=Math.PI; // model visual face is +Z; PI faces -Z (toward camera)
   charModel.scale.setScalar(100); // Mixamo FBX→Blender applies 0.01 scale — undo it
   charModel.position.y=CHAR_Y_OFFSET; // raise above platform surface
   charModel.updateMatrixWorld(true);
@@ -1453,9 +1453,9 @@ function getTerrainHeight(x,z,curY){
     const pd=Math.sqrt((x-px)**2+(z-pz)**2);
     if(pd<4.5&&Math.abs(curY-py)<3) return py;
   }
-  // Straight staircase: (100,0,0) → (0,STAIR_TOP_Y,0), width 12 in Z
-  const stairT=(100-x)/100;
-  if(stairT>=0&&stairT<=1&&Math.abs(z)<6) return stairT*STAIR_TOP_Y;
+  // Straight staircase: (0,0,100) → (0,STAIR_TOP_Y,0), width 12 in X
+  const stairT=(100-z)/100;
+  if(stairT>=0&&stairT<=1&&Math.abs(x)<6) return stairT*STAIR_TOP_Y;
   return 0; // ground
 }
 
@@ -1946,7 +1946,7 @@ function addPlant(text,grow=true,ts=null,username=''){
 }
 
 // ===== Camera =====
-let camYaw=Math.PI/2,camPitch=0.25,camDist=6;
+let camYaw=Math.PI,camPitch=0.25,camDist=6;
 let camTarget=new THREE.Vector3(stairPath[0].x,1.5,stairPath[0].z);
 let interacting=false,interTimer=0;
 let lastPlantedPos=null; // world position of the most recently planted plant
@@ -2178,12 +2178,12 @@ function resetToStart(){
   }
   resetDrinkGlow();
   charRoot.visible=true;
-  if(charModel){charModel.visible=true;charModel.position.set(0,baseModelY,0);charModel.rotation.y=Math.PI/2}
+  if(charModel){charModel.visible=true;charModel.position.set(0,baseModelY,0);charModel.rotation.y=Math.PI}
   charRoot.position.set(stairPath[0].x,0,stairPath[0].z);
   platformMesh.visible=false;stairGroup.visible=true;
   arrowBridge.visible=true;arrowGroup.visible=false;
   camTarget.set(stairPath[0].x,1.5,stairPath[0].z);
-  camYaw=Math.PI/2;camPitch=0.25;camDist=6;
+  camYaw=Math.PI;camPitch=0.25;camDist=6;
   ui.classList.add('mini');ui.classList.add('hidden');ui.classList.remove('done-state');
   updateSky(0);
   actFall?.stop();actJump?.stop();actWalk?.stop();actDrink?.stop();
