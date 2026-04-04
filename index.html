@@ -66,12 +66,12 @@
     @media (max-width: 640px){
       #ui{right:6vw;bottom:12vh;width:min(78vw,320px)}
     }
-    #ui.mini{width:41px;height:29px;padding:0;cursor:pointer;border-radius:999px;
+    #ui.mini{width:49px;height:35px;padding:0;cursor:pointer;border-radius:999px;
       display:flex;align-items:center;justify-content:center;
       background:radial-gradient(circle at 30% 20%,#fff3fb 0%,var(--bubble-1) 55%,var(--bubble-2) 100%);
       right:22px;bottom:24px;left:auto;top:auto}
     #ui.mini h2,#ui.mini textarea,#ui.mini button#go,#ui.mini #username,#ui.mini div{display:none}
-    #ui.mini::after{content:'WRITE';font-size:6px;letter-spacing:1px;color:#7555a8;text-transform:uppercase;font-family:"Saint","Trebuchet MS",sans-serif}
+    #ui.mini::after{content:'WRITE';font-size:7px;letter-spacing:1px;color:#7555a8;text-transform:uppercase;font-family:"Saint","Trebuchet MS",sans-serif}
     #ui.mini.done-state::after{content:'RETURN'}
     #ui.hidden{opacity:0;pointer-events:none}
     #ui h2{font-size:14px;letter-spacing:2px;color:#E84887;margin:10px 12px 4px;font-family:"Saint","Trebuchet MS",sans-serif;
@@ -96,13 +96,13 @@
     #pop.show{display:block}
     #pop::-webkit-scrollbar{width:4px}
     #pop::-webkit-scrollbar-thumb{background:rgba(180,170,230,0.6);border-radius:2px}
-    #search-btn{position:absolute;bottom:24px;left:22px;width:41px;height:29px;
+    #search-btn{position:absolute;bottom:24px;left:22px;width:49px;height:35px;
       background:radial-gradient(circle at 30% 20%,#fff 0%,var(--bubble-1) 55%,var(--bubble-2) 100%);
       border:2px solid var(--bubble-edge);color:var(--bubble-text);
       border-radius:999px;cursor:pointer;z-index:14;font-family:inherit;font-size:0;
       display:flex;align-items:center;justify-content:center;
       box-shadow:0 6px 14px var(--bubble-shadow)}
-    #search-btn::before{content:"›";font-size:14px;color:#7555a8;text-shadow:0 1px 0 rgba(255,255,255,0.7);font-family:"Saint","Trebuchet MS",sans-serif}
+    #search-btn::before{content:"›";font-size:17px;color:#7555a8;text-shadow:0 1px 0 rgba(255,255,255,0.7);font-family:"Saint","Trebuchet MS",sans-serif}
     #search-panel{position:absolute;bottom:86px;left:22px;width:min(70vw,330px);
       background:radial-gradient(circle at 30% 20%,#fff 0%,var(--bubble-1) 55%,var(--bubble-2) 100%);
       border:2px solid var(--bubble-edge);
@@ -861,7 +861,7 @@ updateSky(0);
 
 // Ground — glowing green meadow (circular to avoid square edge)
 {
-  const R=360;
+  const R=500;
   const gGeo=new THREE.CircleGeometry(R,80);
   gGeo.rotateX(-Math.PI/2);
   const pa=gGeo.getAttribute('position');
@@ -879,7 +879,7 @@ updateSky(0);
 // Grass particle scatter (circular spread)
 {
   const p=[],c=[];
-  const R=240;
+  const R=350;
   for(let i=0;i<9000;i++){
     const a=Math.random()*Math.PI*2;
     const r=Math.sqrt(Math.random())*R;
