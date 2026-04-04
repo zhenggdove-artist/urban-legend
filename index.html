@@ -196,6 +196,23 @@
       font-family:"GoldenGirdle","Saint",sans-serif;font-size:10px;letter-spacing:1px;
       color:var(--bubble-text);text-transform:uppercase;display:flex;align-items:center;justify-content:center}
     #jump-btn:active{transform:scale(0.92)}
+    /* Bulk plant panel (Shift+A) */
+    #bulk-panel{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+      width:360px;max-height:80vh;background:radial-gradient(circle at 30% 20%,#fff3fb 0%,#f3d5ea 55%,#e8b8d8 100%);
+      border:2px solid var(--bubble-edge);border-radius:22px;padding:18px;z-index:200;
+      box-shadow:0 8px 32px rgba(0,0,0,0.25);overflow-y:auto;font-family:"Saint",sans-serif}
+    #bulk-panel.show{display:block}
+    #bulk-panel h3{margin:0 0 8px;font-size:16px;color:#7555a8;text-align:center;letter-spacing:2px}
+    #bulk-panel textarea{width:calc(100% - 16px);height:180px;margin:0 0 10px;padding:8px;
+      font-size:13px;border:2px solid var(--bubble-edge);border-radius:12px;resize:vertical;
+      background:#fff8fc;color:#4a3060;font-family:"Saint",sans-serif;outline:none}
+    #bulk-panel .hint{font-size:11px;color:#9a7bbb;margin:0 0 10px;text-align:center}
+    #bulk-panel button{display:block;margin:0 auto;padding:8px 28px;font-size:14px;
+      font-family:"Saint",sans-serif;color:#fff;background:linear-gradient(135deg,#c03870,#7555a8);
+      border:none;border-radius:999px;cursor:pointer;letter-spacing:2px}
+    #bulk-panel button:hover{opacity:0.85}
+    #bulk-panel .close-x{position:absolute;top:8px;right:14px;font-size:20px;cursor:pointer;
+      color:#7555a8;background:none;border:none;padding:4px}
   </style>
 </head>
 <body>
@@ -212,6 +229,13 @@ URBANLEGEND
     <button id="go" disabled>PLANT</button>
   </div>
   <div id="pop"></div>
+  <div id="bulk-panel">
+    <button class="close-x" onclick="document.getElementById('bulk-panel').classList.remove('show')">&times;</button>
+    <h3>BULK PLANT</h3>
+    <div class="hint">one text per line</div>
+    <textarea id="bulk-ta" placeholder="text 1&#10;text 2&#10;text 3&#10;..."></textarea>
+    <button id="bulk-go">PLANT ALL</button>
+  </div>
   <button id="search-btn" aria-label="Search"></button>
   <div id="search-panel">
     <input id="search-input" placeholder="Search planted words..." />
@@ -916,10 +940,11 @@ let charReady=false;
 let pendingStartText=null;
 
 // Straight staircase config — along +Z axis, away from fall/plant area
-const STAIR_STEPS=100;
+const STAIR_STEPS=50;
 const stairPath=[];
-const stairStart=new THREE.Vector3(0,0,140);
-const stairEnd=new THREE.Vector3(0,STAIR_TOP_Y,40);
+const STAIR_Z_FAR=90,STAIR_Z_NEAR=40;
+const stairStart=new THREE.Vector3(0,0,STAIR_Z_FAR);
+const stairEnd=new THREE.Vector3(0,STAIR_TOP_Y,STAIR_Z_NEAR);
 for(let i=0;i<=STAIR_STEPS;i++){
   const t=i/STAIR_STEPS;
   stairPath.push(new THREE.Vector3().lerpVectors(stairStart,stairEnd,t));
@@ -1453,12 +1478,13 @@ function getTerrainHeight(x,z,curY){
     const pd=Math.sqrt((x-px)**2+(z-pz)**2);
     if(pd<4.5&&Math.abs(curY-py)<3) return py;
   }
-  // Straight staircase: (0,0,140) → (0,STAIR_TOP_Y,40), width 12 in X
-  // Only collide if character is already near stair surface (avoid invisible walls at ground level)
-  const stairT=(140-z)/100;
-  if(stairT>=0&&stairT<=1&&Math.abs(x)<6){
-    const stairH=stairT*STAIR_TOP_Y;
-    if(Math.abs(curY-stairH)<3) return stairH;
+  // Straight staircase collision — only when visible
+  if(stairGroup.visible){
+    const stairT=(STAIR_Z_FAR-z)/(STAIR_Z_FAR-STAIR_Z_NEAR);
+    if(stairT>=0&&stairT<=1&&Math.abs(x)<6){
+      const stairH=stairT*STAIR_TOP_Y;
+      if(Math.abs(curY-stairH)<3) return stairH;
+    }
   }
   return 0; // ground
 }
@@ -1674,8 +1700,8 @@ function animateChar(dt){
     }else{onPlatform=false}
   }
   else if(phase===PHASE.ASCEND){
-    // Flying disc rises from bridge to PLAT_Y over 5 seconds
-    const ASCEND_DUR=5.0;
+    // Flying disc rises from bridge to PLAT_Y over 3 seconds
+    const ASCEND_DUR=3.0;
     const t=Math.min(1,phaseT/ASCEND_DUR);
     const ease=t*t*(3-2*t); // smoothstep
     const startY=bridgePos.y;
@@ -2080,6 +2106,24 @@ document.getElementById('jump-btn').addEventListener('pointerdown',e=>{
     stairGroup.visible=false;
     arrowGroup.visible=false;
   }
+});
+
+// ===== Shift+A Bulk Plant Panel =====
+window.addEventListener('keydown',e=>{
+  if(e.shiftKey&&e.key.toLowerCase()==='a'){
+    e.preventDefault();
+    document.getElementById('bulk-panel').classList.toggle('show');
+  }
+});
+document.getElementById('bulk-go').addEventListener('click',()=>{
+  const lines=document.getElementById('bulk-ta').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  if(!lines.length)return;
+  for(const text of lines){
+    addPlant(text,true,null,'');
+    saveEntry(text,'');
+  }
+  document.getElementById('bulk-ta').value='';
+  document.getElementById('bulk-panel').classList.remove('show');
 });
 
 // ===== Keyboard movement (WASD/arrows for desktop) =====
