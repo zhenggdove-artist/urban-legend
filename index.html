@@ -1294,7 +1294,7 @@ function updateAura(dt){
 }
 
 // ===== Drink Glow (warm yellow skin pulse) =====
-const warmGlow=new THREE.Color('#ff8c1a');
+const warmGlow=new THREE.Color('#ff1a3a');
 let drinkGlowT=-1;
 const DRINK_GLOW_DUR=2.4;
 let pulseGlow=null;
@@ -1328,7 +1328,7 @@ function updateDrinkGlow(dt){
   if(!pulseGlow&&charModel){
     const root=new THREE.Group();
     const makeMat=()=>new THREE.MeshBasicMaterial({
-      color:0xff6600,transparent:true,opacity:1.0,
+      color:0xff1a3a,transparent:true,opacity:1.0,
       blending:THREE.AdditiveBlending,depthWrite:false,depthTest:false,
       side:THREE.BackSide
     });
@@ -1405,20 +1405,20 @@ function cinematicCam(dt){
     const t=Math.min(1,phaseT/3);
     const ease=t*t*(3-2*t);
     const cy=charRoot.position.y;
-    const camY=Math.max(2,cy+3-ease*cy*0.5);
-    // Camera on -X side (opposite of stairs at +X) to avoid showing staircase
-    const camOffX=-10*(1-ease*0.5);
-    const camOffZ=4;
+    const camY=Math.max(1.5,cy+1.5-ease*cy*0.3);
+    // Camera on -Z side, close to character, facing away from stairs (+X)
+    const camOffX=-2;
+    const camOffZ=-4;
     camera.position.set(charRoot.position.x+camOffX,camY,charRoot.position.z+camOffZ);
-    camera.lookAt(charRoot.position.x,cy+0.5,charRoot.position.z);
+    camera.lookAt(charRoot.position.x,cy+0.3,charRoot.position.z);
     return true;
   }
   if(phase===PHASE.LAND){
     const t=Math.min(1,phaseT/2);
     const ease=t*t*(3-2*t);
     const lookY=2.0*ease;
-    // Camera on -X side to avoid showing staircase
-    camera.position.set(-15,8,10);
+    // Camera close, on -Z side to avoid showing staircase
+    camera.position.set(-3,4,-8);
     camera.lookAt(0,lookY,0);
     return true;
   }
