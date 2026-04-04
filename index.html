@@ -23,6 +23,13 @@
       font-style:normal;
       font-display:swap;
     }
+    @font-face{
+      font-family:"Bristol";
+      src:url("FONTS/Bristol.otf") format("opentype");
+      font-weight:normal;
+      font-style:normal;
+      font-display:swap;
+    }
     :root{
       --ui-lav:#e7ddff;
       --ui-lav-2:#cdbcf4;
@@ -57,10 +64,10 @@
       background:radial-gradient(circle at 30% 20%,#fff3fb 0%,var(--bubble-1) 55%,var(--bubble-2) 100%);
       right:22px;bottom:24px;left:auto;top:auto}
     #ui.mini h2,#ui.mini textarea,#ui.mini button#go,#ui.mini #username,#ui.mini div{display:none}
-    #ui.mini::after{content:'WRITE';font-size:10px;letter-spacing:1.5px;color:#E84887;text-transform:uppercase;font-family:"GoldenGirdle","Saint","Trebuchet MS",sans-serif}
+    #ui.mini::after{content:'WRITE';font-size:10px;letter-spacing:1.5px;color:#E84887;text-transform:uppercase;font-family:"Bristol","Saint","Trebuchet MS",sans-serif}
     #ui.mini.done-state::after{content:'RETURN'}
     #ui.hidden{opacity:0;pointer-events:none}
-    #ui h2{font-size:14px;letter-spacing:2px;color:var(--bubble-text);margin:10px 12px 4px;
+    #ui h2{font-size:14px;letter-spacing:2px;color:#E84887;margin:10px 12px 4px;font-family:"Bristol","Saint","Trebuchet MS",sans-serif;
       text-shadow:0 1px 0 rgba(255,255,255,0.7)}
     #ui textarea{width:calc(100% - 24px);height:96px;margin:6px 12px 10px;
       background:radial-gradient(circle at 25% 15%,#fff 0%,#fbe3f3 55%,#f3c8e3 100%);
@@ -69,8 +76,8 @@
       box-shadow:inset 0 0 10px rgba(255,255,255,0.8)}
     #go{margin:0 12px 12px;width:calc(100% - 24px);height:38px;
       background:radial-gradient(circle at 25% 20%,#fff 0%,#e7cfff 55%,#d7b8ff 100%);
-      border:2px solid var(--bubble-edge);color:var(--bubble-text);text-transform:uppercase;letter-spacing:3px;
-      cursor:pointer;font-family:"Saint","Trebuchet MS",sans-serif;border-radius:999px;
+      border:2px solid var(--bubble-edge);color:#E84887;text-transform:uppercase;letter-spacing:3px;
+      cursor:pointer;font-family:"Bristol","Saint","Trebuchet MS",sans-serif;border-radius:999px;
       box-shadow:0 6px 14px var(--bubble-shadow)}
     #go:disabled{opacity:0.4;cursor:not-allowed}
     #pop{position:absolute;bottom:80px;left:50%;transform:translateX(-50%);
@@ -88,7 +95,7 @@
       border-radius:999px;cursor:pointer;z-index:14;font-family:inherit;font-size:0;
       display:flex;align-items:center;justify-content:center;
       box-shadow:0 6px 14px var(--bubble-shadow)}
-    #search-btn::before{content:"›";font-size:22px;color:var(--bubble-text);text-shadow:0 1px 0 rgba(255,255,255,0.7);font-family:"GoldenGirdle","Saint","Trebuchet MS",sans-serif}
+    #search-btn::before{content:"›";font-size:22px;color:#E84887;text-shadow:0 1px 0 rgba(255,255,255,0.7);font-family:"Bristol","Saint","Trebuchet MS",sans-serif}
     #search-panel{position:absolute;bottom:86px;left:22px;width:min(70vw,330px);
       background:radial-gradient(circle at 30% 20%,#fff 0%,var(--bubble-1) 55%,var(--bubble-2) 100%);
       border:2px solid var(--bubble-edge);
