@@ -58,6 +58,7 @@
       right:22px;bottom:24px;left:auto;top:auto}
     #ui.mini h2,#ui.mini textarea,#ui.mini button#go,#ui.mini #username,#ui.mini div{display:none}
     #ui.mini::after{content:'WRITE';font-size:11px;letter-spacing:1.5px;color:var(--bubble-text);text-transform:uppercase;font-family:"GoldenGirdle","Saint","Trebuchet MS",sans-serif}
+    #ui.mini.done-state::after{content:'RETURN'}
     #ui.hidden{opacity:0;pointer-events:none}
     #ui h2{font-size:14px;letter-spacing:2px;color:var(--bubble-text);margin:10px 12px 4px;
       text-shadow:0 1px 0 rgba(255,255,255,0.7)}
@@ -1754,6 +1755,10 @@ function animateChar(dt){
       camYaw=0.3;camPitch=0.35;camDist=8;
       if(lastPlantedPos)camTarget.set(lastPlantedPos.x,2,lastPlantedPos.z);
       else camTarget.set(0,3,0);
+      // Show RETURN button
+      ui.classList.remove('hidden');
+      ui.classList.add('mini');
+      ui.classList.add('done-state');
     }
   }
 }
@@ -2145,7 +2150,7 @@ function resetToStart(){
   arrowBridge.visible=true;arrowGroup.visible=false;
   camTarget.set(stairPath[0].x,1.5,stairPath[0].z);
   camYaw=Math.PI/2;camPitch=0.25;camDist=6;
-  ui.classList.add('mini');ui.classList.add('hidden');
+  ui.classList.add('mini');ui.classList.add('hidden');ui.classList.remove('done-state');
   updateSky(0);
   actFall?.stop();actJump?.stop();actWalk?.stop();actDrink?.stop();
   if(clipIdle&&mixer){
