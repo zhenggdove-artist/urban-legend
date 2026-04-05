@@ -328,12 +328,22 @@ const SUPABASE_URL='https://mmhoohddrmguxnmtvgwz.supabase.co';
 const SUPABASE_KEY='sb_publishable_Aig1UQpR4iYyaeArWCG5IQ_XGhTXzsq';
 const SB_HEADERS={'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY,'Content-Type':'application/json'};
 
+const DELETED_KEY='urban_legend_deleted';
+function getDeletedSet(){try{return new Set(JSON.parse(localStorage.getItem(DELETED_KEY)||'[]'))}catch{return new Set()}}
+function addToDeletedSet(id,text){
+  const s=getDeletedSet();
+  if(id)s.add('id:'+id);
+  if(text)s.add('t:'+text);
+  localStorage.setItem(DELETED_KEY,JSON.stringify([...s]));
+}
 async function loadEntries(){
+  const deleted=getDeletedSet();
+  function isDeleted(e){return(e.id&&deleted.has('id:'+e.id))||(e.text&&deleted.has('t:'+e.text))}
   try{
     const res=await fetch(SUPABASE_URL+'/rest/v1/entries?order=created_at.asc',{headers:SB_HEADERS});
-    if(res.ok){const data=await res.json();if(data.length>0)localStorage.setItem(STORAGE_KEY,JSON.stringify(data));return data;}
+    if(res.ok){const data=await res.json();const filtered=data.filter(e=>!isDeleted(e));if(data.length>0)localStorage.setItem(STORAGE_KEY,JSON.stringify(filtered));return filtered;}
   }catch{}
-  try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]')}catch{return[]}
+  try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]').filter(e=>!isDeleted(e))}catch{return[]}
 }
 function saveEntry(text,username=''){
   const id=Date.now().toString();
@@ -351,16 +361,26 @@ function saveEntry(text,username=''){
   if(plantEntries.length>0){const last=plantEntries[plantEntries.length-1];if(!last.entryId)last.entryId=id;}
   return id;
 }
-function deleteEntry(entryId){
-  // Remove from Supabase
-  fetch(SUPABASE_URL+'/rest/v1/entries?id=eq.'+entryId,{
-    method:'DELETE',headers:{...SB_HEADERS,'Prefer':'return=minimal'}
-  }).catch(()=>{});
-  // Remove from localStorage
+function deleteEntry(entryId,text){
+  // Mark as deleted locally — survives even if Supabase delete fails
+  addToDeletedSet(entryId,text);
+  // Remove from Supabase — try by id first, then by text
+  if(entryId){
+    fetch(SUPABASE_URL+'/rest/v1/entries?id=eq.'+encodeURIComponent(entryId),{
+      method:'DELETE',headers:{...SB_HEADERS,'Prefer':'return=minimal'}
+    }).then(r=>{if(!r.ok)console.warn('Supabase DELETE by id failed:',r.status)}).catch(e=>console.warn('Supabase DELETE err:',e));
+  }
+  if(text){
+    fetch(SUPABASE_URL+'/rest/v1/entries?text=eq.'+encodeURIComponent(text),{
+      method:'DELETE',headers:{...SB_HEADERS,'Prefer':'return=minimal'}
+    }).then(r=>{if(!r.ok)console.warn('Supabase DELETE by text failed:',r.status)}).catch(e=>console.warn('Supabase DELETE text err:',e));
+  }
+  // Remove from localStorage — by id and by text
   try{
-    const list=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');
-    const filtered=list.filter(e=>e.id!==entryId);
-    localStorage.setItem(STORAGE_KEY,JSON.stringify(filtered));
+    let list=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');
+    if(entryId) list=list.filter(e=>e.id!==entryId);
+    else if(text){const idx=list.findIndex(e=>e.text===text);if(idx>=0)list.splice(idx,1);}
+    localStorage.setItem(STORAGE_KEY,JSON.stringify(list));
   }catch{}
 }
 
@@ -2436,7 +2456,7 @@ window.addEventListener('keydown',e=>{
           // Remove plant mesh from scene
           if(entry.mesh){plantRoot.remove(entry.mesh);entry.mesh.traverse(c=>{if(c.geometry)c.geometry.dispose();if(c.material){const ms=Array.isArray(c.material)?c.material:[c.material];ms.forEach(m=>m.dispose())}})}
           // Remove from DB
-          if(entry.entryId)deleteEntry(entry.entryId);
+          deleteEntry(entry.entryId||null,entry.text||null);
           // Remove from array
           plantEntries.splice(idx,1);
           // Refresh panel

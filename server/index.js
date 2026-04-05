@@ -115,6 +115,32 @@ app.patch('/api/entries/:id', (req, res) => {
     });
 });
 
+app.delete('/api/entries/:id', (req, res) => {
+  if (!pool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not set' });
+  const id = req.params.id;
+  pool
+    .query('DELETE FROM entries WHERE id = $1', [id])
+    .then(result => res.json({ ok: true, deleted: result.rowCount }))
+    .catch(err => {
+      console.error(err);
+      res.status(500).json({ ok: false });
+    });
+});
+
+// Delete by text match (fallback when id is unknown)
+app.delete('/api/entries-by-text', (req, res) => {
+  if (!pool) return res.status(500).json({ ok: false, error: 'DATABASE_URL not set' });
+  const text = req.body?.text;
+  if (!text) return res.status(400).json({ ok: false, error: 'text required' });
+  pool
+    .query('DELETE FROM entries WHERE text = $1', [text])
+    .then(result => res.json({ ok: true, deleted: result.rowCount }))
+    .catch(err => {
+      console.error(err);
+      res.status(500).json({ ok: false });
+    });
+});
+
 app.get('/health', (req, res) => res.json({ ok: true }));
 
 // Keep-alive: lightweight query to prevent Supabase free-tier hibernation
