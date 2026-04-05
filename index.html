@@ -235,7 +235,7 @@
 URBANLEGEND
   </div>
   <div id="mouth-text-layer"></div>
-  <div id="ui" class="mini hidden">
+  <div id="ui" class="">
     <h2>WRITE</h2>
     <textarea id="ta" placeholder="Leave your message to the world"></textarea>
     <div style="margin:0 12px 6px;font-size:11px;letter-spacing:1px;color:var(--bubble-text);opacity:0.7">let everyone know who you are, if you want to</div>
@@ -275,7 +275,7 @@ URBANLEGEND
     <div id="search-results"></div>
   </div>
   <div id="plant-label"></div>
-  <div id="game-controls">
+  <div id="game-controls" class="hide">
     <div id="joystick-zone"><div id="joystick-base"><div id="joystick-stick"></div></div></div>
     <button id="jump-btn"></button>
   </div>
@@ -912,7 +912,7 @@ function updateSky(t){
 }
 
 // Fog for dreamcore depth
-scene.fog=new THREE.FogExp2('#d8e8f0',0.008);
+scene.fog=new THREE.FogExp2('#d8e8f0',0.0008); // start at top — low density
 groundClip=new THREE.Plane(new THREE.Vector3(0,1,0),0);
 updateSky(0);
 
@@ -969,7 +969,7 @@ const FOOT_LIFT=0.0;
 const DRINK_START=0.6;
 const STAIR_TOP_Y=10; // height at top of stairs
 const PHASE={IDLE:0,DRINK:1,EXPLORE:2,ASCEND:6,FALL:3,LAND:4,DONE:5};
-let phase=PHASE.EXPLORE,phaseT=0,firstText='',firstUsername='';
+let phase=PHASE.IDLE,phaseT=0,firstText='',firstUsername='';
 let charReady=false;
 let pendingStartText=null;
 
@@ -989,13 +989,13 @@ for(let i=1;i<stairPath.length;i++) stairPathLength+=stairPath[i].distanceTo(sta
 
 // Explorer state
 let pathT=0;
-let onPlatform=false;
+let onPlatform=true;
 let charVelY=0,isJumping=false;
 let joyX=0,joyY=0;
 let currentSkyPlat=null;
 
 const charRoot=new THREE.Group();
-charRoot.position.set(stairPath[0].x,1.5,stairPath[0].z); // start at STAIR_COLLISION_LIFT height
+charRoot.position.set(0,PLAT_Y+DISC_LIFT,0); // start at top platform
 scene.add(charRoot);
 
 // Platform (invisible once camera swings to front ? very high up)
@@ -1024,7 +1024,7 @@ platformTop.rotation.x=-Math.PI/2;
 platformTop.position.y=0.25;
 platformMesh.add(platformSide,platformTop);
 platformMesh.position.set(0,PLAT_Y,0);
-platformMesh.visible=false; // hidden until ascend
+platformMesh.visible=true; // visible at start — player begins at top
 scene.add(platformMesh);
 
 // Straight staircase — InstancedMesh with visible edges
@@ -1062,6 +1062,7 @@ let bridgePos; // bridge step world position (used for ASCEND trigger)
   bridge.name='bridge';
   stairGroup.add(bridge);
 }
+stairGroup.visible=false; // hidden at start — player begins at top
 scene.add(stairGroup);
 
 // Yellow arrow material (shared)
@@ -1082,14 +1083,15 @@ function makeArrow3D(){
 // Arrow above bridge step (stair top)
 const arrowBridge=makeArrow3D();
 arrowBridge.position.set(bridgePos.x,bridgePos.y+3.5,bridgePos.z);
+arrowBridge.visible=false; // hidden at start — player begins at top
 scene.add(arrowBridge);
 
-// Arrow above flying platform (hidden until platform arrives at top)
+// Arrow above flying platform (visible at start — player begins at top)
 const arrowGroup=makeArrow3D();
 const arrowJumpPos=new THREE.Vector3(0,PLAT_Y,-3.0);
 const arrowFloatBase=PLAT_Y+3.5;
 arrowGroup.position.set(arrowJumpPos.x,arrowFloatBase,arrowJumpPos.z);
-arrowGroup.visible=false;
+arrowGroup.visible=true;
 scene.add(arrowGroup);
 
 // Mario-style ? block near staircase start
@@ -2211,8 +2213,8 @@ function addPlant(text,grow=true,ts=null,username=''){
 }
 
 // ===== Camera =====
-let camYaw=0,camPitch=0.25,camDist=6;
-let camTarget=new THREE.Vector3(stairPath[0].x,1.5,stairPath[0].z);
+let camYaw=0,camPitch=0.2,camDist=7;
+let camTarget=new THREE.Vector3(0,PLAT_Y+1,0);
 let interacting=false,interTimer=0;
 let lastPlantedPos=null; // world position of the most recently planted plant
 const ptrs=new Map();
