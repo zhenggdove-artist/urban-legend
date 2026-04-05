@@ -1596,7 +1596,7 @@ function getTerrainHeight(x,z,curY){
   if(stairGroup.visible){
     const stairT=(STAIR_Z_FAR-z)/(STAIR_Z_FAR-STAIR_Z_NEAR);
     if(stairT>=0&&stairT<=1&&Math.abs(x)<6){
-      const stairH=stairT*STAIR_TOP_Y+2;
+      const stairH=stairT*STAIR_TOP_Y+-1;
       if(Math.abs(curY-stairH)<3) return stairH;
     }
   }
