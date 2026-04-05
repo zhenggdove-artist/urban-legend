@@ -227,6 +227,24 @@
     #bulk-panel button:hover{opacity:0.85}
     #bulk-panel .close-x{position:absolute;top:8px;right:14px;font-size:20px;cursor:pointer;
       color:#7555a8;background:none;border:none;padding:4px}
+    #admin-panel{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+      width:420px;max-height:80vh;background:radial-gradient(circle at 30% 20%,#fff3fb 0%,#f3d5ea 55%,#e8b8d8 100%);
+      border:2px solid var(--bubble-edge);border-radius:22px;padding:18px;z-index:300;
+      box-shadow:0 8px 32px rgba(0,0,0,0.25);overflow-y:auto;font-family:"Saint",sans-serif}
+    #admin-panel.show{display:block}
+    #admin-panel h3{margin:0 0 12px;font-size:16px;color:#7555a8;text-align:center;letter-spacing:2px}
+    #admin-panel .close-x{position:absolute;top:8px;right:14px;font-size:20px;cursor:pointer;
+      color:#7555a8;background:none;border:none;padding:4px}
+    #admin-list{list-style:none;padding:0;margin:0}
+    #admin-list li{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;
+      margin:0 0 6px;background:#fff8fc;border:1px solid #e0c0d8;border-radius:12px;font-size:13px;color:#4a3060}
+    #admin-list li .entry-text{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-right:8px}
+    #admin-list li .entry-user{font-size:11px;color:#9a7bbb;margin-right:8px;flex-shrink:0}
+    #admin-list li .del-btn{flex-shrink:0;padding:4px 12px;font-size:12px;
+      font-family:"Saint",sans-serif;color:#fff;background:linear-gradient(135deg,#d03050,#a03060);
+      border:none;border-radius:999px;cursor:pointer;letter-spacing:1px}
+    #admin-list li .del-btn:hover{opacity:0.8}
+    #admin-panel .admin-empty{text-align:center;color:#9a7bbb;font-size:13px;padding:20px 0}
   </style>
 </head>
 <body>
@@ -268,6 +286,11 @@ URBANLEGEND
     <div class="hint">one text per line</div>
     <textarea id="bulk-ta" placeholder="text 1&#10;text 2&#10;text 3&#10;..."></textarea>
     <button id="bulk-go">PLANT ALL</button>
+  </div>
+  <div id="admin-panel">
+    <button class="close-x" onclick="document.getElementById('admin-panel').classList.remove('show')">&times;</button>
+    <h3>MANAGE ENTRIES</h3>
+    <ul id="admin-list"></ul>
   </div>
   <button id="search-btn" aria-label="Search"></button>
   <div id="search-panel">
@@ -324,6 +347,21 @@ function saveEntry(text,username=''){
     method:'POST',headers:{...SB_HEADERS,'Prefer':'return=minimal'},
     body:JSON.stringify(body)
   }).catch(()=>{});
+  // Store id in the most recent plantEntry
+  if(plantEntries.length>0){const last=plantEntries[plantEntries.length-1];if(!last.entryId)last.entryId=id;}
+  return id;
+}
+function deleteEntry(entryId){
+  // Remove from Supabase
+  fetch(SUPABASE_URL+'/rest/v1/entries?id=eq.'+entryId,{
+    method:'DELETE',headers:{...SB_HEADERS,'Prefer':'return=minimal'}
+  }).catch(()=>{});
+  // Remove from localStorage
+  try{
+    const list=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');
+    const filtered=list.filter(e=>e.id!==entryId);
+    localStorage.setItem(STORAGE_KEY,JSON.stringify(filtered));
+  }catch{}
 }
 
 // ===== Seeded Random =====
@@ -2353,6 +2391,56 @@ window.addEventListener('keydown',e=>{
   }
 });
 
+// ===== Shift+B Admin panel — manage/delete entries =====
+window.addEventListener('keydown',e=>{
+  if(e.shiftKey&&e.key.toLowerCase()==='b'){
+    e.preventDefault();
+    const panel=document.getElementById('admin-panel');
+    if(panel.classList.contains('show')){panel.classList.remove('show');return;}
+    const list=document.getElementById('admin-list');
+    list.innerHTML='';
+    if(plantEntries.length===0){
+      list.innerHTML='<div class="admin-empty">No entries yet</div>';
+    }else{
+      for(let i=0;i<plantEntries.length;i++){
+        const pe=plantEntries[i];
+        const li=document.createElement('li');
+        const userSpan=document.createElement('span');
+        userSpan.className='entry-user';
+        userSpan.textContent=pe.username||'';
+        const textSpan=document.createElement('span');
+        textSpan.className='entry-text';
+        textSpan.textContent=pe.text||'(empty)';
+        const btn=document.createElement('button');
+        btn.className='del-btn';
+        btn.textContent='DELETE';
+        btn.dataset.idx=i;
+        btn.addEventListener('click',function(){
+          const idx=parseInt(this.dataset.idx);
+          const entry=plantEntries[idx];
+          if(!entry)return;
+          // Remove plant mesh from scene
+          if(entry.mesh){plantRoot.remove(entry.mesh);entry.mesh.traverse(c=>{if(c.geometry)c.geometry.dispose();if(c.material){const ms=Array.isArray(c.material)?c.material:[c.material];ms.forEach(m=>m.dispose())}})}
+          // Remove from DB
+          if(entry.entryId)deleteEntry(entry.entryId);
+          // Remove from array
+          plantEntries.splice(idx,1);
+          // Refresh panel
+          this.closest('li').remove();
+          // Update remaining button indices
+          list.querySelectorAll('.del-btn').forEach((b,j)=>{b.dataset.idx=j});
+          if(plantEntries.length===0)list.innerHTML='<div class="admin-empty">No entries</div>';
+        });
+        li.appendChild(userSpan);
+        li.appendChild(textSpan);
+        li.appendChild(btn);
+        list.appendChild(li);
+      }
+    }
+    panel.classList.add('show');
+  }
+});
+
 // Statement overlay dismiss
 document.getElementById('statement-overlay').addEventListener('click',()=>{
   document.getElementById('statement-overlay').classList.remove('show');
@@ -2668,7 +2756,8 @@ async function loadSaved(){
         const p=typeof e.part==='string'?JSON.parse(e.part):e.part;
         if(p&&p.username)uname=p.username;
       }
-      addPlant(e.text,false,e.created_at||null,uname);
+      const p=addPlant(e.text,false,e.created_at||null,uname);
+      if(p&&e.id){const pe=plantEntries[plantEntries.length-1];if(pe)pe.entryId=e.id;}
     }
   }catch(e){console.error('Load err:',e)}
 }
