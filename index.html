@@ -2467,9 +2467,11 @@ function resetToStart(){
   charRoot.visible=true;
   if(charModel){charModel.visible=true;charModel.position.set(0,baseModelY,0);charModel.rotation.y=0}
   charRoot.position.set(stairPath[0].x,1.5,stairPath[0].z); // start at STAIR_COLLISION_LIFT height
+  charRoot.userData.ascendStartX=null;charRoot.userData.ascendStartY=null;charRoot.userData.ascendStartZ=null;
+  currentSkyPlat=null;
   platformMesh.visible=false;stairGroup.visible=true;
   arrowBridge.visible=true;arrowGroup.visible=false;
-  camTarget.set(stairPath[0].x,1.5,stairPath[0].z);
+  camTarget.set(stairPath[0].x,3,stairPath[0].z);
   camYaw=0;camPitch=0.25;camDist=6;
   ui.classList.add('mini');ui.classList.add('hidden');ui.classList.remove('done-state');
   updateSky(0);
