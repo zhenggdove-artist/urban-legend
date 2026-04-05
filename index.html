@@ -1129,6 +1129,12 @@ const qBlockGroup=new THREE.Group();
 const SKY_PLAT_HEIGHT=50;
 const skyPlats=[];
 const blueTopPlats=[]; // blue platforms at the top where WRITE is available
+const blueDiscMat=new THREE.MeshPhysicalMaterial({
+  color:'#4488ff',roughness:0.2,metalness:0.15,
+  clearcoat:1.0,iridescence:0.8,
+  emissive:new THREE.Color('#2266dd'),emissiveIntensity:0.15,
+  specularIntensity:0.9,envMapIntensity:1.4
+});
 {
   const platMat=new THREE.MeshPhysicalMaterial({
     color:'#E84887',roughness:0.25,metalness:0.1,
@@ -1849,6 +1855,7 @@ function animateChar(dt){
         stairGroup.visible=false; // hide stairs from ASCEND until RETURN
         // Show flying disc at bridge position
         platformMesh.position.copy(bridgePos);
+        platformSide.material=platformMat;platformTop.material=platformMat;
         platformMesh.visible=true;
         charRoot.position.set(bridgePos.x,bridgePos.y+DISC_LIFT,bridgePos.z);
         // Play idle
@@ -1862,9 +1869,10 @@ function animateChar(dt){
       phase=PHASE.ASCEND;phaseT=0;
       showControls(false);
       stairGroup.visible=false;
-      // Use blue platform position as ASCEND start
+      // Use blue platform position as ASCEND start — disc becomes blue
       const bp=currentSkyPlat.position;
       platformMesh.position.set(bp.x,bp.y,bp.z);
+      platformSide.material=blueDiscMat;platformTop.material=blueDiscMat;
       platformMesh.visible=true;
       charRoot.position.set(bp.x,bp.y+DISC_LIFT,bp.z);
       // Override bridgePos temporarily for ASCEND interpolation
