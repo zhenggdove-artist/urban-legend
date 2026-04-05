@@ -1596,7 +1596,8 @@ function getTerrainHeight(x,z,curY){
   if(stairGroup.visible){
     const stairT=(STAIR_Z_FAR-z)/(STAIR_Z_FAR-STAIR_Z_NEAR);
     if(stairT>=0&&stairT<=1&&Math.abs(x)<6){
-      const stairH=stairT*STAIR_TOP_Y+0.5 ;
+      const STAIR_COLLISION_LIFT=2.0; // ← 手動微調階梯碰撞面高度
+      const stairH=stairT*STAIR_TOP_Y+STAIR_COLLISION_LIFT;
       if(Math.abs(curY-stairH)<3) return stairH;
     }
   }
