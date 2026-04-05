@@ -1881,6 +1881,20 @@ function animateChar(dt){
             charRoot.position.x=currentSkyPlat.position.x;
             charRoot.position.z=currentSkyPlat.position.z;
           }
+          // Show statement after landing from ? block hit
+          if(qBlockGroup.userData.pendingStatement){
+            qBlockGroup.userData.pendingStatement=false;
+            const so=document.getElementById('statement-overlay');
+            so.classList.add('show');
+            so.style.opacity='0';
+            so.querySelector('#statement-box').style.transform='scale(0.3)';
+            let stT=0;
+            const stAnim=()=>{stT+=16;const p=Math.min(1,stT/400);const e=1-(1-p)*(1-p);
+              so.style.opacity=e.toFixed(3);
+              so.querySelector('#statement-box').style.transform=`scale(${(0.3+0.7*e).toFixed(3)})`;
+              if(p<1)requestAnimationFrame(stAnim);};
+            requestAnimationFrame(stAnim);
+          }
           actJump?.fadeOut(0.2);
           if(clipIdle){
             actIdle=mixer.clipAction(clipIdle);
