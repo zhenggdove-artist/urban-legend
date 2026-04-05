@@ -1155,7 +1155,7 @@ const blueDiscMat=new THREE.MeshPhysicalMaterial({
     const baseDist=30+route*8;
     for(let i=0;i<stepsPerRoute;i++){
       const isTop=i===stepsPerRoute-1;
-      if(isTop)curY+=3; // extra gap so blue platform is well above pink ones
+      if(isTop)curY+=1.2; // small gap so blue platform is reachable from last pink
       const r=isTop?4.0:2.4+Math.random()*1.6;
       const geo=new THREE.CylinderGeometry(r,r+0.15,isTop?0.6:0.4,16);
       const mesh=new THREE.Mesh(geo,isTop?blueMat:platMat);
@@ -1811,6 +1811,9 @@ function animateChar(dt){
           createBurst(new THREE.Vector3(charRoot.position.x,0,charRoot.position.z));
           if(firstText){
             const planted=addPlant(firstText,true,null,firstUsername);
+            if(planted&&charRoot.userData.ascendFromBlue){
+              planted.scale.set(2,2,2); // blue platform plants are 2x height
+            }
             saveEntry(firstText,firstUsername);
             if(planted){clearGlow();addGlow(planted)}
           }
@@ -1833,6 +1836,11 @@ function animateChar(dt){
           charRoot.position.y=terrH;
           charVelY=0;isJumping=false;
           charRoot.userData.fallStartY=0;
+          // Snap to sky platform center on landing
+          if(currentSkyPlat){
+            charRoot.position.x=currentSkyPlat.position.x;
+            charRoot.position.z=currentSkyPlat.position.z;
+          }
           actJump?.fadeOut(0.2);
           if(clipIdle){
             actIdle=mixer.clipAction(clipIdle);
@@ -1856,6 +1864,7 @@ function animateChar(dt){
         // Show flying disc at bridge position
         platformMesh.position.copy(bridgePos);
         platformSide.material=platformMat;platformTop.material=platformMat;
+        charRoot.userData.ascendFromBlue=false;
         platformMesh.visible=true;
         charRoot.position.set(bridgePos.x,bridgePos.y+DISC_LIFT,bridgePos.z);
         // Play idle
@@ -1873,6 +1882,7 @@ function animateChar(dt){
       const bp=currentSkyPlat.position;
       platformMesh.position.set(bp.x,bp.y,bp.z);
       platformSide.material=blueDiscMat;platformTop.material=blueDiscMat;
+      charRoot.userData.ascendFromBlue=true;
       platformMesh.visible=true;
       charRoot.position.set(bp.x,bp.y+DISC_LIFT,bp.z);
       // Override bridgePos temporarily for ASCEND interpolation
@@ -1914,7 +1924,7 @@ function animateChar(dt){
       // Arrived — show WRITE button (no movement controls)
       phase=PHASE.IDLE;phaseT=0;
       onPlatform=true;isJumping=false;charVelY=0;
-      charRoot.userData.ascendStartX=null;charRoot.userData.ascendStartY=null;charRoot.userData.ascendStartZ=null;
+      charRoot.userData.ascendStartX=null;charRoot.userData.ascendStartY=null;charRoot.userData.ascendStartZ=null;charRoot.userData.ascendFromBlue=false;
       platformMesh.position.set(0,PLAT_Y,0);
       charRoot.position.set(0,PLAT_Y+DISC_LIFT,0);
       if(charModel)charModel.rotation.y=0; // face +Z toward camera (camYaw=0 puts camera at +Z)
@@ -2012,6 +2022,9 @@ function animateChar(dt){
       createBurst(new THREE.Vector3(lp.x,0,lp.z));
       if(firstText){
         const planted=addPlant(firstText,true,null,firstUsername);
+        if(planted&&charRoot.userData.ascendFromBlue){
+          planted.scale.set(2,2,2); // blue platform plants are 2x height
+        }
         saveEntry(firstText,firstUsername);
         if(planted){clearGlow();addGlow(planted)}
       }
@@ -2475,7 +2488,7 @@ function resetToStart(){
   charRoot.visible=true;
   if(charModel){charModel.visible=true;charModel.position.set(0,baseModelY,0);charModel.rotation.y=0}
   charRoot.position.set(stairPath[0].x,1.5,stairPath[0].z); // start at STAIR_COLLISION_LIFT height
-  charRoot.userData.ascendStartX=null;charRoot.userData.ascendStartY=null;charRoot.userData.ascendStartZ=null;
+  charRoot.userData.ascendStartX=null;charRoot.userData.ascendStartY=null;charRoot.userData.ascendStartZ=null;charRoot.userData.ascendFromBlue=false;
   currentSkyPlat=null;
   platformMesh.visible=false;stairGroup.visible=true;
   arrowBridge.visible=true;arrowGroup.visible=false;
