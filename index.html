@@ -1035,8 +1035,8 @@ const stepEdgeMat=new THREE.MeshPhysicalMaterial({
 });
 let bridgePos; // bridge step world position (used for ASCEND trigger)
 {
-  const stepH=1.0;
-  const stepGeo=new THREE.BoxGeometry(12.0,stepH,7.0);
+  const stepH=0.3;
+  const stepGeo=new THREE.BoxGeometry(12.0,stepH,9.0);
   const stairMesh=new THREE.InstancedMesh(stepGeo,stepEdgeMat,STAIR_STEPS);
   const dummy=new THREE.Object3D();
   const stairDir=new THREE.Vector3().subVectors(stairEnd,stairStart).normalize();
