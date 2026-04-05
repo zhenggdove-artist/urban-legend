@@ -991,6 +991,7 @@ let pathT=0;
 let onPlatform=false;
 let charVelY=0,isJumping=false;
 let joyX=0,joyY=0;
+let currentSkyPlat=null;
 
 const charRoot=new THREE.Group();
 charRoot.position.set(stairPath[0].x,0,stairPath[0].z);
@@ -1139,8 +1140,8 @@ const skyPlats=[];
     const r=2.4+Math.random()*1.6; // platform radius (2x bigger)
     const geo=new THREE.CylinderGeometry(r,r+0.15,0.3,16);
     const mesh=new THREE.Mesh(geo,platMat);
-    // Far from center (5x distance), away from plants
-    const dist=30+Math.random()*25;
+    // Far from center, away from plants — tight spiral so platforms are close to each other
+    const dist=30+i*0.5+Math.random()*2;
     const px=Math.cos(angle)*dist;
     const pz=Math.sin(angle)*dist;
     mesh.position.set(px,curY,pz);
@@ -1156,9 +1157,9 @@ const skyPlats=[];
     mesh.userData.driftSpeedZ=0.12+Math.random()*0.18;
     scene.add(mesh);
     skyPlats.push(mesh);
-    // Next platform: smaller height step so it's jumpable
+    // Next platform: small height step + tight angle so platforms are close
     curY+=0.8+Math.random()*0.5;
-    angle+=0.3+Math.random()*0.4;
+    angle+=0.08+Math.random()*0.12;
   }
 }
 
@@ -1588,13 +1589,14 @@ function getTerrainHeight(x,z,curY){
     const spx=sp.position.x,spy=sp.position.y,spz=sp.position.z;
     const spd=Math.sqrt((x-spx)**2+(z-spz)**2);
     const spR=sp.geometry.parameters.radiusTop||1.2;
-    if(spd<spR&&curY>=spy-1.5&&curY<=spy+1.0) return spy+0.15;
+    if(spd<spR&&curY>=spy-1.5&&curY<=spy+1.0){currentSkyPlat=sp;return spy+0.15;}
   }
-  // Straight staircase collision — only when visible
+  currentSkyPlat=null;
+  // Straight staircase collision — only when visible (return top surface of step)
   if(stairGroup.visible){
     const stairT=(STAIR_Z_FAR-z)/(STAIR_Z_FAR-STAIR_Z_NEAR);
     if(stairT>=0&&stairT<=1&&Math.abs(x)<6){
-      const stairH=stairT*STAIR_TOP_Y;
+      const stairH=stairT*STAIR_TOP_Y+0.175;
       if(Math.abs(curY-stairH)<3) return stairH;
     }
   }
@@ -2634,12 +2636,19 @@ function tick(){
     arrowBridge.children.forEach(c=>{if(c.material)c.material.opacity=op2});
     arrowBridge.rotation.y=globalTime*1.5;
   }
-  // Sky platforms: cloud-like drifting
+  // Sky platforms: cloud-like drifting + carry character
   for(const sp of skyPlats){
     const ud=sp.userData;
+    const prevX=sp.position.x,prevZ=sp.position.z,prevY=sp.position.y;
     sp.position.x=ud.baseX+Math.sin(globalTime*ud.driftSpeedX+ud.driftPhaseX)*ud.driftAmpX;
     sp.position.z=ud.baseZ+Math.cos(globalTime*ud.driftSpeedZ+ud.driftPhaseZ)*ud.driftAmpZ;
     sp.position.y=ud.baseY+Math.sin(globalTime*1.2+ud.floatPhase)*0.3;
+    // Carry character if standing on this platform
+    if(sp===currentSkyPlat&&!isJumping){
+      charRoot.position.x+=sp.position.x-prevX;
+      charRoot.position.z+=sp.position.z-prevZ;
+      charRoot.position.y+=sp.position.y-prevY;
+    }
   }
   // ? block: idle float + bounce on hit + red flash
   {
