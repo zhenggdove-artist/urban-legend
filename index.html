@@ -964,6 +964,7 @@ const camera=new THREE.PerspectiveCamera(55,W()/H(),0.1,1000);
 
 // ===== Character (GLB) + Cinematic =====
 const PLAT_Y=200; // final floating platform height (above plants)
+const DISC_LIFT=1.5; // ← 手動微調：角色站在飛行圓盤上的高度偏移
 const FOOT_LIFT=0.0;
 const DRINK_START=0.6;
 const STAIR_TOP_Y=10; // height at top of stairs
@@ -1148,8 +1149,9 @@ const blueTopPlats=[]; // blue platforms at the top where WRITE is available
     const baseDist=30+route*8;
     for(let i=0;i<stepsPerRoute;i++){
       const isTop=i===stepsPerRoute-1;
-      const r=2.4+Math.random()*1.6;
-      const geo=new THREE.CylinderGeometry(r,r+0.15,0.4,16);
+      if(isTop)curY+=3; // extra gap so blue platform is well above pink ones
+      const r=isTop?4.0:2.4+Math.random()*1.6;
+      const geo=new THREE.CylinderGeometry(r,r+0.15,isTop?0.6:0.4,16);
       const mesh=new THREE.Mesh(geo,isTop?blueMat:platMat);
       const dist=baseDist+i*0.3+Math.random()*1.5;
       const px=Math.cos(angle)*dist;
@@ -1161,10 +1163,12 @@ const blueTopPlats=[]; // blue platforms at the top where WRITE is available
       mesh.userData.floatPhase=Math.random()*Math.PI*2;
       mesh.userData.driftPhaseX=Math.random()*Math.PI*2;
       mesh.userData.driftPhaseZ=Math.random()*Math.PI*2;
-      mesh.userData.driftAmpX=1.0+Math.random()*1.5;
-      mesh.userData.driftAmpZ=1.0+Math.random()*1.5;
-      mesh.userData.driftSpeedX=0.12+Math.random()*0.15;
-      mesh.userData.driftSpeedZ=0.1+Math.random()*0.12;
+      // Blue top: no vertical float, minimal XZ drift
+      mesh.userData.driftAmpX=isTop?0.3:1.0+Math.random()*1.5;
+      mesh.userData.driftAmpZ=isTop?0.3:1.0+Math.random()*1.5;
+      mesh.userData.driftSpeedX=isTop?0.05:0.12+Math.random()*0.15;
+      mesh.userData.driftSpeedZ=isTop?0.05:0.1+Math.random()*0.12;
+      mesh.userData.noFloatY=isTop; // flag to skip vertical bob
       mesh.userData.isTop=isTop;
       scene.add(mesh);
       skyPlats.push(mesh);
@@ -1594,7 +1598,7 @@ function getTerrainHeight(x,z,curY){
   if(platformMesh.visible){
     const px=platformMesh.position.x,py=platformMesh.position.y,pz=platformMesh.position.z;
     const pd=Math.sqrt((x-px)**2+(z-pz)**2);
-    if(pd<4.5&&Math.abs(curY-py)<3) return py+6; // ← 手動微調圓盤碰撞面高度
+    if(pd<4.5&&Math.abs(curY-(py+DISC_LIFT))<5) return py+DISC_LIFT;
   }
   // Floating sky platforms — find highest platform below character (no fall-through)
   let bestSkyH=-Infinity,bestSkyPlat=null;
@@ -1846,33 +1850,30 @@ function animateChar(dt){
         // Show flying disc at bridge position
         platformMesh.position.copy(bridgePos);
         platformMesh.visible=true;
-        charRoot.position.set(bridgePos.x,bridgePos.y,bridgePos.z);
+        charRoot.position.set(bridgePos.x,bridgePos.y+DISC_LIFT,bridgePos.z);
         // Play idle
         actWalk?.fadeOut(0.2);
         if(clipIdle&&mixer){actIdle=mixer.clipAction(clipIdle);actIdle.reset().fadeIn(0.2).play()}
         exploreWalkPlaying=false;curSpeed=0;
       }
     }
-    // Detect if character is on a blue top platform → show WRITE
+    // Detect if character is on a blue top platform → ASCEND to PLAT_Y
     if(!isJumping&&currentSkyPlat&&currentSkyPlat.userData.isTop&&phase===PHASE.EXPLORE){
-      phase=PHASE.IDLE;phaseT=0;
-      onPlatform=true;isJumping=false;charVelY=0;curSpeed=0;
+      phase=PHASE.ASCEND;phaseT=0;
       showControls(false);
-      // Position disc platform at character's current location
-      const skyWriteY=charRoot.position.y;
-      platformMesh.position.set(charRoot.position.x,skyWriteY,charRoot.position.z);
-      platformMesh.visible=true;
       stairGroup.visible=false;
-      ui.classList.remove('hidden');
-      ui.classList.remove('mini');
-      arrowGroup.visible=false;
-      if(charModel)charModel.rotation.y=0;
+      // Use blue platform position as ASCEND start
+      const bp=currentSkyPlat.position;
+      platformMesh.position.set(bp.x,bp.y,bp.z);
+      platformMesh.visible=true;
+      charRoot.position.set(bp.x,bp.y+DISC_LIFT,bp.z);
+      // Override bridgePos temporarily for ASCEND interpolation
+      charRoot.userData.ascendStartX=bp.x;
+      charRoot.userData.ascendStartY=bp.y;
+      charRoot.userData.ascendStartZ=bp.z;
       actWalk?.fadeOut(0.2);
       if(clipIdle&&mixer){actIdle=mixer.clipAction(clipIdle);actIdle.reset().fadeIn(0.2).play()}
-      exploreWalkPlaying=false;
-      camYaw=0;camPitch=0.2;camDist=7;
-      camTarget.set(charRoot.position.x,skyWriteY+1,charRoot.position.z);
-      if(scene.fog)scene.fog.density=0.003;
+      exploreWalkPlaying=false;curSpeed=0;
     }
     // Detect if on flying platform (during EXPLORE after DRINK)
     if(platformMesh.visible){
@@ -1888,12 +1889,14 @@ function animateChar(dt){
     const ease=t*t*(3-2*t); // smoothstep
     // Reduce fog so ground stays green when viewed from high up
     if(scene.fog)scene.fog.density=0.008*(1-ease*0.9);
-    const startY=bridgePos.y;
-    const curPlatY=startY+(PLAT_Y-startY)*ease;
-    const curPlatX=bridgePos.x*(1-ease); // move toward center (x=0)
-    const curPlatZ=bridgePos.z*(1-ease);
+    const asX=charRoot.userData.ascendStartX??bridgePos.x;
+    const asY=charRoot.userData.ascendStartY??bridgePos.y;
+    const asZ=charRoot.userData.ascendStartZ??bridgePos.z;
+    const curPlatY=asY+(PLAT_Y-asY)*ease;
+    const curPlatX=asX*(1-ease);
+    const curPlatZ=asZ*(1-ease);
     platformMesh.position.set(curPlatX,curPlatY,curPlatZ);
-    charRoot.position.set(curPlatX,curPlatY,curPlatZ);
+    charRoot.position.set(curPlatX,curPlatY+DISC_LIFT,curPlatZ);
     if(charModel)charModel.position.set(0,baseModelY||0,0);
     // Camera follows
     camTarget.x+=(curPlatX-camTarget.x)*dt*4;
@@ -1903,8 +1906,9 @@ function animateChar(dt){
       // Arrived — show WRITE button (no movement controls)
       phase=PHASE.IDLE;phaseT=0;
       onPlatform=true;isJumping=false;charVelY=0;
+      charRoot.userData.ascendStartX=null;charRoot.userData.ascendStartY=null;charRoot.userData.ascendStartZ=null;
       platformMesh.position.set(0,PLAT_Y,0);
-      charRoot.position.set(0,PLAT_Y,0);
+      charRoot.position.set(0,PLAT_Y+DISC_LIFT,0);
       if(charModel)charModel.rotation.y=0; // face +Z toward camera (camYaw=0 puts camera at +Z)
       arrowGroup.visible=true;
       showControls(false);
@@ -2510,7 +2514,7 @@ function startCinematic(text,username=''){
   const drinkY=platformMesh.visible?platformMesh.position.y:PLAT_Y;
   const drinkX=platformMesh.visible?platformMesh.position.x:0;
   const drinkZ=platformMesh.visible?platformMesh.position.z:0;
-  charRoot.position.set(drinkX,drinkY,drinkZ);
+  charRoot.position.set(drinkX,drinkY+DISC_LIFT,drinkZ);
   platformMesh.position.set(drinkX,drinkY,drinkZ);
   platformMesh.visible=true;stairGroup.visible=false;
   arrowGroup.visible=false; // hide arrow during drink
@@ -2677,7 +2681,7 @@ function tick(){
     const prevX=sp.position.x,prevZ=sp.position.z,prevY=sp.position.y;
     sp.position.x=ud.baseX+Math.sin(globalTime*ud.driftSpeedX+ud.driftPhaseX)*ud.driftAmpX;
     sp.position.z=ud.baseZ+Math.cos(globalTime*ud.driftSpeedZ+ud.driftPhaseZ)*ud.driftAmpZ;
-    sp.position.y=ud.baseY+Math.sin(globalTime*1.2+ud.floatPhase)*0.3;
+    sp.position.y=ud.noFloatY?ud.baseY:ud.baseY+Math.sin(globalTime*1.2+ud.floatPhase)*0.3;
     // Carry character if standing on this platform
     if(sp===currentSkyPlat&&!isJumping){
       charRoot.position.x+=sp.position.x-prevX;
