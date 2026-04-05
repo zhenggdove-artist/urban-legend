@@ -1594,7 +1594,7 @@ function getTerrainHeight(x,z,curY){
   if(platformMesh.visible){
     const px=platformMesh.position.x,py=platformMesh.position.y,pz=platformMesh.position.z;
     const pd=Math.sqrt((x-px)**2+(z-pz)**2);
-    if(pd<4.5&&Math.abs(curY-py)<3) return py+2; // ← 手動微調圓盤碰撞面高度
+    if(pd<4.5&&Math.abs(curY-py)<3) return py+3; // ← 手動微調圓盤碰撞面高度
   }
   // Floating sky platforms — find highest platform below character (no fall-through)
   let bestSkyH=-Infinity,bestSkyPlat=null;
