@@ -1123,6 +1123,37 @@ const qBlockGroup=new THREE.Group();
   scene.add(qBlockGroup);
 }
 
+// Floating sky platforms — random stepping stones from ground to height 50
+const SKY_PLAT_HEIGHT=50;
+const skyPlats=[];
+{
+  const platMat=new THREE.MeshPhysicalMaterial({
+    color:'#E84887',roughness:0.25,metalness:0.1,
+    clearcoat:0.8,iridescence:0.6,
+    emissive:new THREE.Color('#E84887'),emissiveIntensity:0.06
+  });
+  // Generate platforms spiraling upward, reachable by jumping
+  const count=30;
+  let curY=2.0,angle=Math.random()*Math.PI*2;
+  for(let i=0;i<count;i++){
+    const r=1.2+Math.random()*0.8; // platform radius
+    const geo=new THREE.CylinderGeometry(r,r+0.15,0.3,16);
+    const mesh=new THREE.Mesh(geo,platMat);
+    // Spiral outward with some randomness
+    const dist=6+Math.random()*5;
+    const px=Math.cos(angle)*dist;
+    const pz=Math.sin(angle)*dist;
+    mesh.position.set(px,curY,pz);
+    mesh.userData.baseY=curY;
+    mesh.userData.floatPhase=Math.random()*Math.PI*2;
+    scene.add(mesh);
+    skyPlats.push(mesh);
+    // Next platform: jump-reachable height step
+    curY+=1.2+Math.random()*0.6;
+    angle+=0.5+Math.random()*0.7;
+  }
+}
+
 // Animation state
 let mixer=null,clipIdle=null,clipDrink=null,clipJump=null,clipWalk=null,clipFall=null,clipRun=null;
 let actIdle=null,actDrink=null,actJump=null,actWalk=null,actFall=null;
@@ -1544,6 +1575,13 @@ function getTerrainHeight(x,z,curY){
     const pd=Math.sqrt((x-px)**2+(z-pz)**2);
     if(pd<4.5&&Math.abs(curY-py)<3) return py;
   }
+  // Floating sky platforms
+  for(const sp of skyPlats){
+    const spx=sp.position.x,spy=sp.position.y,spz=sp.position.z;
+    const spd=Math.sqrt((x-spx)**2+(z-spz)**2);
+    const spR=sp.geometry.parameters.radiusTop||1.2;
+    if(spd<spR&&curY>=spy-1.5&&curY<=spy+1.0) return spy+0.15;
+  }
   // Straight staircase collision — only when visible
   if(stairGroup.visible){
     const stairT=(STAIR_Z_FAR-z)/(STAIR_Z_FAR-STAIR_Z_NEAR);
@@ -1597,7 +1635,7 @@ function animateChar(dt){
       exploreWalkPlaying=true;
       // Face toward edge (toward -Z)
       if(charModel)charModel.rotation.y=Math.PI;
-      charRoot.userData.fallStartY=PLAT_Y;
+      charRoot.userData.fallStartY=charRoot.position.y;
     }
   }
   else if(phase===PHASE.EXPLORE){
@@ -1687,7 +1725,7 @@ function animateChar(dt){
       }
 
       // Switch to fall animation when descending significantly
-      const isBigFall=charRoot.userData.fallStartY>50;
+      const isBigFall=charRoot.userData.fallStartY>=40;
       if(charVelY<0&&isBigFall){
         if(!actFall||!actFall.isRunning()){
           actJump?.fadeOut(0.2);
@@ -1719,7 +1757,7 @@ function animateChar(dt){
             if(p<1)requestAnimationFrame(stAnim);};
           requestAnimationFrame(stAnim);
         }
-        const fellFromHigh=charRoot.userData.fallStartY>50;
+        const fellFromHigh=charRoot.userData.fallStartY>=40;
         charRoot.userData.fallStartY=0;
         if(fellFromHigh){
           // Explosion — plant only if text was entered (from platform arrow)
@@ -1784,6 +1822,27 @@ function animateChar(dt){
         exploreWalkPlaying=false;curSpeed=0;
       }
     }
+    // Detect if character reached sky platform height ≥ 50 → show WRITE
+    if(!isJumping&&charRoot.position.y>=SKY_PLAT_HEIGHT&&phase===PHASE.EXPLORE){
+      phase=PHASE.IDLE;phaseT=0;
+      onPlatform=true;isJumping=false;charVelY=0;curSpeed=0;
+      showControls(false);
+      // Position disc platform at character's current location
+      const skyWriteY=charRoot.position.y;
+      platformMesh.position.set(charRoot.position.x,skyWriteY,charRoot.position.z);
+      platformMesh.visible=true;
+      stairGroup.visible=false;
+      ui.classList.remove('hidden');
+      ui.classList.remove('mini');
+      arrowGroup.visible=false;
+      if(charModel)charModel.rotation.y=0;
+      actWalk?.fadeOut(0.2);
+      if(clipIdle&&mixer){actIdle=mixer.clipAction(clipIdle);actIdle.reset().fadeIn(0.2).play()}
+      exploreWalkPlaying=false;
+      camYaw=0;camPitch=0.2;camDist=7;
+      camTarget.set(charRoot.position.x,skyWriteY+1,charRoot.position.z);
+      if(scene.fog)scene.fog.density=0.003;
+    }
     // Detect if on flying platform (during EXPLORE after DRINK)
     if(platformMesh.visible){
       const px=platformMesh.position.x,pz=platformMesh.position.z;
@@ -1828,19 +1887,21 @@ function animateChar(dt){
   else if(phase===PHASE.FALL){
     // Auto-walk to edge phase before actual fall
     if(autoWalkPhase){
+      if(!charRoot.userData.walkStartPos) charRoot.userData.walkStartPos={x:charRoot.position.x,z:charRoot.position.z};
       autoWalkT+=dt;
-      const WALK_DUR=1.5; // seconds to walk to edge
-      const edgeZ=-4.0; // platform edge in -Z
+      const WALK_DUR=1.5;
       const walkProgress=Math.min(1,autoWalkT/WALK_DUR);
-      const easeWalk=walkProgress*walkProgress*(3-2*walkProgress); // smoothstep
-      charRoot.position.z=easeWalk*edgeZ;
+      const easeWalk=walkProgress*walkProgress*(3-2*walkProgress);
+      const wsp=charRoot.userData.walkStartPos;
+      charRoot.position.x=wsp.x;
+      charRoot.position.z=wsp.z+easeWalk*(-4.0);
       if(charModel){
         charModel.position.set(0,baseModelY||0,0);
         charModel.rotation.y=Math.PI; // face walk direction
       }
       // Camera follows
       camTarget.x+=(charRoot.position.x-camTarget.x)*dt*4;
-      camTarget.y+=(PLAT_Y+1.5-camTarget.y)*dt*4;
+      camTarget.y+=(charRoot.position.y+1.5-camTarget.y)*dt*4;
       camTarget.z+=(charRoot.position.z-camTarget.z)*dt*4;
       if(walkProgress>=1){
         // Reached edge — jump off
@@ -1862,14 +1923,14 @@ function animateChar(dt){
             actFall.reset().fadeIn(0.2).play();
           }
         },400);
-        charRoot.userData.fallStartY=PLAT_Y;
+        charRoot.userData.fallStartY=charRoot.position.y;
       }
       return; // skip normal fall logic during walk
     }
     const dur=3.0;
     const t=Math.min(1,phaseT/dur);
     const easeIn=t*t;
-    const fy=charRoot.userData.fallStartY||PLAT_Y;
+    const fy=charRoot.userData.fallStartY||charRoot.position.y;
     // Pre-calculate plant landing position on first frame
     if(!charRoot.userData.fallLandPos){
       // Predict where the plant will grow
@@ -2343,7 +2404,7 @@ function restartWithFade(text,username=''){
 function resetToStart(){
   phase=PHASE.EXPLORE;phaseT=0;firstText='';firstUsername='';
   pathT=0;onPlatform=false;isJumping=false;charVelY=0;curSpeed=0;charRoot.userData.fallStartY=0;charRoot.userData.fallLandPos=null;
-  autoWalkPhase=false;autoWalkT=0;
+  autoWalkPhase=false;autoWalkT=0;charRoot.userData.walkStartPos=null;
   showControls(true);exploreWalkPlaying=false;
   hidePlantLabel();
   pop.classList.remove('show');
@@ -2400,12 +2461,15 @@ function startCinematic(text,username=''){
   if(charModel){charModel.visible=true;charModel.position.set(0,baseModelY,0);charModel.rotation.y=0}
   pathT=1;onPlatform=true;isJumping=false;charVelY=0;
   showControls(false);
-  // Character stays on platform at PLAT_Y
-  charRoot.position.set(0,PLAT_Y,0);
-  platformMesh.position.set(0,PLAT_Y,0);
+  // Character stays on platform — use current platform position if already placed, else PLAT_Y
+  const drinkY=platformMesh.visible?platformMesh.position.y:PLAT_Y;
+  const drinkX=platformMesh.visible?platformMesh.position.x:0;
+  const drinkZ=platformMesh.visible?platformMesh.position.z:0;
+  charRoot.position.set(drinkX,drinkY,drinkZ);
+  platformMesh.position.set(drinkX,drinkY,drinkZ);
   platformMesh.visible=true;stairGroup.visible=false;
   arrowGroup.visible=false; // hide arrow during drink
-  camTarget.set(0,PLAT_Y+1,0);
+  camTarget.set(drinkX,drinkY+1,drinkZ);
   camYaw=0;camPitch=0.2;camDist=7;
   updateSky(0);
   actFall?.stop();actJump?.stop();actWalk?.stop();
@@ -2561,6 +2625,10 @@ function tick(){
     const op2=0.5+Math.sin(globalTime*6)*0.4;
     arrowBridge.children.forEach(c=>{if(c.material)c.material.opacity=op2});
     arrowBridge.rotation.y=globalTime*1.5;
+  }
+  // Sky platforms: gentle float
+  for(const sp of skyPlats){
+    sp.position.y=sp.userData.baseY+Math.sin(globalTime*1.2+sp.userData.floatPhase)*0.25;
   }
   // ? block: idle float + bounce on hit + red flash
   {
