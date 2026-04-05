@@ -994,7 +994,7 @@ let joyX=0,joyY=0;
 let currentSkyPlat=null;
 
 const charRoot=new THREE.Group();
-charRoot.position.set(stairPath[0].x,1.0,stairPath[0].z); // start at STAIR_COLLISION_LIFT height
+charRoot.position.set(stairPath[0].x,1.5,stairPath[0].z); // start at STAIR_COLLISION_LIFT height
 scene.add(charRoot);
 
 // Platform (invisible once camera swings to front ? very high up)
@@ -1592,13 +1592,15 @@ function getTerrainHeight(x,z,curY){
     if(spd<spR&&curY>=spy-1.5&&curY<=spy+1.0){currentSkyPlat=sp;return spy+0.15;}
   }
   currentSkyPlat=null;
-  // Straight staircase collision — only when visible (return top surface of step)
+  // Straight staircase collision — only when visible
   if(stairGroup.visible){
+    const STAIR_COLLISION_LIFT=1.5; // ← 手動微調階梯碰撞面高度
     const stairT=(STAIR_Z_FAR-z)/(STAIR_Z_FAR-STAIR_Z_NEAR);
-    if(stairT>=-0.1&&stairT<=1.05&&Math.abs(x)<6){
-      const STAIR_COLLISION_LIFT=1.5; // ← 手動微調階梯碰撞面高度（改這個數字調整角色在階梯上的站立高度）
-      const stairH=Math.max(0,stairT)*STAIR_TOP_Y+STAIR_COLLISION_LIFT;
-      if(Math.abs(curY-stairH)<3) return stairH;
+    // Extend zone slightly beyond bottom so there's no cliff
+    if(stairT>=-0.3&&stairT<=1.05&&Math.abs(x)<6){
+      // Continuous ramp, clamped so bottom smoothly meets ground
+      const stairH=Math.max(0, stairT*STAIR_TOP_Y+STAIR_COLLISION_LIFT);
+      if(Math.abs(curY-stairH)<4) return stairH;
     }
   }
   return 0; // ground
@@ -2428,7 +2430,7 @@ function resetToStart(){
   resetDrinkGlow();
   charRoot.visible=true;
   if(charModel){charModel.visible=true;charModel.position.set(0,baseModelY,0);charModel.rotation.y=0}
-  charRoot.position.set(stairPath[0].x,1.0,stairPath[0].z); // start at STAIR_COLLISION_LIFT height
+  charRoot.position.set(stairPath[0].x,1.5,stairPath[0].z); // start at STAIR_COLLISION_LIFT height
   platformMesh.visible=false;stairGroup.visible=true;
   arrowBridge.visible=true;arrowGroup.visible=false;
   camTarget.set(stairPath[0].x,1.5,stairPath[0].z);
