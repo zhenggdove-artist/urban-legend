@@ -1944,12 +1944,12 @@ function animateChar(dt){
     if(autoWalkPhase){
       if(!charRoot.userData.walkStartPos) charRoot.userData.walkStartPos={x:charRoot.position.x,z:charRoot.position.z};
       autoWalkT+=dt;
-      const WALK_DUR=1.5;
+      const WALK_DUR=0.6; // short walk to disc edge
       const walkProgress=Math.min(1,autoWalkT/WALK_DUR);
       const easeWalk=walkProgress*walkProgress*(3-2*walkProgress);
       const wsp=charRoot.userData.walkStartPos;
       charRoot.position.x=wsp.x;
-      charRoot.position.z=wsp.z+easeWalk*(-4.0);
+      charRoot.position.z=wsp.z+easeWalk*(-3.0); // stay within disc radius
       if(charModel){
         charModel.position.set(0,baseModelY||0,0);
         charModel.rotation.y=Math.PI; // face walk direction
