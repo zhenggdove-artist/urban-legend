@@ -1035,7 +1035,7 @@ const stepEdgeMat=new THREE.MeshPhysicalMaterial({
 });
 let bridgePos; // bridge step world position (used for ASCEND trigger)
 {
-  const stepH=0.35;
+  const stepH=1.0;
   const stepGeo=new THREE.BoxGeometry(12.0,stepH,4.0);
   const stairMesh=new THREE.InstancedMesh(stepGeo,stepEdgeMat,STAIR_STEPS);
   const dummy=new THREE.Object3D();
@@ -1596,7 +1596,7 @@ function getTerrainHeight(x,z,curY){
   if(stairGroup.visible){
     const stairT=(STAIR_Z_FAR-z)/(STAIR_Z_FAR-STAIR_Z_NEAR);
     if(stairT>=0&&stairT<=1&&Math.abs(x)<6){
-      const stairH=stairT*STAIR_TOP_Y+0.175;
+      const stairH=stairT*STAIR_TOP_Y+0.5;
       if(Math.abs(curY-stairH)<3) return stairH;
     }
   }
