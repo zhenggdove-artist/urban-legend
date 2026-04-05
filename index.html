@@ -2581,13 +2581,13 @@ function tick(){
     // Red flash after hit
     if(qd.flashT!==undefined&&qd.flashT>=0){
       qd.flashT+=dt;
-      const flashDur=0.4;
+      const flashDur=0.6;
       const qMesh=qBlockGroup.children[0];
       if(qd.flashT<flashDur){
         const fl=Math.sin(qd.flashT/flashDur*Math.PI);
-        qMesh.material.forEach(m=>{m.emissive.setRGB(fl,0,0);m.emissiveIntensity=fl*2});
+        qMesh.material.forEach(m=>{m.color.setRGB(1,1-fl*0.8,1-fl);m.emissive.setRGB(fl,0,0);m.emissiveIntensity=fl*4});
       }else{
-        qMesh.material.forEach(m=>{m.emissive.setRGB(0,0,0);m.emissiveIntensity=0});
+        qMesh.material.forEach(m=>{m.color.setRGB(0.96,0.77,0.26);m.emissive.setRGB(0,0,0);m.emissiveIntensity=0});
         qd.flashT=-1;
       }
     }
