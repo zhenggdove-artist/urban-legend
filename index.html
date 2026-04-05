@@ -1124,42 +1124,54 @@ const qBlockGroup=new THREE.Group();
   scene.add(qBlockGroup);
 }
 
-// Floating sky platforms — random stepping stones from ground to height 50
+// Floating sky platforms — multiple routes to height 50, blue top platforms
 const SKY_PLAT_HEIGHT=50;
 const skyPlats=[];
+const blueTopPlats=[]; // blue platforms at the top where WRITE is available
 {
   const platMat=new THREE.MeshPhysicalMaterial({
     color:'#E84887',roughness:0.25,metalness:0.1,
     clearcoat:0.8,iridescence:0.6,
     emissive:new THREE.Color('#E84887'),emissiveIntensity:0.06
   });
-  // Generate platforms spiraling upward, reachable by jumping
-  const count=30;
-  let curY=2.0,angle=Math.random()*Math.PI*2;
-  for(let i=0;i<count;i++){
-    const r=2.4+Math.random()*1.6; // platform radius (2x bigger)
-    const geo=new THREE.CylinderGeometry(r,r+0.15,0.3,16);
-    const mesh=new THREE.Mesh(geo,platMat);
-    // Far from center, away from plants — tight spiral so platforms are close to each other
-    const dist=30+i*0.5+Math.random()*2;
-    const px=Math.cos(angle)*dist;
-    const pz=Math.sin(angle)*dist;
-    mesh.position.set(px,curY,pz);
-    mesh.userData.baseY=curY;
-    mesh.userData.baseX=px;
-    mesh.userData.baseZ=pz;
-    mesh.userData.floatPhase=Math.random()*Math.PI*2;
-    mesh.userData.driftPhaseX=Math.random()*Math.PI*2;
-    mesh.userData.driftPhaseZ=Math.random()*Math.PI*2;
-    mesh.userData.driftAmpX=1.5+Math.random()*2.5;
-    mesh.userData.driftAmpZ=1.5+Math.random()*2.5;
-    mesh.userData.driftSpeedX=0.15+Math.random()*0.2;
-    mesh.userData.driftSpeedZ=0.12+Math.random()*0.18;
-    scene.add(mesh);
-    skyPlats.push(mesh);
-    // Next platform: small height step + tight angle so platforms are close
-    curY+=0.8+Math.random()*0.5;
-    angle+=0.08+Math.random()*0.12;
+  const blueMat=new THREE.MeshPhysicalMaterial({
+    color:'#4488ff',roughness:0.2,metalness:0.15,
+    clearcoat:1.0,iridescence:0.8,
+    emissive:new THREE.Color('#2266dd'),emissiveIntensity:0.15
+  });
+  // Generate 3 separate routes spiraling up
+  const routes=3;
+  const stepsPerRoute=25;
+  for(let route=0;route<routes;route++){
+    let curY=2.0;
+    let angle=(Math.PI*2/routes)*route+Math.random()*0.3;
+    const baseDist=30+route*8;
+    for(let i=0;i<stepsPerRoute;i++){
+      const isTop=i===stepsPerRoute-1;
+      const r=2.4+Math.random()*1.6;
+      const geo=new THREE.CylinderGeometry(r,r+0.15,0.4,16);
+      const mesh=new THREE.Mesh(geo,isTop?blueMat:platMat);
+      const dist=baseDist+i*0.3+Math.random()*1.5;
+      const px=Math.cos(angle)*dist;
+      const pz=Math.sin(angle)*dist;
+      mesh.position.set(px,curY,pz);
+      mesh.userData.baseY=curY;
+      mesh.userData.baseX=px;
+      mesh.userData.baseZ=pz;
+      mesh.userData.floatPhase=Math.random()*Math.PI*2;
+      mesh.userData.driftPhaseX=Math.random()*Math.PI*2;
+      mesh.userData.driftPhaseZ=Math.random()*Math.PI*2;
+      mesh.userData.driftAmpX=1.0+Math.random()*1.5;
+      mesh.userData.driftAmpZ=1.0+Math.random()*1.5;
+      mesh.userData.driftSpeedX=0.12+Math.random()*0.15;
+      mesh.userData.driftSpeedZ=0.1+Math.random()*0.12;
+      mesh.userData.isTop=isTop;
+      scene.add(mesh);
+      skyPlats.push(mesh);
+      if(isTop)blueTopPlats.push(mesh);
+      curY+=0.7+Math.random()*0.4;
+      angle+=0.06+Math.random()*0.08;
+    }
   }
 }
 
@@ -1584,13 +1596,19 @@ function getTerrainHeight(x,z,curY){
     const pd=Math.sqrt((x-px)**2+(z-pz)**2);
     if(pd<4.5&&Math.abs(curY-py)<3) return py;
   }
-  // Floating sky platforms
+  // Floating sky platforms — find highest platform below character (no fall-through)
+  let bestSkyH=-Infinity,bestSkyPlat=null;
   for(const sp of skyPlats){
     const spx=sp.position.x,spy=sp.position.y,spz=sp.position.z;
     const spd=Math.sqrt((x-spx)**2+(z-spz)**2);
     const spR=sp.geometry.parameters.radiusTop||1.2;
-    if(spd<spR&&curY>=spy-1.5&&curY<=spy+1.0){currentSkyPlat=sp;return spy+0.15;}
+    const spTop=spy+0.2;
+    // Character must be above platform surface and within reach
+    if(spd<spR&&curY>=spTop-0.5&&spTop>bestSkyH){
+      bestSkyH=spTop;bestSkyPlat=sp;
+    }
   }
+  if(bestSkyPlat){currentSkyPlat=bestSkyPlat;return bestSkyH;}
   currentSkyPlat=null;
   // Straight staircase collision — only when visible
   if(stairGroup.visible){
@@ -1835,8 +1853,8 @@ function animateChar(dt){
         exploreWalkPlaying=false;curSpeed=0;
       }
     }
-    // Detect if character reached sky platform height ≥ 50 → show WRITE
-    if(!isJumping&&charRoot.position.y>=SKY_PLAT_HEIGHT&&phase===PHASE.EXPLORE){
+    // Detect if character is on a blue top platform → show WRITE
+    if(!isJumping&&currentSkyPlat&&currentSkyPlat.userData.isTop&&phase===PHASE.EXPLORE){
       phase=PHASE.IDLE;phaseT=0;
       onPlatform=true;isJumping=false;charVelY=0;curSpeed=0;
       showControls(false);
@@ -2292,6 +2310,20 @@ document.getElementById('bulk-go').addEventListener('click',()=>{
   }
   document.getElementById('bulk-ta').value='';
   document.getElementById('bulk-panel').classList.remove('show');
+});
+
+// ===== Shift+F Teleport to blue platforms =====
+let shiftFIndex=0;
+window.addEventListener('keydown',e=>{
+  if(e.shiftKey&&e.key.toLowerCase()==='f'){
+    e.preventDefault();
+    if(!blueTopPlats.length||phase!==PHASE.EXPLORE)return;
+    const target=blueTopPlats[shiftFIndex%blueTopPlats.length];
+    shiftFIndex++;
+    charRoot.position.set(target.position.x,target.position.y+0.5,target.position.z);
+    isJumping=false;charVelY=0;curSpeed=0;
+    camTarget.set(target.position.x,target.position.y+2,target.position.z);
+  }
 });
 
 // Statement overlay dismiss
