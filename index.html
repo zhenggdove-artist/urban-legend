@@ -994,7 +994,7 @@ let joyX=0,joyY=0;
 let currentSkyPlat=null;
 
 const charRoot=new THREE.Group();
-charRoot.position.set(stairPath[0].x,0,stairPath[0].z);
+charRoot.position.set(stairPath[0].x,1.0,stairPath[0].z); // start at STAIR_COLLISION_LIFT height
 scene.add(charRoot);
 
 // Platform (invisible once camera swings to front ? very high up)
@@ -1596,7 +1596,7 @@ function getTerrainHeight(x,z,curY){
   if(stairGroup.visible){
     const stairT=(STAIR_Z_FAR-z)/(STAIR_Z_FAR-STAIR_Z_NEAR);
     if(stairT>=0&&stairT<=1&&Math.abs(x)<6){
-      const STAIR_COLLISION_LIFT=2.0; // ← 手動微調階梯碰撞面高度
+      const STAIR_COLLISION_LIFT=1.0; // ← 手動微調階梯碰撞面高度（改這個數字調整角色在階梯上的站立高度）
       const stairH=stairT*STAIR_TOP_Y+STAIR_COLLISION_LIFT;
       if(Math.abs(curY-stairH)<3) return stairH;
     }
@@ -1684,7 +1684,7 @@ function animateChar(dt){
       const nz=charRoot.position.z+mdz*spd;
       const curH=charRoot.position.y;
       const newH=getTerrainHeight(nx,nz,curH);
-      const maxClimb=2.0,maxDrop=3.0;
+      const maxClimb=3.0,maxDrop=4.0;
       if(newH-curH<maxClimb){
         if(curH-newH>maxDrop){
           charRoot.position.x=nx;charRoot.position.z=nz;
@@ -2428,7 +2428,7 @@ function resetToStart(){
   resetDrinkGlow();
   charRoot.visible=true;
   if(charModel){charModel.visible=true;charModel.position.set(0,baseModelY,0);charModel.rotation.y=0}
-  charRoot.position.set(stairPath[0].x,0,stairPath[0].z);
+  charRoot.position.set(stairPath[0].x,1.0,stairPath[0].z); // start at STAIR_COLLISION_LIFT height
   platformMesh.visible=false;stairGroup.visible=true;
   arrowBridge.visible=true;arrowGroup.visible=false;
   camTarget.set(stairPath[0].x,1.5,stairPath[0].z);
