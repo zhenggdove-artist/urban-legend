@@ -1595,9 +1595,9 @@ function getTerrainHeight(x,z,curY){
   // Straight staircase collision — only when visible (return top surface of step)
   if(stairGroup.visible){
     const stairT=(STAIR_Z_FAR-z)/(STAIR_Z_FAR-STAIR_Z_NEAR);
-    if(stairT>=0&&stairT<=1&&Math.abs(x)<6){
+    if(stairT>=-0.1&&stairT<=1.05&&Math.abs(x)<6){
       const STAIR_COLLISION_LIFT=1.5; // ← 手動微調階梯碰撞面高度（改這個數字調整角色在階梯上的站立高度）
-      const stairH=stairT*STAIR_TOP_Y+STAIR_COLLISION_LIFT;
+      const stairH=Math.max(0,stairT)*STAIR_TOP_Y+STAIR_COLLISION_LIFT;
       if(Math.abs(curY-stairH)<3) return stairH;
     }
   }
