@@ -55,7 +55,7 @@
     button,input,textarea{font-family:"Saint","Trebuchet MS",sans-serif}
     #ui,#ui *,#pop,#search-panel,#search-panel *,#search-btn,#title,#mouth-text-layer{font-family:"Saint","Trebuchet MS",sans-serif}
     #c{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
-    #ui{position:absolute;right:6vw;bottom:12vh;left:auto;top:auto;
+    #ui{position:absolute;right:6vw;bottom:2vh;left:auto;top:auto;
       width:min(72vw,420px);
       background:radial-gradient(circle at 30% 20%,#fff3fb 0%,var(--bubble-1) 45%,var(--bubble-2) 100%);
       border:2px solid var(--bubble-edge);padding:0;z-index:10;color:var(--bubble-text);
@@ -64,7 +64,7 @@
         inset 0 0 0 2px rgba(255,255,255,0.6),
         0 10px 22px var(--bubble-shadow)}
     @media (max-width: 640px){
-      #ui{right:6vw;bottom:12vh;width:min(78vw,320px)}
+      #ui{right:3vw;bottom:2vh;left:3vw;width:auto}
     }
     #ui.mini{width:49px;height:35px;padding:0;cursor:pointer;border-radius:999px;
       display:flex;align-items:center;justify-content:center;
@@ -74,14 +74,14 @@
     #ui.mini::after{content:'WRITE';font-size:7px;letter-spacing:1px;color:#7555a8;text-transform:uppercase;font-family:"Saint","Trebuchet MS",sans-serif}
     #ui.mini.done-state::after{content:'RETURN'}
     #ui.hidden{opacity:0;pointer-events:none}
-    #ui h2{font-size:14px;letter-spacing:2px;color:#E84887;margin:10px 12px 4px;font-family:"Saint","Trebuchet MS",sans-serif;
+    #ui h2{font-size:13px;letter-spacing:2px;color:#E84887;margin:6px 12px 2px;font-family:"Saint","Trebuchet MS",sans-serif;
       text-shadow:0 1px 0 rgba(255,255,255,0.7)}
-    #ui textarea{width:calc(100% - 24px);height:96px;margin:6px 12px 10px;
+    #ui textarea{width:calc(100% - 24px);height:64px;margin:6px 12px 6px;
       background:radial-gradient(circle at 25% 15%,#fff 0%,#fbe3f3 55%,#f3c8e3 100%);
       border:2px solid var(--bubble-edge);color:var(--bubble-text);
       padding:10px 12px;font-size:14px;resize:none;outline:none;border-radius:24px;
       box-shadow:inset 0 0 10px rgba(255,255,255,0.8)}
-    #go{margin:0 12px 12px;width:calc(100% - 24px);height:38px;
+    #go{margin:0 12px 8px;width:calc(100% - 24px);height:34px;
       background:radial-gradient(circle at 25% 20%,#fff 0%,#e7cfff 55%,#d7b8ff 100%);
       border:2px solid var(--bubble-edge);color:#E84887;text-transform:uppercase;letter-spacing:3px;
       cursor:pointer;font-family:"Saint","Trebuchet MS",sans-serif;border-radius:999px;
@@ -256,8 +256,8 @@ URBANLEGEND
   <div id="ui" class="">
     <h2>WRITE</h2>
     <textarea id="ta" placeholder="Leave your message to the world"></textarea>
-    <div style="margin:0 12px 6px;font-size:11px;letter-spacing:1px;color:var(--bubble-text);opacity:0.7">let everyone know who you are, if you want to</div>
-    <input id="username" type="text" placeholder="your name" style="width:calc(100% - 24px);margin:0 12px 10px;padding:6px 12px;font-size:13px;border:2px solid var(--bubble-edge);border-radius:999px;background:radial-gradient(circle at 25% 15%,#fff 0%,#fbe3f3 55%,#f3c8e3 100%);color:var(--bubble-text);outline:none;font-family:'Saint','Trebuchet MS',sans-serif;box-shadow:inset 0 0 6px rgba(255,255,255,0.6)" />
+    <div style="margin:0 12px 4px;font-size:10px;letter-spacing:1px;color:var(--bubble-text);opacity:0.7">let everyone know who you are, if you want to</div>
+    <input id="username" type="text" placeholder="your name" style="width:calc(100% - 24px);margin:0 12px 6px;padding:5px 12px;font-size:12px;border:2px solid var(--bubble-edge);border-radius:999px;background:radial-gradient(circle at 25% 15%,#fff 0%,#fbe3f3 55%,#f3c8e3 100%);color:var(--bubble-text);outline:none;font-family:'Saint','Trebuchet MS',sans-serif;box-shadow:inset 0 0 6px rgba(255,255,255,0.6)" />
     <button id="go" disabled>PLANT</button>
   </div>
   <div id="pop"></div>
