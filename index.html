@@ -1883,8 +1883,8 @@ function animateChar(dt){
           charRoot.position.y=terrH;
           charVelY=0;isJumping=false;
           charRoot.userData.fallStartY=0;
-          // Snap to sky platform center on landing
-          if(currentSkyPlat){
+          // Snap to center only on blue top platforms (not regular floating ones)
+          if(currentSkyPlat&&currentSkyPlat.userData.isTop){
             charRoot.position.x=currentSkyPlat.position.x;
             charRoot.position.z=currentSkyPlat.position.z;
           }
