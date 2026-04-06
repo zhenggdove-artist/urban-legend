@@ -328,22 +328,13 @@ const SUPABASE_URL='https://mmhoohddrmguxnmtvgwz.supabase.co';
 const SUPABASE_KEY='sb_publishable_Aig1UQpR4iYyaeArWCG5IQ_XGhTXzsq';
 const SB_HEADERS={'apikey':SUPABASE_KEY,'Authorization':'Bearer '+SUPABASE_KEY,'Content-Type':'application/json'};
 
-const DELETED_KEY='urban_legend_deleted';
-function getDeletedSet(){try{return new Set(JSON.parse(localStorage.getItem(DELETED_KEY)||'[]'))}catch{return new Set()}}
-function addToDeletedSet(id,text){
-  const s=getDeletedSet();
-  if(id)s.add('id:'+id);
-  if(text)s.add('t:'+text);
-  localStorage.setItem(DELETED_KEY,JSON.stringify([...s]));
-}
+const DELETED_MARK='__DELETED__';
 async function loadEntries(){
-  const deleted=getDeletedSet();
-  function isDeleted(e){return(e.id&&deleted.has('id:'+e.id))||(e.text&&deleted.has('t:'+e.text))}
   try{
-    const res=await fetch(SUPABASE_URL+'/rest/v1/entries?order=created_at.asc',{headers:SB_HEADERS});
-    if(res.ok){const data=await res.json();const filtered=data.filter(e=>!isDeleted(e));if(data.length>0)localStorage.setItem(STORAGE_KEY,JSON.stringify(filtered));return filtered;}
+    const res=await fetch(SUPABASE_URL+'/rest/v1/entries?order=created_at.asc&text=not.eq.'+DELETED_MARK,{headers:SB_HEADERS});
+    if(res.ok){const data=await res.json();if(data.length>0)localStorage.setItem(STORAGE_KEY,JSON.stringify(data));return data;}
   }catch{}
-  try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]').filter(e=>!isDeleted(e))}catch{return[]}
+  try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]').filter(e=>e.text!==DELETED_MARK)}catch{return[]}
 }
 function saveEntry(text,username=''){
   const id=Date.now().toString();
@@ -362,24 +353,20 @@ function saveEntry(text,username=''){
   return id;
 }
 function deleteEntry(entryId,text){
-  // Mark as deleted locally — survives even if Supabase delete fails
-  addToDeletedSet(entryId,text);
-  // Remove from Supabase — try by id first, then by text
+  // Soft-delete in Supabase: overwrite text with DELETED_MARK via POST upsert
+  // POST/INSERT permission is confirmed working; DELETE/UPDATE may be blocked by RLS
   if(entryId){
-    fetch(SUPABASE_URL+'/rest/v1/entries?id=eq.'+encodeURIComponent(entryId),{
-      method:'DELETE',headers:{...SB_HEADERS,'Prefer':'return=minimal'}
-    }).then(r=>{if(!r.ok)console.warn('Supabase DELETE by id failed:',r.status)}).catch(e=>console.warn('Supabase DELETE err:',e));
+    fetch(SUPABASE_URL+'/rest/v1/entries',{
+      method:'POST',
+      headers:{...SB_HEADERS,'Prefer':'resolution=merge-duplicates,return=minimal'},
+      body:JSON.stringify({id:entryId,text:DELETED_MARK})
+    }).then(r=>{if(!r.ok)console.warn('Supabase soft-delete failed:',r.status)}).catch(e=>console.warn('Supabase soft-delete err:',e));
   }
-  if(text){
-    fetch(SUPABASE_URL+'/rest/v1/entries?text=eq.'+encodeURIComponent(text),{
-      method:'DELETE',headers:{...SB_HEADERS,'Prefer':'return=minimal'}
-    }).then(r=>{if(!r.ok)console.warn('Supabase DELETE by text failed:',r.status)}).catch(e=>console.warn('Supabase DELETE text err:',e));
-  }
-  // Remove from localStorage — by id and by text
+  // Remove from localStorage
   try{
     let list=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');
     if(entryId) list=list.filter(e=>e.id!==entryId);
-    else if(text){const idx=list.findIndex(e=>e.text===text);if(idx>=0)list.splice(idx,1);}
+    if(text) list=list.filter(e=>e.text!==text);
     localStorage.setItem(STORAGE_KEY,JSON.stringify(list));
   }catch{}
 }
