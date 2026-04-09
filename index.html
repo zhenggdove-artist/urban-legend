@@ -1786,7 +1786,7 @@ let coinsLoaded=false;
 
 async function loadCoins(){
   try{
-    const gltf=await loader.loadAsync('playermodel/COIN/tripo_pbr_model_fa82c664-e192-4684-b379-985c2db40f0e.glb');
+    const gltf=await loader.loadAsync('playermodel/COIN/coin_small.glb');
     coinTemplate=gltf.scene;
     coinTemplate.traverse(o=>{
       if(o.isMesh){
