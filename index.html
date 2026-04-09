@@ -557,18 +557,20 @@ function buildPlantGeo(allSegs,leaves,flowers,stemCol,leafCol,flowerCol,rng,caps
   }
 
   // Stems — per-segment color shift for organic variety
+  // ← 植物莖幹亮度：vary 範圍越高越亮（原 0.75~1.25，現 1.05~1.75）
   const sc=new THREE.Color(stemCol);
   for(const s of allSegs){
-    const vary=0.75+rng()*0.5;
+    const vary=1.05+rng()*0.7;
     const hShift=(rng()-0.5)*0.08;
     const c2=sc.clone().offsetHSL(hShift,0,(rng()-0.5)*0.15);
     tube(s.start,s.end,s.width,c2.r*vary,c2.g*vary,c2.b*vary);
   }
 
   // Leaves — 5 shape types, each randomly oriented in 3D
+  // ← 植物葉片亮度：offsetHSL 第三個參數加 0.15 提亮（越大越亮）
   const lc=new THREE.Color(leafCol);
   for(const lf of leaves){
-    const lv=lc.clone().offsetHSL((rng()-0.5)*0.15,0,(rng()-0.5)*0.12);
+    const lv=lc.clone().offsetHSL((rng()-0.5)*0.15,0,(rng()-0.5)*0.12+0.15);
     const sz=0.15+rng()*0.35;
     const p=lf.p;
     // Fully random orientation — NOT aligned to branch
@@ -653,9 +655,10 @@ function buildPlantGeo(allSegs,leaves,flowers,stemCol,leafCol,flowerCol,rng,caps
   }
 
   // Flowers — 3D shapes (sphere burst, rosette, dandelion)
+  // ← 植物花朵亮度：offsetHSL 第三個參數加 0.15 提亮
   const fc=new THREE.Color(flowerCol);
   for(const fl of flowers){
-    const fv=fc.clone().offsetHSL((rng()-0.5)*0.2,0,(rng()-0.5)*0.1);
+    const fv=fc.clone().offsetHSL((rng()-0.5)*0.2,0,(rng()-0.5)*0.1+0.15);
     const fSz=0.12+rng()*0.25;
     const c=fl.p;
     const nP=5+Math.floor(rng()*6);
@@ -902,7 +905,8 @@ function makePlant(text){
   const emissiveCol=new THREE.Color(ALL_PASTEL[Math.floor(rng()*ALL_PASTEL.length)]);
   const mat=new THREE.MeshStandardMaterial({
     vertexColors:true,roughness:0.6,metalness:0.05,
-    emissive:emissiveCol,emissiveIntensity:0.15,
+    // ← 植物自發光強度：越大越亮（原 0.15，現 0.35）
+    emissive:emissiveCol,emissiveIntensity:0.35,
     side:THREE.DoubleSide,
     envMapIntensity:0
   });
