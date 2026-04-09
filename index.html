@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>URBANLEGEND</title>
   <link rel="preload" as="fetch" href="character.glb" crossorigin>
+  <link rel="preload" as="fetch" href="monster.glb" crossorigin>
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
     @font-face{
@@ -332,6 +333,10 @@ you will plummet, transforming into a beautiful plant.
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {DRACOLoader} from 'three/addons/loaders/DRACOLoader.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
+import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
+import {ShaderPass} from 'three/addons/postprocessing/ShaderPass.js';
 
 const W=()=>window.innerWidth, H=()=>window.innerHeight;
 const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
@@ -1029,6 +1034,97 @@ scene.add(new THREE.AmbientLight('#ffffff',0.35));
 
 const camera=new THREE.PerspectiveCamera(55,W()/H(),0.1,1000);
 
+// ===== VHS Filter (Shift+V toggle) =====
+const VHSShader={
+  uniforms:{
+    tDiffuse:{value:null},
+    time:{value:0},
+    intensity:{value:1.0},
+    resolution:{value:new THREE.Vector2(W(),H())},
+  },
+  vertexShader:`
+    varying vec2 vUv;
+    void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}
+  `,
+  fragmentShader:`
+    uniform sampler2D tDiffuse;
+    uniform float time;
+    uniform float intensity;
+    uniform vec2 resolution;
+    varying vec2 vUv;
+
+    float rand(vec2 co){return fract(sin(dot(co,vec2(12.9898,78.233)))*43758.5453);}
+
+    void main(){
+      vec2 uv=vUv;
+
+      // === 波浪扭曲（慢） ===
+      // 12.0=波浪密度（越大波紋越密）  2.5=晃動速度  0.003=扭曲幅度（越大越歪）
+      float wave=sin(uv.y*12.0+time*2.5)*0.003*intensity;
+      // === 波浪扭曲（快） ===
+      // 35.0=高頻密度  4.0=速度  0.001=振幅（細微抖動）
+      wave+=sin(uv.y*35.0+time*4.0)*0.001*intensity;
+      // === 故障橫帶 ===
+      // 0.98=觸發門檻（越低越頻繁出現）  0.015=橫移量（越大偏移越大）
+      float band=step(0.98,sin(time*0.7+uv.y*3.0))*0.00015*intensity;
+      uv.x+=wave+band;
+
+      // === 垂直抖動（整個畫面上下微跳） ===
+      // 13.0=跳動速度  0.0008=跳動幅度
+      uv.y+=sin(time*13.0)*0.0008*intensity;
+
+      // === 色差分離（RGB頻道錯位） ===
+      // 0.002=偏移量（越大彩色邊緣越明顯，0=關閉）
+      float shift=0.00002*intensity;
+      float r=texture2D(tDiffuse,vec2(uv.x+shift,uv.y)).r;
+      float g=texture2D(tDiffuse,uv).g;
+      float b=texture2D(tDiffuse,vec2(uv.x-shift,uv.y)).b;
+      vec3 col=vec3(r,g,b);
+
+      // === 掃描線（水平條紋） ===
+      // 1.2=線條密度  0.02=線條深度（越大越明顯，0=關閉）
+      float scanline=sin(vUv.y*resolution.y*1.2)*0.02*intensity;
+      col-=scanline;
+
+      // === 靜態雜訊（雪花點） ===
+      // 0.04=雜訊強度（越大雪花越多，0=關閉）
+      float noise=(rand(vUv*time)-0.5)*0.04*intensity;
+      col+=noise;
+
+      // === 暗角（畫面邊緣變暗） ===
+      // 1.1=暗角範圍（越大邊緣越暗）  0.15=暗角強度（0=關閉）
+      float vig=1.0-dot((vUv-0.5)*1.1,(vUv-0.5)*1.1);
+      col*=mix(1.0,vig,0.15*intensity);
+
+      // === 去飽和（褪色感） ===
+      // 1.0=全彩  0.85=微褪色  0.0=全黑白
+      float lum=dot(col,vec3(0.299,0.587,0.114));
+      col=mix(vec3(lum),col,1.0);
+
+      // === 亮度補償 ===
+      // 1.15=補回被掃描線/雜訊吃掉的亮度（1.0=不補  越大越亮）
+      col*=1.15;
+
+      gl_FragColor=vec4(col,1.0);
+    }
+  `
+};
+
+const composer=new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene,camera));
+const vhsPass=new ShaderPass(VHSShader);
+composer.addPass(vhsPass);
+
+let vhsEnabled=true; // default ON
+window.addEventListener('keydown',e=>{
+  if(e.shiftKey&&e.key==='V'){
+    e.preventDefault();
+    vhsEnabled=!vhsEnabled;
+    vhsPass.enabled=vhsEnabled;
+    console.log('[VHS]',vhsEnabled?'ON':'OFF');
+  }
+});
+
 // ===== Character (GLB) + Cinematic =====
 const PLAT_Y=200; // final floating platform height (above plants)
 const DISC_LIFT=1.5; // ← 手動微調：角色站在飛行圓盤上的高度偏移
@@ -1369,6 +1465,303 @@ async function loadChar(){
   }
 }
 loadChar().catch(e=>console.error('Char load err:',e));
+
+// ===== Monster System (怪物追擊) =====
+const MONSTER_COUNT=1;
+const MONSTER_ACCEL_DIST=8.0; // distance to player at which monster accelerates
+const MONSTER_HIT_DIST=2.5;  // collision distance (larger model)
+const MONSTER_HIT_COOLDOWN=1.5; // seconds between hits
+const MONSTER_SCALE=4000; // 30x larger than 1000
+const MONSTER_Y=0; // ← 手動調整怪物高度：正數往上，負數往下
+// Per-monster speed & behavior profiles (speeds halved)
+const MONSTER_PROFILES=[
+  {normalSpeed:1.25, chaseSpeed:4.5,  pattern:'direct',  spawnDist:40},
+  {normalSpeed:2.5,  chaseSpeed:7.0,  pattern:'zigzag',  spawnDist:55},
+  {normalSpeed:1.75, chaseSpeed:5.5,  pattern:'flank',   spawnDist:45},
+];
+let monstersActive=false; // activated by Return key
+const monsters=[];
+let monsterWalkClip=null,monsterChaseClip=null;
+let monstersLoaded=false;
+
+// Player hit effect state
+let playerHitTimer=-1;
+const PLAYER_HIT_DURATION=0.6;
+let playerShakeOffset=new THREE.Vector3();
+
+async function loadMonsters(){
+  console.log('[Monster] Starting load...');
+  try{
+    // Load monster GLB with cache
+    let gltf=null;
+    try{
+      if('caches' in window){
+        const cache=await caches.open('ul-assets-v1');
+        let resp=await cache.match('monster.glb');
+        if(!resp){
+          resp=await fetch('monster.glb');
+          if(resp&&resp.ok) cache.put('monster.glb',resp.clone());
+        }
+        if(resp&&resp.ok){
+          const buf=await resp.arrayBuffer();
+          gltf=await new Promise((res,rej)=>loader.parse(buf,'',res,rej));
+        }
+      }
+    }catch(ce){console.warn('[Monster] cache err:',ce)}
+    if(!gltf) gltf=await loader.loadAsync('monster.glb');
+    console.log('[Monster] GLB loaded, scene children:',gltf.scene.children.length,'animations:',gltf.animations.length);
+
+    // Find animations by name
+    for(const clip of gltf.animations){
+      const n=clip.name.toLowerCase();
+      console.log('[Monster] Found animation:',clip.name);
+      if(n.includes('walk'))monsterWalkClip=clip;
+      if(n.includes('chase'))monsterChaseClip=clip;
+    }
+
+    // Spawn positions — spread around at different angles
+    const spawnAngles=[0, Math.PI*2/3, Math.PI*4/3];
+
+    // Clone materials from original so each clone gets its own copy
+    const origMats=[];
+    gltf.scene.traverse(o=>{
+      if(o.isMesh&&o.material) origMats.push(o.material);
+    });
+
+    for(let i=0;i<MONSTER_COUNT;i++){
+      const prof=MONSTER_PROFILES[i];
+      const model=SkeletonUtils.clone(gltf.scene);
+      model.scale.setScalar(MONSTER_SCALE);
+
+      // Fix materials — clone from original to restore textures
+      let matIdx=0;
+      model.traverse(o=>{
+        if(o.isMesh){
+          o.frustumCulled=false;
+          if(origMats[matIdx]){
+            o.material=origMats[matIdx].clone();
+            o.material.side=THREE.DoubleSide;
+            o.material.needsUpdate=true;
+          }
+          matIdx++;
+        }
+      });
+
+      const root=new THREE.Group();
+      model.position.y=0;
+      root.add(model);
+      root.position.y=MONSTER_Y;
+
+      const ang=spawnAngles[i];
+      const spawnX=Math.cos(ang)*prof.spawnDist;
+      const spawnZ=Math.sin(ang)*prof.spawnDist;
+      root.position.set(spawnX,MONSTER_Y,spawnZ);
+      root.visible=true;
+      scene.add(root);
+
+      // Create animation mixer
+      const mMixer=new THREE.AnimationMixer(model);
+      let walkAction=null,chaseAction=null;
+
+      if(monsterWalkClip){
+        walkAction=mMixer.clipAction(monsterWalkClip);
+        walkAction.setLoop(THREE.LoopRepeat);
+        walkAction.timeScale=0.8+i*0.3;
+        walkAction.play();
+      }
+      if(monsterChaseClip){
+        chaseAction=mMixer.clipAction(monsterChaseClip);
+        chaseAction.setLoop(THREE.LoopRepeat);
+        chaseAction.timeScale=0.9+i*0.2;
+      }
+
+      monsters.push({
+        root,
+        model,
+        mixer:mMixer,
+        walkAction,
+        chaseAction,
+        isChasing:false,
+        speed:prof.normalSpeed,
+        normalSpeed:prof.normalSpeed,
+        chaseSpeed:prof.chaseSpeed,
+        pattern:prof.pattern,
+        hitCooldown:0,
+        basePos:new THREE.Vector3(spawnX,0,spawnZ),
+        patternTimer:Math.random()*Math.PI*2,
+      });
+    }
+    monstersLoaded=true;
+    monstersActive=true; // auto-activate immediately
+    console.log('[Monster] All loaded and active! Count:',MONSTER_COUNT);
+  }catch(e){
+    console.error('[Monster] Load error:',e);
+  }
+}
+loadMonsters();
+
+function activateMonsters(){
+  if(monstersActive)return;
+  monstersActive=true;
+  for(const m of monsters){
+    m.root.visible=true;
+  }
+  console.log('[Monster] Activated! Monsters visible now.');
+}
+
+function updateMonsters(dt){
+  if(!monstersLoaded||monsterDeathActive)return;
+  // Auto-activate when player enters EXPLORE phase
+  if(!monstersActive&&phase===PHASE.EXPLORE){
+    activateMonsters();
+  }
+  if(!monstersActive)return;
+
+  // Only chase when player is on/near green ground level (not on stairs/platform)
+  const playerOnGround=charRoot.position.y<5;
+
+  for(const m of monsters){
+    m.mixer.update(dt);
+    if(m.hitCooldown>0) m.hitCooldown-=dt;
+    m.patternTimer+=dt;
+
+    // Always lock monster to ground
+    m.root.position.y=MONSTER_Y;
+
+    // Only chase player XZ when player is on ground
+    const dx=charRoot.position.x-m.root.position.x;
+    const dz=charRoot.position.z-m.root.position.z;
+    const dist=Math.sqrt(dx*dx+dz*dz);
+
+    if(!playerOnGround){
+      // Player is up high — monsters just idle/patrol, don't chase
+      if(m.isChasing&&m.walkAction){
+        m.chaseAction?.fadeOut(0.3);
+        m.walkAction.reset().fadeIn(0.3).play();
+        m.isChasing=false;
+      }
+      m.speed=m.normalSpeed;
+      // Wander back toward spawn
+      const sdx=m.basePos.x-m.root.position.x;
+      const sdz=m.basePos.z-m.root.position.z;
+      const sDist=Math.sqrt(sdx*sdx+sdz*sdz);
+      if(sDist>2){
+        m.root.position.x+=sdx/sDist*m.speed*dt*0.5;
+        m.root.position.z+=sdz/sDist*m.speed*dt*0.5;
+        m.root.rotation.y=Math.atan2(sdx,sdz);
+      }
+      continue;
+    }
+
+    // Decide speed: accelerate when close
+    const wasChasing=m.isChasing;
+    if(dist<MONSTER_ACCEL_DIST){
+      m.isChasing=true;
+      m.speed=m.chaseSpeed;
+    }else{
+      m.isChasing=false;
+      m.speed=m.normalSpeed;
+    }
+
+    // Switch animation on state change
+    if(m.isChasing&&!wasChasing&&m.chaseAction){
+      m.walkAction?.fadeOut(0.3);
+      m.chaseAction.reset().fadeIn(0.3).play();
+    }else if(!m.isChasing&&wasChasing&&m.walkAction){
+      m.chaseAction?.fadeOut(0.3);
+      m.walkAction.reset().fadeIn(0.3).play();
+    }
+
+    // Movement with different patterns
+    if(dist>MONSTER_HIT_DIST*0.5){
+      const moveSpeed=m.speed*dt;
+      let mx=dx/dist, mz=dz/dist;
+
+      if(m.pattern==='zigzag'){
+        const perpX=-mz, perpZ=mx;
+        const zigAmt=Math.sin(m.patternTimer*3.5)*0.6;
+        mx+=perpX*zigAmt;
+        mz+=perpZ*zigAmt;
+        const ml=Math.sqrt(mx*mx+mz*mz);
+        mx/=ml; mz/=ml;
+      }else if(m.pattern==='flank'){
+        if(!m.isChasing){
+          const perpX=-mz, perpZ=mx;
+          const circleAmt=0.7;
+          mx=mx*0.4+perpX*circleAmt;
+          mz=mz*0.4+perpZ*circleAmt;
+          const ml=Math.sqrt(mx*mx+mz*mz);
+          mx/=ml; mz/=ml;
+        }
+      }
+
+      m.root.position.x+=mx*moveSpeed;
+      m.root.position.z+=mz*moveSpeed;
+    }
+
+    // Face toward player
+    if(dist>0.1){
+      m.root.rotation.y=Math.atan2(dx,dz);
+    }
+
+    // Collision — only when player is on ground
+    if(dist<MONSTER_HIT_DIST&&m.hitCooldown<=0){
+      m.hitCooldown=MONSTER_HIT_COOLDOWN;
+      triggerPlayerHit();
+    }
+  }
+}
+
+let monsterDeathActive=false;
+
+function triggerPlayerHit(){
+  if(monsterDeathActive)return;
+  monsterDeathActive=true;
+
+  // Hide player + explode particles at player position
+  charRoot.visible=false;
+  if(charModel)charModel.visible=false;
+  showControls(false);
+  createBurst(new THREE.Vector3(charRoot.position.x,0,charRoot.position.z));
+
+  // After 0.8s: fade to black
+  setTimeout(()=>{
+    const fadeEl=document.getElementById('fade');
+    fadeEl.classList.add('show');
+
+    // After fade completes (0.6s transition): reset everything
+    setTimeout(()=>{
+      // Restore player materials
+      for(const cm of charMats){
+        if(cm.baseEmissive){
+          cm.mat.emissive.copy(cm.baseEmissive);
+          cm.mat.emissiveIntensity=cm.baseEmissiveIntensity;
+        }
+      }
+      if(charModel) charModel.position.set(0,baseModelY||0,0);
+
+      // Reset monsters to spawn
+      for(const m of monsters){
+        m.root.position.set(m.basePos.x,MONSTER_Y,m.basePos.z);
+        m.isChasing=false;
+        m.speed=m.normalSpeed;
+        if(m.chaseAction) m.chaseAction.stop();
+        if(m.walkAction) m.walkAction.reset().play();
+      }
+
+      // Respawn at staircase
+      resetToStart();
+      monsterDeathActive=false;
+
+      // Fade back in
+      setTimeout(()=>{fadeEl.classList.remove('show')},300);
+    },700);
+  },800);
+}
+
+function updatePlayerHitEffect(dt){
+  // no longer needed — handled by setTimeout chain
+}
 
 // ===== Mushroom Cloud Particle Burst (蕈狀雲) =====
 let burst=null;
@@ -1712,8 +2105,8 @@ function animateChar(dt){
   if(!charReady||!mixer)return;
   mixer.update(dt);
 
-  // Safety: keep character visible during active phases
-  if(phase!==PHASE.DONE&&phase!==PHASE.LAND){
+  // Safety: keep character visible during active phases (skip during monster death)
+  if(phase!==PHASE.DONE&&phase!==PHASE.LAND&&!monsterDeathActive){
     if(!charRoot.visible)charRoot.visible=true;
     if(charModel&&!charModel.visible)charModel.visible=true;
   }
@@ -2880,6 +3273,8 @@ function tick(){
   updateBurst(dt);
   updateAura(dt);
   updateDrinkGlow(dt);
+  updateMonsters(dt);
+  updatePlayerHitEffect(dt);
   updateMouthText(dt);
   if(burst){
     setPlantsDim(Math.min(1,burst.fadePlants));
@@ -2959,7 +3354,9 @@ function tick(){
 
   updateBugs(globalTime);
 
-  renderer.render(scene,camera);
+  // Update VHS uniforms + render
+  vhsPass.uniforms.time.value=globalTime;
+  composer.render();
 }
 
 // ===== Flying Bugs — orbit around plants =====
@@ -3044,8 +3441,10 @@ init();
 
 window.addEventListener('resize',()=>{
   renderer.setSize(W(),H());
+  composer.setSize(W(),H());
   camera.aspect=W()/H();
   camera.updateProjectionMatrix();
+  vhsPass.uniforms.resolution.value.set(W(),H());
 });
 </script>
 </body>
