@@ -1063,10 +1063,10 @@ const VHSShader={
       float wave=sin(uv.y*12.0+time*2.5)*0.003*intensity;
       // === 波浪扭曲（快） ===
       // 35.0=高頻密度  4.0=速度  0.001=振幅（細微抖動）
-      wave+=sin(uv.y*35.0+time*4.0)*0.001*intensity;
+      wave+=sin(uv.y*35.0+time*4.0)*0.003*intensity;
       // === 故障橫帶 ===
-      // 0.98=觸發門檻（越低越頻繁出現）  0.015=橫移量（越大偏移越大）
-      float band=step(0.98,sin(time*0.7+uv.y*3.0))*0.00015*intensity;
+      // 0.95=觸發門檻（越低越頻繁出現）  0.015=橫移量（越大偏移越大）
+      float band=step(0.98,sin(time*0.7+uv.y*3.0))*0.0005*intensity;
       uv.x+=wave+band;
 
       // === 垂直抖動（整個畫面上下微跳） ===
