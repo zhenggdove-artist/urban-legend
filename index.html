@@ -238,16 +238,16 @@
       border:2px solid var(--bubble-edge);border-radius:22px;padding:18px;z-index:300;
       box-shadow:0 8px 32px rgba(0,0,0,0.25);overflow-y:auto;font-family:"Saint",sans-serif}
     #coin-counter{position:fixed;top:16px;left:16px;z-index:30;
-      font-family:"GoldenGirdle","Saint","Trebuchet MS",sans-serif;font-size:22px;color:#FFD700;
-      text-shadow:0 0 8px rgba(255,215,0,0.6),0 2px 4px rgba(0,0,0,0.5);
+      font-family:"GoldenGirdle","Saint","Trebuchet MS",sans-serif;font-size:22px;color:#d4c44e;
+      text-shadow:0 0 8px rgba(212,196,78,0.5),0 2px 4px rgba(0,0,0,0.5);
       letter-spacing:2px;pointer-events:none;display:none;
       align-items:center;gap:6px}
     #coin-counter.show{display:flex}
     #coin-icon{width:28px;height:28px;border-radius:50%;
-      background:radial-gradient(circle at 35% 35%,#fff7a0,#FFD700 40%,#B8860B 100%);
-      border:2px solid #B8860B;box-shadow:0 0 8px rgba(255,215,0,0.5);
+      background:radial-gradient(circle at 35% 35%,#e8e0b0,#d4c44e 40%,#9a8030 100%);
+      border:2px solid #9a8030;box-shadow:0 0 8px rgba(212,196,78,0.4);
       display:flex;align-items:center;justify-content:center;
-      font-size:14px;color:#8B6914;font-weight:bold;line-height:1}
+      font-size:14px;color:#7a6828;font-weight:bold;line-height:1}
     #admin-panel.show{display:block}
     #admin-panel h3{margin:0 0 12px;font-size:16px;color:#7555a8;text-align:center;letter-spacing:2px}
     #admin-panel .close-x{position:absolute;top:8px;right:14px;font-size:20px;cursor:pointer;
@@ -1789,6 +1789,7 @@ const coins=[];
 let coinCount=0;
 let coinTemplate=null;
 let coinsLoaded=false;
+let coinsVisible=false;
 
 async function loadCoins(){
   try{
@@ -1815,7 +1816,7 @@ async function loadCoins(){
       const grp=new THREE.Group();
       grp.add(coinModel);
       grp.position.set(sp.position.x,sp.position.y+COIN_FLOAT_HEIGHT,sp.position.z);
-      grp.visible=true;
+      grp.visible=false; // hidden until EXPLORE phase
       scene.add(grp);
       coins.push({
         mesh:grp,
@@ -1827,7 +1828,6 @@ async function loadCoins(){
       });
     }
     coinsLoaded=true;
-    document.getElementById('coin-counter').classList.add('show');
     console.log('[Coin] Loaded! Total coins:',coins.length);
   }catch(e){
     console.error('[Coin] Load error:',e);
@@ -1837,6 +1837,13 @@ loadCoins();
 
 function updateCoins(dt){
   if(!coinsLoaded)return;
+  // Show coins + counter only after entering EXPLORE phase
+  if(!coinsVisible&&phase===PHASE.EXPLORE){
+    coinsVisible=true;
+    document.getElementById('coin-counter').classList.add('show');
+    for(const c of coins){ if(c.active) c.mesh.visible=true; }
+  }
+  if(!coinsVisible)return;
   for(const c of coins){
     // Follow platform position + float above it
     const sp=c.platform;
