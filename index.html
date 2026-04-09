@@ -2949,6 +2949,15 @@ window.addEventListener('keydown',e=>{
   }
 });
 
+// ===== Shift+U Teleport to staircase (地面樓梯口) =====
+window.addEventListener('keydown',e=>{
+  if(e.shiftKey&&e.key==='U'&&charReady){
+    e.preventDefault();
+    resetToStart();
+    console.log('[Skip] Jumped to staircase via Shift+U');
+  }
+});
+
 // ===== Shift+B Admin panel — manage/delete entries =====
 window.addEventListener('keydown',e=>{
   if(e.shiftKey&&e.key.toLowerCase()==='b'){
