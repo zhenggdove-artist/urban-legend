@@ -237,6 +237,11 @@
       width:420px;max-height:80vh;background:radial-gradient(circle at 30% 20%,#fff3fb 0%,#f3d5ea 55%,#e8b8d8 100%);
       border:2px solid var(--bubble-edge);border-radius:22px;padding:18px;z-index:300;
       box-shadow:0 8px 32px rgba(0,0,0,0.25);overflow-y:auto;font-family:"Saint",sans-serif}
+    #coin-counter{position:fixed;top:16px;left:16px;z-index:30;
+      font-family:"Saint","Trebuchet MS",sans-serif;font-size:22px;color:#FFD700;
+      text-shadow:0 0 8px rgba(255,215,0,0.6),0 2px 4px rgba(0,0,0,0.5);
+      letter-spacing:2px;pointer-events:none;display:none}
+    #coin-counter.show{display:block}
     #admin-panel.show{display:block}
     #admin-panel h3{margin:0 0 12px;font-size:16px;color:#7555a8;text-align:center;letter-spacing:2px}
     #admin-panel .close-x{position:absolute;top:8px;right:14px;font-size:20px;cursor:pointer;
@@ -255,6 +260,7 @@
 </head>
 <body>
   <canvas id="c"></canvas>
+  <div id="coin-counter">COIN x 0</div>
   <div id="title">
 URBANLEGEND
   </div>
@@ -1768,6 +1774,117 @@ function updatePlayerHitEffect(dt){
   // no longer needed — handled by setTimeout chain
 }
 
+// ===== Coin System (金幣收集) =====
+const COIN_FLOAT_HEIGHT=3.5; // ← 金幣懸浮在平台上方的高度
+const COIN_SCALE=8.0; // ← 金幣模型大小
+const COIN_HIT_DIST=2.5; // ← 碰撞半徑
+const COIN_RESPAWN_TIME=10.0; // ← 金幣重生秒數
+const coins=[];
+let coinCount=0;
+let coinTemplate=null;
+let coinsLoaded=false;
+
+async function loadCoins(){
+  try{
+    const gltf=await loader.loadAsync('playermodel/COIN/tripo_pbr_model_fa82c664-e192-4684-b379-985c2db40f0e.glb');
+    coinTemplate=gltf.scene;
+    coinTemplate.traverse(o=>{
+      if(o.isMesh){
+        o.frustumCulled=false;
+        if(o.material){
+          o.material=o.material.clone();
+          o.material.side=THREE.DoubleSide;
+          o.material.metalness=0.8;
+          o.material.roughness=0.2;
+          o.material.emissive=new THREE.Color('#FFD700');
+          o.material.emissiveIntensity=0.3;
+        }
+      }
+    });
+    // Place a coin above each sky platform
+    for(const sp of skyPlats){
+      const coinModel=coinTemplate.clone();
+      coinModel.scale.setScalar(COIN_SCALE);
+      const grp=new THREE.Group();
+      grp.add(coinModel);
+      grp.position.set(sp.position.x,sp.position.y+COIN_FLOAT_HEIGHT,sp.position.z);
+      grp.visible=true;
+      scene.add(grp);
+      coins.push({
+        mesh:grp,
+        platform:sp,
+        active:true,
+        respawnTimer:0,
+        flyT:-1, // fly-away animation timer
+        flyStartY:0,
+      });
+    }
+    coinsLoaded=true;
+    document.getElementById('coin-counter').classList.add('show');
+    console.log('[Coin] Loaded! Total coins:',coins.length);
+  }catch(e){
+    console.error('[Coin] Load error:',e);
+  }
+}
+loadCoins();
+
+function updateCoins(dt){
+  if(!coinsLoaded)return;
+  for(const c of coins){
+    // Follow platform position + float above it
+    const sp=c.platform;
+    if(c.active){
+      c.mesh.position.x=sp.position.x;
+      c.mesh.position.z=sp.position.z;
+      c.mesh.position.y=sp.position.y+COIN_FLOAT_HEIGHT+Math.sin(globalTime*1.8+sp.userData.floatPhase)*0.4;
+      c.mesh.children[0].rotation.y=globalTime*2.0;
+      c.mesh.visible=true;
+
+      // Collision with player
+      if(phase===PHASE.EXPLORE&&charReady){
+        const dx=charRoot.position.x-c.mesh.position.x;
+        const dy=(charRoot.position.y+(baseModelY||1.5))-c.mesh.position.y;
+        const dz=charRoot.position.z-c.mesh.position.z;
+        const dist=Math.sqrt(dx*dx+dy*dy+dz*dz);
+        if(dist<COIN_HIT_DIST){
+          // Collect!
+          c.active=false;
+          c.flyT=0;
+          c.flyStartY=c.mesh.position.y;
+          coinCount++;
+          document.getElementById('coin-counter').textContent='COIN x '+coinCount;
+        }
+      }
+    }else if(c.flyT>=0){
+      // Fly-away animation
+      c.flyT+=dt;
+      const flyDur=0.8;
+      if(c.flyT<flyDur){
+        const t=c.flyT/flyDur;
+        c.mesh.position.y=c.flyStartY+t*5;
+        c.mesh.children[0].rotation.y=globalTime*6.0;
+        const s=COIN_SCALE*(1-t);
+        c.mesh.children[0].scale.setScalar(s>0?s:0.01);
+        c.mesh.visible=true;
+      }else{
+        c.mesh.visible=false;
+        c.mesh.children[0].scale.setScalar(COIN_SCALE);
+        c.flyT=-1;
+        c.respawnTimer=COIN_RESPAWN_TIME;
+      }
+    }else{
+      // Waiting to respawn
+      c.respawnTimer-=dt;
+      if(c.respawnTimer<=0){
+        c.active=true;
+        c.mesh.visible=true;
+        c.mesh.children[0].scale.setScalar(COIN_SCALE);
+      }
+    }
+  }
+}
+
+
 // ===== Mushroom Cloud Particle Burst (蕈狀雲) =====
 let burst=null;
 function createBurst(pos){
@@ -3280,6 +3397,7 @@ function tick(){
   updateDrinkGlow(dt);
   updateMonsters(dt);
   updatePlayerHitEffect(dt);
+  updateCoins(dt);
   updateMouthText(dt);
   if(burst){
     setPlantsDim(Math.min(1,burst.fadePlants));
