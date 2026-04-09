@@ -245,9 +245,12 @@
     #coin-counter.show{display:flex}
     #coin-icon{width:28px;height:28px;border-radius:50%;
       background:radial-gradient(circle at 35% 35%,#e8e0b0,#d4c44e 40%,#9a8030 100%);
-      border:2px solid #9a8030;box-shadow:0 0 8px rgba(212,196,78,0.4);
+      border:2px solid #E8A0BF;box-shadow:0 0 8px rgba(212,196,78,0.4);
       display:flex;align-items:center;justify-content:center;
       font-size:14px;color:#7a6828;font-weight:bold;line-height:1}
+    @media(max-width:640px){
+      #coin-counter{top:60px}
+    }
     #admin-panel.show{display:block}
     #admin-panel h3{margin:0 0 12px;font-size:16px;color:#7555a8;text-align:center;letter-spacing:2px}
     #admin-panel .close-x{position:absolute;top:8px;right:14px;font-size:20px;cursor:pointer;
