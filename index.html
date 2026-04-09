@@ -1083,7 +1083,7 @@ const VHSShader={
 
       // === 掃描線（水平條紋） ===
       // 1.2=線條密度  0.02=線條深度（越大越明顯，0=關閉）
-      float scanline=sin(vUv.y*resolution.y*1.2)*0.02*intensity;
+      float scanline=sin(vUv.y*resolution.y*1.2)*0.012*intensity;
       col-=scanline;
 
       // === 靜態雜訊（雪花點） ===
@@ -1092,9 +1092,9 @@ const VHSShader={
       col+=noise;
 
       // === 暗角（畫面邊緣變暗） ===
-      // 1.1=暗角範圍（越大邊緣越暗）  0.15=暗角強度（0=關閉）
+      // 1.1=暗角範圍（越大邊緣越暗）  0.10=暗角強度（0=關閉）
       float vig=1.0-dot((vUv-0.5)*1.1,(vUv-0.5)*1.1);
-      col*=mix(1.0,vig,0.15*intensity);
+      col*=mix(1.0,vig,0.10*intensity);
 
       // === 去飽和（褪色感） ===
       // 1.0=全彩  0.85=微褪色  0.0=全黑白
@@ -1102,8 +1102,8 @@ const VHSShader={
       col=mix(vec3(lum),col,1.0);
 
       // === 亮度補償 ===
-      // 1.15=補回被掃描線/雜訊吃掉的亮度（1.0=不補  越大越亮）
-      col*=1.15;
+      // 1.35=補回被掃描線/雜訊吃掉的亮度（1.0=不補  越大越亮）
+      col*=1.35;
 
       gl_FragColor=vec4(col,1.0);
     }
