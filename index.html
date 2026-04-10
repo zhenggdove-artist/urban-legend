@@ -2604,13 +2604,14 @@ function animateChar(dt){
       // Predict where the plant will grow
       const rr=srand(hash(firstText||'')+plantEntries.length);
       let landX=0,landZ=0;
-      if(plantEntries.length>0&&rr()>0.5){
-        const existing=plantEntries[Math.floor(rr()*plantEntries.length)];
+      const n=plantEntries.length;
+      const minR=Math.max(3.0, Math.sqrt((n+1)/(Math.PI*1.8)));
+      if(n>0&&rr()<0.35){
+        const existing=plantEntries[Math.floor(rr()*n)];
         landX=existing.mesh.position.x;landZ=existing.mesh.position.z;
       }else{
         const angle=rr()*Math.PI*2;
-        const spread=0.6+Math.sqrt(plantEntries.length+1)*0.45;
-        const r=spread*(0.6+rr()*0.8);
+        const r=minR*(0.7+rr()*0.3);
         landX=Math.cos(angle)*r;landZ=Math.sin(angle)*r;
       }
       charRoot.userData.fallLandPos={x:landX,z:landZ};
@@ -2790,19 +2791,27 @@ function updateMouthText(dt){
 function addPlant(text,grow=true,ts=null,username=''){
   let grp;
   try{grp=makePlant(text)}catch(e){console.error('Plant err:',e);return null}
-  // Spread outward; 50% chance to grow on existing plant at mid height
+  // Spread outward — density cap ensures plants expand to outer rings
+  // ← PLANT_DENSITY_CAP：每單位面積最多幾棵植物（越小越稀疏，越大越密）
+  // ← PLANT_BASE_R：初始種植半徑  PLANT_STACK_CHANCE：疊生在既有植物上的機率
+  const PLANT_DENSITY_CAP=1.8; // plants per unit area (π r²)
+  const PLANT_BASE_R=3.0;
+  const PLANT_STACK_CHANCE=0.35;
   const rr=srand(hash(text)+plantEntries.length);
-  if(plantEntries.length>0&&rr()>0.5){
+  const n=plantEntries.length;
+  // Minimum radius so that density stays below cap: n / (π r²) ≤ cap → r ≥ √(n / (π·cap))
+  const minR=Math.max(PLANT_BASE_R, Math.sqrt((n+1)/(Math.PI*PLANT_DENSITY_CAP)));
+  if(n>0&&rr()<PLANT_STACK_CHANCE){
     // Grow on an existing plant's branch (around 50% height)
-    const existing=plantEntries[Math.floor(rr()*plantEntries.length)];
+    const existing=plantEntries[Math.floor(rr()*n)];
     const ePos=existing.mesh.position;
     const eH=existing.mesh.children[0]?.userData.plantH||3;
     const yOff=eH*0.5*existing.mesh.scale.y;
     grp.position.set(ePos.x+(rr()-0.5)*0.6,yOff,ePos.z+(rr()-0.5)*0.6);
   }else{
     const angle=rr()*Math.PI*2;
-    const spread=0.6+Math.sqrt(plantEntries.length+1)*0.45;
-    const r=spread*(0.6+rr()*0.8);
+    // Place between 70%~100% of minR so new plants land near the expanding edge
+    const r=minR*(0.7+rr()*0.3);
     grp.position.set(Math.cos(angle)*r,0,Math.sin(angle)*r);
   }
   const mesh=grp.children[0];
