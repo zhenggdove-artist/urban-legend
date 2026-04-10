@@ -2718,7 +2718,7 @@ function getMouthWorldPos(){
 function makeTextEl(text){
   const el=document.createElement('div');
   el.className='mouth-text';
-  el.textContent=text;
+  el.textContent=text.length>10?text.slice(0,10)+'…':text;
   el.style.opacity='0';
   mouthLayer.appendChild(el);
   return el;
