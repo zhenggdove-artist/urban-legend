@@ -14,6 +14,12 @@ jobs:
   heartbeat:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      SUPABASE_URL: https://mmhoohddrmguxnmtvgwz.supabase.co
+      SUPABASE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+      SUPABASE_TABLE: entries
+      KEEPALIVE_ID: __keepalive__
+      KEEPALIVE_TEXT: __DELETED__
     steps:
       - uses: actions/checkout@v4
 
@@ -21,11 +27,12 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Validate keepalive secrets
+        run: |
+          if [ -z "$SUPABASE_KEY" ]; then
+            echo "Missing GitHub secret: SUPABASE_PUBLISHABLE_KEY" >&2
+            exit 1
+          fi
+      
       - name: Write keepalive heartbeat to Supabase
-        env:
-          SUPABASE_URL: https://mmhoohddrmguxnmtvgwz.supabase.co
-          SUPABASE_KEY: sb_publishable_Aig1UQpR4iYyaeArWCG5IQ_XGhTXzsq
-          SUPABASE_TABLE: entries
-          KEEPALIVE_ID: __keepalive__
-          KEEPALIVE_TEXT: __DELETED__
         run: node .github/scripts/supabase-keepalive.mjs
