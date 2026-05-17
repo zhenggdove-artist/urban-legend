@@ -16,10 +16,11 @@ jobs:
     timeout-minutes: 10
     env:
       SUPABASE_URL: https://mmhoohddrmguxnmtvgwz.supabase.co
-      SUPABASE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+      # Publishable (anon) key — already shipped to every browser via index.html,
+      # so treating it as a GitHub secret adds no security but creates a single
+      # point of failure when the secret is missing. Inline is the reliable choice.
+      SUPABASE_KEY: sb_publishable_Aig1UQpR4iYyaeArWCG5IQ_XGhTXzsq
       SUPABASE_TABLE: entries
-      KEEPALIVE_ID: __keepalive__
-      KEEPALIVE_TEXT: __DELETED__
     steps:
       - uses: actions/checkout@v4
 
@@ -27,12 +28,5 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Validate keepalive secrets
-        run: |
-          if [ -z "$SUPABASE_KEY" ]; then
-            echo "Missing GitHub secret: SUPABASE_PUBLISHABLE_KEY" >&2
-            exit 1
-          fi
-      
-      - name: Write keepalive heartbeat to Supabase
+      - name: Ping Supabase to reset inactivity timer
         run: node .github/scripts/supabase-keepalive.mjs
